@@ -1,0 +1,15 @@
+bin/
+.coverage/
+*.out
+/tmp/
+*.html
+
+# editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

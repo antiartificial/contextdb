@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  contextdb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: contextdb:dev
+    container_name: contextdb
+    restart: unless-stopped
+    ports:
+      - "7700:7700"   # gRPC (Phase 5)
+      - "7701:7701"   # REST gateway (Phase 5)
+    volumes:
+      - contextdb-data:/data
+    environment:
+      - CONTEXTDB_DATA_DIR=/data
+      - CONTEXTDB_LOG_LEVEL=debug
+    healthcheck:
+      # Will be a real HTTP probe once the REST gateway lands (Phase 5).
+      # For now just checks the process is alive.
+      test: ["CMD-SHELL", "[ -f /contextdb ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  contextdb-data:
+    driver: local
