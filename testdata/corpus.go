@@ -87,6 +87,19 @@ func trollVec(topicDim int, idx int) []float32 {
 	return normalise(v)
 }
 
+// agentVec returns a vector for an agent memory node.
+// Procedural memories use topicDim 10-12 (reserved subspace).
+// Episodic/semantic use topicDim 5-9.
+func agentVec(memType core.MemoryType, topicDim int) []float32 {
+	switch memType {
+	case core.MemoryProcedural:
+		// topicDim is already in range 10-12; use next dim as noise
+		return topicVec(topicDim, (topicDim+1)%dim, 0.88, 0.12)
+	default:
+		return topicVec(topicDim, (topicDim+4)%dim, 0.85, 0.15)
+	}
+}
+
 func normalise(v []float32) []float32 {
 	var sum float64
 	for _, x := range v {
@@ -266,10 +279,12 @@ func (c *Corpus) buildAgentNamespace(ctx context.Context, graph *memstore.GraphS
 		{"Kafka partition count should be set at topic creation; changes require consumer rebalance", core.MemorySemantic, 72, 0.88, 6},
 		{"PostgreSQL connection pools should be sized to max_connections minus reserved system slots", core.MemorySemantic, 36, 0.80, 8},
 
-		// Procedural — old but should still rank well due to slow decay
-		{"To add a new microservice: create Helm chart, add to ArgoCD app, update Terraform outputs", core.MemoryProcedural, 500, 0.92, 5},
-		{"Runbook: GKE node pool upgrade — cordon, drain, replace nodes one AZ at a time", core.MemoryProcedural, 720, 0.95, 5},
-		{"Database migration checklist: backup, test on staging, use --fake-initial-migration flag", core.MemoryProcedural, 400, 0.90, 8},
+		// Procedural — old but should still rank well due to slow decay.
+		// topicDims 10-12 are reserved for procedural memories to prevent
+		// collision with episodic/semantic nodes (dims 5-9).
+		{"To add a new microservice: create Helm chart, add to ArgoCD app, update Terraform outputs", core.MemoryProcedural, 500, 0.92, 10},
+		{"Runbook: GKE node pool upgrade — cordon, drain, replace nodes one AZ at a time", core.MemoryProcedural, 720, 0.95, 11},
+		{"Database migration checklist: backup, test on staging, use --fake-initial-migration flag", core.MemoryProcedural, 400, 0.90, 12},
 
 		// Low-utility noise
 		{"Looked at the README for the orders service", core.MemoryEpisodic, 1, 0.10, 9},
@@ -285,8 +300,15 @@ func (c *Corpus) buildAgentNamespace(ctx context.Context, graph *memstore.GraphS
 			Confidence: m.utility, // encode utility in confidence for scoring
 			ValidFrom:  now.Add(-time.Duration(m.ageHours * float64(time.Hour))),
 		}
-		isCorrect := m.utility > 0.7 && m.ageHours < 100
-		c.upsert(ctx, graph, vecs, n, topicVec(m.topicDim, (m.topicDim+4)%dim, 0.85, 0.15), string(m.memType), isCorrect, false, m.ageHours > 100)
+		// Procedural memories are correct regardless of age (slow decay is the point).
+		// Episodic/semantic are correct only if fresh and high-utility.
+		var isCorrect bool
+		if m.memType == core.MemoryProcedural {
+			isCorrect = m.utility > 0.7
+		} else {
+			isCorrect = m.utility > 0.7 && m.ageHours < 100
+		}
+		c.upsert(ctx, graph, vecs, n, agentVec(m.memType, m.topicDim), string(m.memType), isCorrect, false, m.ageHours > 100)
 	}
 }
 
@@ -484,9 +506,9 @@ func (c *Corpus) buildQuerySet(now time.Time) {
 		},
 		{
 			ID:             "agent_procedural_deploy",
-			Description:    "Procedural query — 500h old skill should still rank above 2h low-utility episodic",
+			Description:    "Procedural query — 500h old skill must rank above 2h low-utility episodic",
 			Namespace:      NSAgent,
-			Vector:         queryVec(5, 0.12),
+			Vector:         queryVec(10, 0.08), // procedural subspace: dims 10-12
 			CorrectNodeIDs: filterCorrect(c.Fixtures, NSAgent, "procedural"),
 			Category:       "procedural",
 		},
