@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/matryer/is"
 
-	"github.com/ataraxy-labs/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/core"
 )
 
 func freshNode(t time.Time, confidence float64) core.Node {

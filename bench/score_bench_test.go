@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ataraxy-labs/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/core"
 )
 
 // ─── ASCII chart helpers ──────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 package ingest
 
 import (
-	"github.com/ataraxy-labs/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/core"
 )
 
 // AdmitRequest carries everything the admission controller needs to decide

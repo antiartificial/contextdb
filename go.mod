@@ -1,4 +1,4 @@
-module github.com/ataraxy-labs/contextdb
+module github.com/antiartificial/contextdb
 
 go 1.22.2
 

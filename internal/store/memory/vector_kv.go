@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ataraxy-labs/contextdb/internal/core"
-	"github.com/ataraxy-labs/contextdb/internal/store"
+	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/store"
 )
 
 // VectorIndex is a brute-force in-memory ANN implementation.

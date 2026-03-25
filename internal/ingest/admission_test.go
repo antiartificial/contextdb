@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/matryer/is"
 
-	"github.com/ataraxy-labs/contextdb/internal/core"
-	"github.com/ataraxy-labs/contextdb/internal/ingest"
+	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/ingest"
 )
 
 func makeSource(cred float64, labels ...string) core.Source {

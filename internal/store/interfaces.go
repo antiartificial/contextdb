@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ataraxy-labs/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/core"
 )
 
 // GraphStore manages nodes and edges with full bi-temporal semantics.

@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ataraxy-labs/contextdb/internal/store"
+	"github.com/antiartificial/contextdb/internal/store"
 )
 
 // EventLog is an append-only in-memory event log.

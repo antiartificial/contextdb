@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/matryer/is"
 
-	"github.com/ataraxy-labs/contextdb/internal/core"
-	"github.com/ataraxy-labs/contextdb/internal/retrieval"
-	memstore "github.com/ataraxy-labs/contextdb/internal/store/memory"
+	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/retrieval"
+	memstore "github.com/antiartificial/contextdb/internal/store/memory"
 )
 
 const testNS = "test:fusion"
