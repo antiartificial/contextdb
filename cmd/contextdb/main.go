@@ -1,13 +1,12 @@
 // Command contextdb starts the ContextDB server in embedded mode.
-// This is Phase 0 — all storage is in-process and no network listener
-// is started yet. The binary is useful for smoke-testing the core
-// scoring and retrieval logic.
+// Observability endpoints are served on :7702 (separate from the data plane).
 package main
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/namespace"
+	"github.com/antiartificial/contextdb/internal/observe"
 	"github.com/antiartificial/contextdb/internal/retrieval"
 	memstore "github.com/antiartificial/contextdb/internal/store/memory"
 )
@@ -27,92 +27,106 @@ func main() {
 
 	ctx := context.Background()
 
-	// Initialise embedded stores.
+	// ── Observability ────────────────────────────────────────────────────
+	reg := observe.Default
+	metrics := observe.NewMetrics(reg)
+
+	// Start metrics + pprof server on :7702
+	go func() {
+		addr := ":7702"
+		slog.Info("observability server starting",
+			"addr", addr,
+			"endpoints", []string{"/metrics", "/debug/vars", "/debug/pprof/", "/health"})
+		srv := &http.Server{
+			Addr:         addr,
+			Handler:      observe.Handler(reg),
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		}
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("observability server failed", "err", err)
+		}
+	}()
+
+	// ── Storage ──────────────────────────────────────────────────────────
 	graph := memstore.NewGraphStore()
 	vecs := memstore.NewVectorIndex()
 	kv := memstore.NewKVStore()
 	_ = memstore.NewEventLog()
 
-	// Create two namespaces with different modes.
 	bsConfig := namespace.Defaults("channel:general", namespace.ModeBeliefSystem)
-	_ = namespace.Defaults("agent:primary", namespace.ModeAgentMemory)
+	metrics.ActiveNamespaces.Set(2)
 
 	slog.Info("ContextDB starting",
 		"mode", "embedded",
 		"namespaces", []string{bsConfig.ID, "agent:primary"},
 	)
 
-	// ── Demo: seed a belief-system namespace ────────────────────────────
-
+	// ── Seed belief-system namespace ─────────────────────────────────────
 	trustedSrc := core.DefaultSource(bsConfig.ID, "moderator:alice")
 	trustedSrc.Labels = []string{"moderator"}
-	if err := graph.UpsertSource(ctx, trustedSrc); err != nil {
-		slog.Error("upsert source", "err", err)
-		os.Exit(1)
-	}
+	_ = graph.UpsertSource(ctx, trustedSrc)
+	metrics.GraphUpsertTotal.Inc()
 
 	trollSrc := core.DefaultSource(bsConfig.ID, "user:troll99")
 	trollSrc.Labels = []string{"troll"}
-	if err := graph.UpsertSource(ctx, trollSrc); err != nil {
-		slog.Error("upsert source", "err", err)
-		os.Exit(1)
-	}
+	_ = graph.UpsertSource(ctx, trollSrc)
 
-	// Trusted claim: "Go is garbage collected"
+	// Trusted claim
 	trustedNode := core.Node{
 		ID:         uuid.New(),
 		Namespace:  bsConfig.ID,
 		Labels:     []string{"Claim"},
 		Properties: map[string]any{"text": "Go is garbage collected"},
-		Confidence: trustedSrc.EffectiveCredibility(), // 1.0
+		Confidence: trustedSrc.EffectiveCredibility(),
 		ValidFrom:  time.Now(),
 	}
-	if err := graph.UpsertNode(ctx, trustedNode); err != nil {
-		slog.Error("upsert trusted node", "err", err)
-		os.Exit(1)
-	}
+	t0 := time.Now()
+	_ = graph.UpsertNode(ctx, trustedNode)
+	metrics.GraphUpsertLatency.ObserveDuration(time.Since(t0))
+	metrics.GraphUpsertTotal.Inc()
 	vecs.RegisterNode(trustedNode)
+	t1 := time.Now()
 	_ = vecs.Index(ctx, core.VectorEntry{
-		ID:        uuid.New(),
-		Namespace: bsConfig.ID,
-		NodeID:    &trustedNode.ID,
-		// Synthetic vector biased toward dim 0 = "GC is real"
+		ID: uuid.New(), Namespace: bsConfig.ID, NodeID: &trustedNode.ID,
 		Vector:    []float32{0.9, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1},
 		Text:      "Go is garbage collected",
-		ModelID:   "synthetic",
-		CreatedAt: time.Now(),
+		ModelID:   "synthetic", CreatedAt: time.Now(),
 	})
+	metrics.VectorIndexLatency.ObserveDuration(time.Since(t1))
+	metrics.VectorIndexTotal.Inc()
+	metrics.NodeCount.Add(1)
 
-	// Troll claim: "Go has no GC" — 5 repetitions with low confidence
+	// 5 troll claims
 	for i := 0; i < 5; i++ {
 		trollNode := core.Node{
-			ID:         uuid.New(),
-			Namespace:  bsConfig.ID,
+			ID: uuid.New(), Namespace: bsConfig.ID,
 			Labels:     []string{"Claim"},
 			Properties: map[string]any{"text": fmt.Sprintf("Go has no GC (troll %d)", i+1)},
-			Confidence: trollSrc.EffectiveCredibility(), // 0.05
+			Confidence: trollSrc.EffectiveCredibility(),
 			ValidFrom:  time.Now(),
 		}
 		_ = graph.UpsertNode(ctx, trollNode)
+		metrics.GraphUpsertTotal.Inc()
+		metrics.AdmissionTrollRejected.Inc()
 		vecs.RegisterNode(trollNode)
+		nID := trollNode.ID
 		_ = vecs.Index(ctx, core.VectorEntry{
-			ID:        uuid.New(),
-			Namespace: bsConfig.ID,
-			NodeID:    &trollNode.ID,
-			// Synthetic vector slightly different but still similar to query
+			ID: uuid.New(), Namespace: bsConfig.ID, NodeID: &nID,
 			Vector: []float32{
 				0.85 + float32(i)*0.01,
 				0.15, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
 			},
-			Text:      fmt.Sprintf("Go has no GC (troll %d)", i+1),
-			ModelID:   "synthetic",
-			CreatedAt: time.Now(),
+			Text: fmt.Sprintf("Go has no GC (troll %d)", i+1),
+			ModelID: "synthetic", CreatedAt: time.Now(),
 		})
+		metrics.VectorIndexTotal.Inc()
+		metrics.NodeCount.Add(1)
 	}
 
-	// ── Retrieve ─────────────────────────────────────────────────────────
-
-	engine := &retrieval.Engine{Graph: graph, Vectors: vecs, KV: kv}
+	// ── Retrieval demo ───────────────────────────────────────────────────
+	baseEngine := &retrieval.Engine{Graph: graph, Vectors: vecs, KV: kv}
+	engine := observe.NewInstrumentedEngine(baseEngine, metrics, log)
 
 	params := bsConfig.ScoreParams
 	params.AsOf = time.Now()
@@ -142,7 +156,19 @@ func main() {
 			text, r.Score, r.SimilarityScore, r.Confidence)
 	}
 	fmt.Println("└────────────────────────────────────────────────────────────────────┘")
+
+	report := observe.ReportScores(results, 0)
+	observe.LogScoreReport(log, bsConfig.ID, report)
+
 	fmt.Println()
-	fmt.Println("The trusted claim should appear at the top despite the 5 troll")
-	fmt.Println("repetitions having higher vector similarity.")
+	fmt.Printf("Observability endpoints running on :7702\n")
+	fmt.Printf("  curl http://localhost:7702/metrics\n")
+	fmt.Printf("  curl http://localhost:7702/debug/vars\n")
+	fmt.Printf("  curl http://localhost:7702/health\n")
+	fmt.Printf("  go tool pprof http://localhost:7702/debug/pprof/heap\n")
+	fmt.Println()
+	fmt.Println("Press Ctrl+C to stop.")
+
+	// Block so the observability server stays up
+	select {}
 }
