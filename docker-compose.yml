@@ -16,14 +16,36 @@ services:
     environment:
       - CONTEXTDB_DATA_DIR=/data
       - CONTEXTDB_LOG_LEVEL=debug
+      - CONTEXTDB_DSN=postgres://contextdb:contextdb@postgres:5432/contextdb?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      # Will be a real HTTP probe once the REST gateway lands (Phase 5).
-      # For now just checks the process is alive.
       test: ["CMD-SHELL", "[ -f /contextdb ]"]
       interval: 10s
       timeout: 5s
       retries: 3
 
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: contextdb-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: contextdb
+      POSTGRES_USER: contextdb
+      POSTGRES_PASSWORD: contextdb
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contextdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   contextdb-data:
+    driver: local
+  pg-data:
     driver: local

@@ -1,115 +1,106 @@
 # contextdb
 
-A general-purpose temporal graph-vector database built in Go.
+**A temporal graph-vector database for AI systems that need memory.**
 
-Stores **claims, facts, memories, and beliefs** as nodes in a graph. Every
-stored item carries an embedding vector, a temporal validity window, a
-confidence score, and a provenance chain. Retrieval is a weighted scoring
-function over all four dimensions simultaneously. The caller supplies the
-weights.
+Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-## Core properties
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**Examples**](https://antiartificial.github.io/contextdb/examples) | [**API Reference**](https://antiartificial.github.io/contextdb/api/go-sdk)
 
-- **Bi-temporal storage** — every node tracks `valid_time` (when the fact
-  was true in the world) and `transaction_time` (when the system learned it)
-  independently. Point-in-time queries are first-class.
-- **Credibility-weighted retrieval** — sources carry credibility scores that
-  propagate through endorsement edges. Troll-flood and poisoning attacks are
-  mitigated at admission time, not post-hoc.
-- **Caller-supplied scoring strategy** — similarity, confidence, recency, and
-  utility weights are query parameters, not database constants. Different
-  namespace modes (belief system, agent memory, procedural) ship sensible
-  defaults.
-- **Pluggable backends** — `GraphStore`, `VectorIndex`, `KVStore`, and
-  `EventLog` are interfaces. Ship three profiles from one binary: embedded
-  (BadgerDB + in-process HNSW), standard (Postgres + pgvector), scaled
-  (Postgres + Qdrant + Redis).
-- **Schema-agnostic** — caller-defined labels, properties, and edge types.
-  The database does not interpret content.
+## Five lines to a working database
+
+```go
+db := client.MustOpen(client.Options{})
+defer db.Close()
+
+ns := db.Namespace("my-app", namespace.ModeGeneral)
+res, _ := ns.Write(ctx, client.WriteRequest{
+    Content: "Go 1.22 added routing patterns to net/http",
+    SourceID: "docs-crawler",
+    Vector:   embedding,
+})
+results, _ := ns.Retrieve(ctx, client.RetrieveRequest{Vector: queryVec, TopK: 5})
+```
+
+Zero external dependencies. No Docker. No config files. One `go get` and you're running.
+
+## What makes it different
+
+| Feature | contextdb | Typical vector DB |
+|:--------|:----------|:------------------|
+| **Bi-temporal storage** | `valid_time` + `transaction_time` tracked independently | Single timestamp or none |
+| **Source credibility** | Admission gate rejects trolls and spam at write time | Trust everything equally |
+| **Memory decay** | Exponential decay with configurable half-lives per memory type | No decay model |
+| **Hybrid retrieval** | Vector + graph + session fan-out with unified scoring | Vector-only |
+| **Caller-supplied weights** | Similarity, confidence, recency, utility -- per query | Fixed ranking |
+| **Namespace modes** | belief_system, agent_memory, general, procedural | One-size-fits-all |
 
 ## Scoring function
 
 ```
-score(candidate) =
-    w_sim  * cosine_similarity(candidate.vector, query.vector)
-  + w_conf * candidate.confidence
-  + w_rec  * exp(-alpha * age_hours)
-  + w_util * utility_feedback_score
+score = w_sim * cosine(candidate, query) + w_conf * confidence + w_rec * exp(-alpha * age) + w_util * utility
 ```
 
-All weights are normalised at query time. Caller supplies `alpha` (decay
-rate) and the four weights via `core.ScoreParams`.
+All weights normalised at query time. Different namespace modes ship tuned defaults.
 
-## Namespace modes
+## Deployment modes
 
-| Mode | Best for | Key weight |
-|---|---|---|
-| `belief_system` | Channel bots, fact tracking, poisoning resistance | confidence |
-| `agent_memory` | Agentic workflows with task outcome feedback | utility + recency |
-| `general` | Balanced RAG, document retrieval | similarity |
-| `procedural` | Skill / workflow storage | confidence, slow decay |
+| Mode | Backend | Use case |
+|:-----|:--------|:---------|
+| **Embedded** | In-memory or BadgerDB | Dev, testing, sidecars, CLIs |
+| **Standard** | Postgres + pgvector | Production single-node |
+| **Remote** | gRPC to contextdb server | Microservices |
 
 ## Quick start
 
 ```bash
-# Run the embedded demo (no external dependencies)
-make run
-
-# Run all tests
-make test-verbose
-
-# Run bench visualisations (ASCII + HTML report)
-make bench
-# open /tmp/contextdb_bench.html
-
-# Test coverage summary
-make cover-text
+go get github.com/antiartificial/contextdb@latest
 ```
-
-## Docker
 
 ```bash
-# Build and run locally
+# Run the server (no external dependencies)
+make run
+
+# With Postgres
 docker compose up --build
 
-# Or build the image directly
-docker build -t contextdb:dev .
-docker run --rm contextdb:dev
-```
+# Run all tests
+make test
 
-The CI workflow builds, tests, and pushes to `ghcr.io/<owner>/contextdb`
-on every push to `main`.
+# Coverage
+make cover-text
+```
 
 ## Project layout
 
 ```
 contextdb/
-├── cmd/contextdb/        # binary entrypoint
+├── cmd/contextdb/           # server entrypoint (gRPC + REST + observe)
 ├── internal/
-│   ├── core/             # domain types: Node, Edge, Source, ScoreParams
-│   ├── store/            # GraphStore, VectorIndex, KVStore, EventLog interfaces
-│   │   └── memory/       # in-process implementations (Phase 0)
-│   ├── ingest/           # write path: extraction, admission, conflict detection
-│   ├── retrieval/        # read path: concurrent fan-out, fusion, scoring
-│   └── namespace/        # namespace config and mode presets
-├── bench/                # score visualisation tests (ASCII + HTML)
-├── pkg/client/           # Go SDK (Phase 5)
-└── .github/workflows/    # CI: test → build → docker push to ghcr.io
+│   ├── core/                # Node, Edge, Source, ScoreParams
+│   ├── store/               # GraphStore, VectorIndex, KVStore, EventLog
+│   │   ├── memory/          # in-process backend
+│   │   ├── badger/          # BadgerDB + HNSW backend
+│   │   └── postgres/        # Postgres + pgvector backend
+│   ├── extract/             # LLM entity/relation extraction
+│   ├── ingest/              # admission gate
+│   ├── compact/             # RAPTOR hierarchical compaction
+│   ├── retrieval/           # hybrid retrieval + scoring
+│   ├── server/              # gRPC + REST + multi-tenancy
+│   ├── namespace/           # mode presets
+│   └── observe/             # metrics, pprof, health
+├── pkg/client/              # Go SDK
+├── bench/longmemeval/       # LongMemEval benchmark
+├── deploy/helm/contextdb/   # Helm chart
+└── docs/                    # Documentation (GitHub Pages)
 ```
-
-## Roadmap
-
-- **Phase 0** ✅ — core types, in-memory stores, scoring function, tests
-- **Phase 1** — embedded BadgerDB backend + in-process HNSW vector index
-- **Phase 2** — Postgres backend (pgvector + recursive CTE graph)
-- **Phase 3** — ingest pipeline with LLM entity extraction
-- **Phase 4** — RAPTOR compaction worker
-- **Phase 5** — gRPC + REST API, multi-tenancy, OTel tracing
-- **Phase 6** — LongMemEval harness, Helm chart, Go SDK
 
 ## Related work
 
-- [Zep / Graphiti](https://arxiv.org/abs/2501.13956) — bi-temporal KG for agent memory
-- [Hindsight](https://arxiv.org/abs/2512.12818) — TEMPR multi-strategy retrieval
-- [RAPTOR](https://arxiv.org/abs/2401.18059) — hierarchical summarisation for compaction
-- [A-MAC](https://arxiv.org/abs/2603.04549) — adaptive memory admission control
+- [Zep / Graphiti](https://arxiv.org/abs/2501.13956) -- bi-temporal KG for agent memory
+- [Hindsight](https://arxiv.org/abs/2512.12818) -- TEMPR multi-strategy retrieval
+- [RAPTOR](https://arxiv.org/abs/2401.18059) -- hierarchical summarisation for compaction
+- [A-MAC](https://arxiv.org/abs/2603.04549) -- adaptive memory admission control
+
+## License
+
+MIT

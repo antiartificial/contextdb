@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package contextdb.v1;
+
+option go_package = "github.com/antiartificial/contextdb/api/gen/contextdb/v1;contextdbv1";
+
+import "google/protobuf/timestamp.proto";
+
+service ContextDB {
+  rpc Write(WriteRequest) returns (WriteResponse);
+  rpc Retrieve(RetrieveRequest) returns (RetrieveResponse);
+  rpc IngestText(IngestTextRequest) returns (IngestTextResponse);
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  rpc LabelSource(LabelSourceRequest) returns (LabelSourceResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message WriteRequest {
+  string namespace = 1;
+  string namespace_mode = 2;
+  string content = 3;
+  string source_id = 4;
+  repeated string labels = 5;
+  map<string, string> properties = 6;
+  repeated float vector = 7;
+  string model_id = 8;
+  double confidence = 9;
+  google.protobuf.Timestamp valid_from = 10;
+}
+
+message WriteResponse {
+  string node_id = 1;
+  bool admitted = 2;
+  string reason = 3;
+  repeated string conflict_ids = 4;
+}
+
+message RetrieveRequest {
+  string namespace = 1;
+  repeated float vector = 2;
+  repeated string seed_ids = 3;
+  int32 top_k = 4;
+  ScoreParams score_params = 5;
+  google.protobuf.Timestamp as_of = 6;
+}
+
+message RetrieveResponse {
+  repeated ScoredNode results = 1;
+}
+
+message ScoredNode {
+  string id = 1;
+  string namespace = 2;
+  repeated string labels = 3;
+  map<string, string> properties = 4;
+  double score = 5;
+  double similarity_score = 6;
+  double confidence_score = 7;
+  double recency_score = 8;
+  double utility_score = 9;
+  string retrieval_source = 10;
+}
+
+message ScoreParams {
+  double similarity_weight = 1;
+  double confidence_weight = 2;
+  double recency_weight = 3;
+  double utility_weight = 4;
+  double decay_alpha = 5;
+}
+
+message IngestTextRequest {
+  string namespace = 1;
+  string namespace_mode = 2;
+  string text = 3;
+  string source_id = 4;
+}
+
+message IngestTextResponse {
+  int32 nodes_written = 1;
+  int32 edges_written = 2;
+  int32 rejected = 3;
+}
+
+message GetNodeRequest {
+  string namespace = 1;
+  string id = 2;
+}
+
+message GetNodeResponse {
+  ScoredNode node = 1;
+}
+
+message LabelSourceRequest {
+  string namespace = 1;
+  string namespace_mode = 2;
+  string external_id = 3;
+  repeated string labels = 4;
+}
+
+message LabelSourceResponse {}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

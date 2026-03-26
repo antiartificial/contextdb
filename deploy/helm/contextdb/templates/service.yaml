@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "contextdb.fullname" . }}
+  labels:
+    {{- include "contextdb.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+    - name: rest
+      port: {{ .Values.service.restPort }}
+      targetPort: rest
+      protocol: TCP
+    - name: observe
+      port: {{ .Values.service.observePort }}
+      targetPort: observe
+      protocol: TCP
+  selector:
+    {{- include "contextdb.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,26 @@
+contextdb has been deployed.
+
+1. Get the REST API URL:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[?(@.name=='rest')].nodePort}" services {{ include "contextdb.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "contextdb.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.restPort }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "contextdb.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  echo "REST API: http://127.0.0.1:7701"
+  echo "gRPC:     127.0.0.1:7700"
+  echo "Observe:  http://127.0.0.1:7702"
+{{- end }}
+
+2. Port-forward for local access:
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "contextdb.fullname" . }} 7700:{{ .Values.service.grpcPort }} 7701:{{ .Values.service.restPort }} 7702:{{ .Values.service.observePort }}
+
+3. Check health:
+  curl http://127.0.0.1:{{ .Values.service.observePort }}/health

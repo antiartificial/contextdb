@@ -40,12 +40,15 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/extract"
 	"github.com/antiartificial/contextdb/internal/ingest"
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/observe"
 	"github.com/antiartificial/contextdb/internal/retrieval"
 	"github.com/antiartificial/contextdb/internal/store"
+	badgerstore "github.com/antiartificial/contextdb/internal/store/badger"
 	memstore "github.com/antiartificial/contextdb/internal/store/memory"
+	pgstore "github.com/antiartificial/contextdb/internal/store/postgres"
 )
 
 // Mode selects the storage backend.
@@ -95,6 +98,16 @@ type Options struct {
 	// ConnectTimeout is the maximum time to wait for backend connection.
 	// Default: 5s.
 	ConnectTimeout time.Duration
+
+	// DataDir is the data directory for ModeEmbedded persistent storage.
+	// If empty, ModeEmbedded uses in-memory stores (no persistence).
+	DataDir string
+
+	// Extractor is an optional entity/relation extractor for IngestText.
+	Extractor extract.Extractor
+
+	// LLMProvider is an optional LLM provider for extraction and compaction.
+	LLMProvider extract.Provider
 }
 
 func (o *Options) withDefaults() Options {
@@ -113,6 +126,11 @@ func (o *Options) withDefaults() Options {
 	return *o
 }
 
+// closer is something that can be closed on shutdown.
+type closer interface {
+	Close() error
+}
+
 // DB is a contextdb connection handle. It is safe for concurrent use.
 // Create one with [Open] and share it across your application — do not
 // create a new DB per request.
@@ -129,6 +147,7 @@ type DB struct {
 	mu         sync.RWMutex
 	namespaces map[string]*NamespaceHandle
 	closed     bool
+	closers    []closer // resources to close on shutdown
 }
 
 // Open opens a contextdb connection with the given options.
@@ -168,17 +187,21 @@ func MustOpen(opts Options) *DB {
 func (db *DB) connect() error {
 	switch db.opts.Mode {
 	case ModeEmbedded:
+		if db.opts.DataDir != "" {
+			return db.connectBadger()
+		}
 		db.graph = memstore.NewGraphStore()
 		db.vecs = memstore.NewVectorIndex()
 		db.kv = memstore.NewKVStore()
 		db.log = memstore.NewEventLog()
-		db.logger.Info("contextdb connected", "mode", "embedded")
+		db.logger.Info("contextdb connected", "mode", "embedded", "storage", "memory")
 		return nil
 
 	case ModeStandard:
-		// Phase 2: Postgres + pgvector
-		// For now falls back to embedded with a warning.
-		db.logger.Warn("ModeStandard not yet implemented, falling back to embedded")
+		if db.opts.DSN != "" {
+			return db.connectPostgres()
+		}
+		db.logger.Warn("ModeStandard: no DSN provided, falling back to embedded")
 		db.graph = memstore.NewGraphStore()
 		db.vecs = memstore.NewVectorIndex()
 		db.kv = memstore.NewKVStore()
@@ -186,7 +209,7 @@ func (db *DB) connect() error {
 		return nil
 
 	case ModeRemote:
-		// Phase 5: HTTP client to remote server
+		// Phase 5: gRPC client to remote server
 		db.logger.Warn("ModeRemote not yet implemented, falling back to embedded")
 		db.graph = memstore.NewGraphStore()
 		db.vecs = memstore.NewVectorIndex()
@@ -197,6 +220,57 @@ func (db *DB) connect() error {
 	default:
 		return fmt.Errorf("unknown mode: %q", db.opts.Mode)
 	}
+}
+
+func (db *DB) connectBadger() error {
+	bdb, err := badgerstore.Open(db.opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("badger open: %w", err)
+	}
+	db.closers = append(db.closers, bdb)
+
+	inner := bdb.Inner()
+	db.graph = badgerstore.NewGraphStore(inner)
+	vi := badgerstore.NewVectorIndex(inner, badgerstore.HNSWConfig{})
+	if err := vi.Load(); err != nil {
+		bdb.Close()
+		return fmt.Errorf("badger load vectors: %w", err)
+	}
+	db.vecs = vi
+	db.kv = badgerstore.NewKVStore(inner)
+	db.log = badgerstore.NewEventLog(inner)
+	db.logger.Info("contextdb connected", "mode", "embedded", "storage", "badger", "dir", db.opts.DataDir)
+	return nil
+}
+
+func (db *DB) connectPostgres() error {
+	ctx, cancel := context.WithTimeout(context.Background(), db.opts.ConnectTimeout)
+	defer cancel()
+
+	pool, err := pgstore.NewPool(ctx, db.opts.DSN, db.opts.MaxOpenConns)
+	if err != nil {
+		return fmt.Errorf("postgres connect: %w", err)
+	}
+	db.closers = append(db.closers, pool)
+
+	migrator := pgstore.NewMigrator(pool.Inner())
+	if err := migrator.Up(ctx); err != nil {
+		pool.Close()
+		return fmt.Errorf("postgres migrate: %w", err)
+	}
+
+	inner := pool.Inner()
+	db.graph = pgstore.NewGraphStore(inner)
+	db.vecs = pgstore.NewVectorIndex(inner)
+	db.kv = pgstore.NewKVStore(inner)
+	db.log = pgstore.NewEventLog(inner)
+	db.logger.Info("contextdb connected", "mode", "standard", "storage", "postgres")
+	return nil
+}
+
+// Registry returns the observability registry for use by the server layer.
+func (db *DB) Registry() *observe.Registry {
+	return db.reg
 }
 
 // Ping verifies the connection is still alive. Analogous to sql.DB.Ping.
@@ -218,6 +292,9 @@ func (db *DB) Close() error {
 		return nil
 	}
 	db.closed = true
+	for i := len(db.closers) - 1; i >= 0; i-- {
+		_ = db.closers[i].Close()
+	}
 	db.logger.Info("contextdb closed")
 	return nil
 }
@@ -438,8 +515,8 @@ func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteRes
 
 	// Register with vector index
 	if len(req.Vector) > 0 {
-		if vvi, ok := h.db.vecs.(*memstore.VectorIndex); ok {
-			vvi.RegisterNode(candidate)
+		if reg, ok := h.db.vecs.(interface{ RegisterNode(core.Node) }); ok {
+			reg.RegisterNode(candidate)
 		}
 		t1 := time.Now()
 		nID := candidate.ID
@@ -471,6 +548,28 @@ func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteRes
 		NodeID:   candidate.ID,
 		Admitted: true,
 	}, nil
+}
+
+// IngestText runs raw text through the extraction pipeline, producing nodes
+// and edges automatically. Requires Options.Extractor to be set.
+func (h *NamespaceHandle) IngestText(ctx context.Context, text, sourceID string) (*ingest.IngestResult, error) {
+	if h.db.opts.Extractor == nil {
+		return nil, fmt.Errorf("IngestText: no extractor configured")
+	}
+
+	pipeline := ingest.NewPipeline(
+		h.db.opts.Extractor,
+		h.db.graph,
+		h.db.vecs,
+		h.db.log,
+		ingest.PipelineConfig{AdmitThreshold: h.cfg.AdmitThreshold},
+	)
+
+	return pipeline.Ingest(ctx, ingest.IngestRequest{
+		Text:      text,
+		Namespace: h.cfg.ID,
+		SourceID:  sourceID,
+	})
 }
 
 // ── Read path ─────────────────────────────────────────────────────────────────
@@ -621,6 +720,144 @@ func (h *NamespaceHandle) LabelSource(ctx context.Context, externalID string, la
 	}
 	src.Labels = labels
 	return h.db.graph.UpsertSource(ctx, src)
+}
+
+// ── Enhanced SDK (Phase 6) ────────────────────────────────────────────────
+
+// WriteBatch writes multiple items in a single call. Returns results
+// in the same order as requests. Partial failures are possible — if one
+// write fails the remaining writes still execute. The first error
+// encountered (if any) is returned alongside the partial results.
+func (h *NamespaceHandle) WriteBatch(ctx context.Context, reqs []WriteRequest) ([]WriteResult, error) {
+	results := make([]WriteResult, len(reqs))
+	var firstErr error
+	for i, req := range reqs {
+		res, err := h.Write(ctx, req)
+		if err != nil {
+			results[i] = WriteResult{Reason: err.Error()}
+			if firstErr == nil {
+				firstErr = fmt.Errorf("WriteBatch[%d]: %w", i, err)
+			}
+			continue
+		}
+		results[i] = res
+	}
+	return results, firstErr
+}
+
+// GetNode retrieves a single node by ID from this namespace.
+func (h *NamespaceHandle) GetNode(ctx context.Context, id uuid.UUID) (*core.Node, error) {
+	return h.db.graph.GetNode(ctx, h.cfg.ID, id)
+}
+
+// WalkResult holds a node discovered during graph traversal together
+// with the depth at which it was found and the full path (as node IDs)
+// from the seed to this node.
+type WalkResult struct {
+	Node  core.Node
+	Depth int
+	Path  []uuid.UUID // node IDs from seed to this node
+}
+
+// Walk performs a breadth-first graph traversal from the given seed nodes.
+// It uses EdgesFrom to expand outward level-by-level so that per-node
+// depth and path information can be tracked (the lower-level store.Walk
+// method returns flat results without this metadata).
+func (h *NamespaceHandle) Walk(ctx context.Context, seedIDs []uuid.UUID, maxDepth int) ([]WalkResult, error) {
+	if maxDepth <= 0 {
+		maxDepth = 3
+	}
+
+	type entry struct {
+		id   uuid.UUID
+		path []uuid.UUID
+	}
+
+	visited := make(map[uuid.UUID]bool, len(seedIDs))
+	var results []WalkResult
+
+	// Initialise the frontier with the seed nodes.
+	queue := make([]entry, 0, len(seedIDs))
+	for _, sid := range seedIDs {
+		if visited[sid] {
+			continue
+		}
+		visited[sid] = true
+		queue = append(queue, entry{id: sid, path: []uuid.UUID{sid}})
+
+		node, err := h.db.graph.GetNode(ctx, h.cfg.ID, sid)
+		if err != nil {
+			return nil, fmt.Errorf("Walk: get seed %s: %w", sid, err)
+		}
+		if node != nil {
+			results = append(results, WalkResult{
+				Node:  *node,
+				Depth: 0,
+				Path:  []uuid.UUID{sid},
+			})
+		}
+	}
+
+	for depth := 1; depth <= maxDepth; depth++ {
+		var nextQueue []entry
+		for _, cur := range queue {
+			edges, err := h.db.graph.EdgesFrom(ctx, h.cfg.ID, cur.id, nil)
+			if err != nil {
+				return nil, fmt.Errorf("Walk: edges from %s at depth %d: %w", cur.id, depth, err)
+			}
+			for _, e := range edges {
+				if visited[e.Dst] {
+					continue
+				}
+				visited[e.Dst] = true
+
+				newPath := make([]uuid.UUID, len(cur.path)+1)
+				copy(newPath, cur.path)
+				newPath[len(cur.path)] = e.Dst
+
+				node, err := h.db.graph.GetNode(ctx, h.cfg.ID, e.Dst)
+				if err != nil {
+					return nil, fmt.Errorf("Walk: get node %s at depth %d: %w", e.Dst, depth, err)
+				}
+				if node != nil {
+					results = append(results, WalkResult{
+						Node:  *node,
+						Depth: depth,
+						Path:  newPath,
+					})
+				}
+				nextQueue = append(nextQueue, entry{id: e.Dst, path: newPath})
+			}
+		}
+		queue = nextQueue
+	}
+
+	return results, nil
+}
+
+// AddEdge creates an edge between two nodes in this namespace.
+// If edge.Namespace is empty it is set to the namespace of this handle.
+// If edge.ID is zero a new UUID is assigned.
+func (h *NamespaceHandle) AddEdge(ctx context.Context, edge core.Edge) error {
+	if edge.Namespace == "" {
+		edge.Namespace = h.cfg.ID
+	}
+	if edge.ID == uuid.Nil {
+		edge.ID = uuid.New()
+	}
+	if edge.TxTime.IsZero() {
+		edge.TxTime = time.Now()
+	}
+	if edge.ValidFrom.IsZero() {
+		edge.ValidFrom = time.Now()
+	}
+	return h.db.graph.UpsertEdge(ctx, edge)
+}
+
+// History returns all versions of a node, ordered oldest-first by
+// transaction time.
+func (h *NamespaceHandle) History(ctx context.Context, nodeID uuid.UUID) ([]core.Node, error) {
+	return h.db.graph.History(ctx, h.cfg.ID, nodeID)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
-MODULE := github.com/ataraxy-labs/contextdb
+MODULE := github.com/antiartificial/contextdb
 BIN    := contextdb
 GOFLAGS := -mod=mod
 
-.PHONY: all build test test-verbose cover bench run lint tidy clean help
+.PHONY: all build test test-verbose cover bench longmemeval fitness run lint tidy clean helm-lint help
 
 all: tidy build test ## Build, then run tests (default)
 
@@ -32,6 +32,15 @@ bench: ## Run bench visualisation tests (writes /tmp/contextdb_bench.html)
 	go test $(GOFLAGS) -v -run TestBench ./bench/...
 	@echo ""
 	@echo "HTML report: /tmp/contextdb_bench.html"
+
+fitness: ## Run fitness evaluation suite
+	go test $(GOFLAGS) -v -run TestFitness ./bench/...
+
+longmemeval: ## Run LongMemEval benchmark (synthetic dataset)
+	go test $(GOFLAGS) -v -run TestRunner ./bench/longmemeval/...
+
+helm-lint: ## Lint Helm chart
+	helm lint deploy/helm/contextdb
 
 cover: ## Run tests with coverage and open HTML report
 	@mkdir -p .coverage
