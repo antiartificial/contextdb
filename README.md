@@ -4,10 +4,63 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**Examples**](https://antiartificial.github.io/contextdb/examples) | [**API Reference**](https://antiartificial.github.io/contextdb/api/go-sdk)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**API Reference**](https://antiartificial.github.io/contextdb/api/go-sdk) | [**Python SDK**](https://antiartificial.github.io/contextdb/api/python-sdk) | [**TypeScript SDK**](https://antiartificial.github.io/contextdb/api/typescript-sdk)
+
+## Architecture
+
+```mermaid
+graph LR
+    subgraph Client SDKs
+        GO[Go SDK]
+        PY[Python SDK]
+        TS[TypeScript SDK]
+    end
+
+    subgraph Server
+        GRPC[gRPC :7700]
+        REST[REST :7701]
+        OBS[Observe :7702]
+        ADMIN[Admin UI]
+    end
+
+    subgraph Core Pipeline
+        EMB[Auto-Embedding]
+        ING[Ingest + Conflict Detection]
+        RET[Retrieval + Reranking]
+        BG[Background Workers]
+    end
+
+    subgraph Backends
+        MEM[Memory]
+        BAD[BadgerDB + HNSW]
+        PG[Postgres + pgvector]
+        QD[Qdrant]
+        RD[Redis]
+    end
+
+    GO --> GRPC
+    PY --> REST
+    TS --> REST
+    GRPC --> EMB
+    REST --> EMB
+    EMB --> ING
+    EMB --> RET
+    ING --> MEM & BAD & PG & QD & RD
+    RET --> MEM & BAD & PG & QD & RD
+    BG --> MEM & BAD & PG & QD & RD
+
+    style GRPC fill:#4a9eff,stroke:#333,color:#fff
+    style REST fill:#4a9eff,stroke:#333,color:#fff
+    style MEM fill:#2ecc71,stroke:#333,color:#fff
+    style BAD fill:#27ae60,stroke:#333,color:#fff
+    style PG fill:#16a085,stroke:#333,color:#fff
+    style QD fill:#8e44ad,stroke:#333,color:#fff
+    style RD fill:#c0392b,stroke:#333,color:#fff
+```
 
 ## Five lines to a working database
 
+**Go:**
 ```go
 db := client.MustOpen(client.Options{})
 defer db.Close()
@@ -21,7 +74,27 @@ res, _ := ns.Write(ctx, client.WriteRequest{
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{Vector: queryVec, TopK: 5})
 ```
 
-Zero external dependencies. No Docker. No config files. One `go get` and you're running.
+**Python:**
+```python
+from contextdb import ContextDB
+
+db = ContextDB("http://localhost:7701")
+ns = db.namespace("my-app", mode="general")
+ns.write(content="Go 1.22 added routing patterns", source_id="docs-crawler")
+results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)
+```
+
+**TypeScript:**
+```typescript
+import { ContextDB } from "contextdb";
+
+const db = new ContextDB("http://localhost:7701");
+const ns = db.namespace("my-app", "general");
+await ns.write({ content: "Go 1.22 added routing patterns", sourceId: "docs-crawler" });
+const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });
+```
+
+Zero external dependencies for embedded mode. One `go get` and you're running.
 
 ## What makes it different
 
@@ -29,10 +102,20 @@ Zero external dependencies. No Docker. No config files. One `go get` and you're 
 |:--------|:----------|:------------------|
 | **Bi-temporal storage** | `valid_time` + `transaction_time` tracked independently | Single timestamp or none |
 | **Source credibility** | Admission gate rejects trolls and spam at write time | Trust everything equally |
+| **Conflict detection** | Contradictions identified and tracked as graph edges | No contradiction awareness |
+| **Credibility learning** | Bayesian updates adjust source trust over time | Static trust scores |
+| **Auto-embedding** | Text automatically embedded via OpenAI, local, or custom providers | Bring your own vectors |
 | **Memory decay** | Exponential decay with configurable half-lives per memory type | No decay model |
 | **Hybrid retrieval** | Vector + graph + session fan-out with unified scoring | Vector-only |
+| **Reranking** | Optional LLM cross-encoder reranking after fusion | No reranking |
+| **Label filtering** | Filter retrieval results by node labels | No label support |
+| **Memory consolidation** | Episodic → semantic promotion via LLM | No consolidation |
+| **Active recall** | Spaced-repetition utility boosting | No recall model |
 | **Caller-supplied weights** | Similarity, confidence, recency, utility -- per query | Fixed ranking |
 | **Namespace modes** | belief_system, agent_memory, general, procedural | One-size-fits-all |
+| **RBAC** | Token-based read/write/admin permissions per tenant | No access control |
+| **Snapshot/restore** | NDJSON export and import per namespace | No portability |
+| **Admin UI** | Built-in dashboard on observe port | External tooling |
 
 ## Scoring function
 
@@ -48,7 +131,8 @@ All weights normalised at query time. Different namespace modes ship tuned defau
 |:-----|:--------|:---------|
 | **Embedded** | In-memory or BadgerDB | Dev, testing, sidecars, CLIs |
 | **Standard** | Postgres + pgvector | Production single-node |
-| **Remote** | gRPC to contextdb server | Microservices |
+| **Remote** | gRPC to contextdb server | Microservices, multi-language clients |
+| **Scaled** | Qdrant + Redis + Postgres | High-throughput production |
 
 ## Quick start
 
@@ -63,11 +147,19 @@ make run
 # With Postgres
 docker compose up --build
 
+# Scaled mode (Qdrant + Redis + Postgres)
+docker compose --profile scaled up --build
+
 # Run all tests
 make test
 
 # Coverage
 make cover-text
+
+# Benchmarks
+make bench-mteb          # MTEB retrieval quality
+make bench-adversarial   # Poisoning resistance, temporal consistency
+make bench               # Full benchmark suite with HTML report
 ```
 
 ## Project layout
@@ -80,16 +172,28 @@ contextdb/
 │   ├── store/               # GraphStore, VectorIndex, KVStore, EventLog
 │   │   ├── memory/          # in-process backend
 │   │   ├── badger/          # BadgerDB + HNSW backend
-│   │   └── postgres/        # Postgres + pgvector backend
+│   │   ├── postgres/        # Postgres + pgvector backend
+│   │   ├── qdrant/          # Qdrant vector backend (scaled mode)
+│   │   ├── redis/           # Redis KV + EventLog backend (scaled mode)
+│   │   └── remote/          # gRPC remote store client
+│   ├── embedding/           # auto-embedding (OpenAI, local, cached)
 │   ├── extract/             # LLM entity/relation extraction
-│   ├── ingest/              # admission gate
-│   ├── compact/             # RAPTOR hierarchical compaction
-│   ├── retrieval/           # hybrid retrieval + scoring
-│   ├── server/              # gRPC + REST + multi-tenancy
+│   ├── ingest/              # admission gate, conflict detection, credibility learning
+│   ├── compact/             # RAPTOR compaction, memory consolidation, active recall
+│   ├── retrieval/           # hybrid retrieval, scoring, reranking
+│   ├── server/              # gRPC + REST + RBAC + auth
+│   ├── admin/               # admin dashboard UI
+│   ├── snapshot/            # NDJSON export/import
 │   ├── namespace/           # mode presets
 │   └── observe/             # metrics, pprof, health
 ├── pkg/client/              # Go SDK
-├── bench/longmemeval/       # LongMemEval benchmark
+├── sdk/
+│   ├── python/              # Python SDK (pip install contextdb)
+│   └── typescript/          # TypeScript SDK (npm install contextdb)
+├── bench/
+│   ├── longmemeval/         # LongMemEval benchmark
+│   ├── mteb/                # MTEB retrieval quality
+│   └── adversarial/         # adversarial resistance
 ├── deploy/helm/contextdb/   # Helm chart
 └── docs/                    # Documentation (GitHub Pages)
 ```

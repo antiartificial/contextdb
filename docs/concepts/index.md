@@ -6,4 +6,4 @@ has_children: true
 
 # Concepts
 
-Core ideas behind contextdb's design.
+Core ideas behind contextdb's design: scoring, temporality, credibility, namespace modes, memory types, conflict detection, and access control.

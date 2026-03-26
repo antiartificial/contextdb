@@ -33,6 +33,26 @@ db, err := client.Open(client.Options{
     DSN:  "postgres://user:pass@localhost:5432/contextdb?sslmode=disable",
 })
 
+// Remote (gRPC to contextdb server)
+db, err := client.Open(client.Options{
+    Mode: client.ModeRemote,
+    Addr: "localhost:7700",
+})
+
+// Scaled (Qdrant + Redis + Postgres)
+db, err := client.Open(client.Options{
+    Mode:       client.ModeScaled,
+    DSN:        "postgres://user:pass@localhost:5432/contextdb?sslmode=disable",
+    QdrantAddr: "localhost:6334",
+    RedisAddr:  "localhost:6379",
+})
+
+// With auto-embedding
+db, err := client.Open(client.Options{
+    Embedder:   embedding.NewOpenAI("https://api.openai.com/v1", apiKey, "text-embedding-3-small", 1536),
+    EmbedModel: "text-embedding-3-small",
+})
+
 // MustOpen panics on error (useful in main/tests)
 db := client.MustOpen(client.Options{})
 ```
@@ -41,15 +61,32 @@ db := client.MustOpen(client.Options{})
 
 | Field | Type | Default | Description |
 |:------|:-----|:--------|:------------|
-| `Mode` | `Mode` | `"embedded"` | Storage backend: `embedded`, `standard`, `remote` |
+| `Mode` | `Mode` | `"embedded"` | Storage backend: `embedded`, `standard`, `remote`, `scaled` |
 | `DataDir` | `string` | `""` | BadgerDB directory (empty = in-memory) |
 | `DSN` | `string` | `""` | Postgres connection string |
-| `Addr` | `string` | `""` | Remote server address |
+| `Addr` | `string` | `""` | Remote server address (for `ModeRemote`) |
+| `QdrantAddr` | `string` | `""` | Qdrant gRPC address (for `ModeScaled`) |
+| `RedisAddr` | `string` | `""` | Redis address (for `ModeScaled`) |
+| `ObserveAddr` | `string` | `":7702"` | Metrics/pprof server bind address |
 | `Logger` | `*slog.Logger` | `slog.Default()` | Structured logger |
 | `MaxOpenConns` | `int` | `10` | Postgres connection pool size |
 | `ConnectTimeout` | `time.Duration` | `5s` | Backend connection timeout |
 | `Extractor` | `extract.Extractor` | `nil` | LLM entity extractor for IngestText |
 | `LLMProvider` | `extract.Provider` | `nil` | LLM provider for extraction/compaction |
+| `Embedder` | `embedding.Embedder` | `nil` | Auto-embedding provider |
+| `EmbedModel` | `string` | `""` | Embedding model identifier (provenance) |
+| `VectorDimensions` | `int` | `1536` | Embedding dimensionality |
+
+## Mode constants
+
+```go
+const (
+    ModeEmbedded Mode = "embedded"  // In-process, zero external deps
+    ModeStandard Mode = "standard"  // Postgres + pgvector
+    ModeRemote   Mode = "remote"    // gRPC to contextdb server
+    ModeScaled   Mode = "scaled"    // Qdrant + Redis + Postgres
+)
+```
 
 ## DB methods
 
@@ -69,6 +106,14 @@ Checks the connection is alive.
 
 Returns runtime statistics: retrieval/ingest counters, latency percentiles.
 
+### `Stores() (GraphStore, VectorIndex, KVStore, EventLog)`
+
+Returns direct access to the underlying store implementations. Useful for advanced operations and testing.
+
+### `Registry() *observe.Registry`
+
+Returns the observability registry for custom metric registration.
+
 ### `Close() error`
 
 Releases all resources. The DB is unusable after Close.
@@ -81,7 +126,7 @@ Releases all resources. The DB is unusable after Close.
 func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteResult, error)
 ```
 
-Ingests a single item. Runs through the admission gate before persisting.
+Ingests a single item. Runs through auto-embedding, the admission gate, and conflict detection before persisting.
 
 **WriteRequest fields:**
 
@@ -91,7 +136,7 @@ Ingests a single item. Runs through the admission gate before persisting.
 | `SourceID` | `string` | Yes | External source identifier |
 | `Labels` | `[]string` | No | Node labels (e.g. "Claim", "Skill") |
 | `Properties` | `map[string]any` | No | Arbitrary metadata |
-| `Vector` | `[]float32` | No | Pre-computed embedding |
+| `Vector` | `[]float32` | No | Pre-computed embedding (auto-embedded from Content if omitted and Embedder configured) |
 | `ModelID` | `string` | No | Embedding model identifier |
 | `Confidence` | `float64` | No | Initial confidence [0,1] |
 | `ValidFrom` | `time.Time` | No | When the fact became true (default: now) |
@@ -120,16 +165,20 @@ Writes multiple items. Partial failures are possible -- results are returned in 
 func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]Result, error)
 ```
 
-Runs hybrid retrieval (vector + graph + session) and returns scored results.
+Runs hybrid retrieval (vector + graph + session) with optional reranking and returns scored results.
 
 **RetrieveRequest fields:**
 
 | Field | Type | Required | Description |
 |:------|:-----|:---------|:------------|
 | `Vector` | `[]float32` | For vector search | Query embedding |
+| `Text` | `string` | For text search | Auto-embedded query (requires Embedder) |
+| `Vectors` | `[][]float32` | For multi-vector | Multiple query embeddings fused |
 | `SeedIDs` | `[]uuid.UUID` | For graph walk | Known relevant node IDs |
 | `TopK` | `int` | No | Max results (default: 10) |
+| `Labels` | `[]string` | No | Filter to nodes with all specified labels |
 | `ScoreParams` | `core.ScoreParams` | No | Override scoring weights |
+| `Strategy` | `retrieval.HybridStrategy` | No | Override retrieval strategy |
 | `AsOf` | `time.Time` | No | Point-in-time query (default: now) |
 
 **Result fields:**
@@ -142,7 +191,7 @@ Runs hybrid retrieval (vector + graph + session) and returns scored results.
 | `ConfidenceScore` | `float64` | Confidence component |
 | `RecencyScore` | `float64` | Recency component |
 | `UtilityScore` | `float64` | Utility component |
-| `RetrievalSource` | `string` | "vector", "graph", or "fused" |
+| `RetrievalSource` | `string` | "vector", "graph", "session", or "fused" |
 
 ### GetNode
 
@@ -199,3 +248,33 @@ func (h *NamespaceHandle) LabelSource(ctx context.Context, externalID string, la
 ```
 
 Sets labels on a source. Use "moderator"/"admin" for full trust, "troll"/"flagged" for floor.
+
+## Export / Import
+
+The `snapshot` package provides namespace export and import via NDJSON:
+
+```go
+import "github.com/antiartificial/contextdb/internal/snapshot"
+
+// Export a namespace
+graph, vecs, _, _ := db.Stores()
+exporter := snapshot.NewExporter(graph)
+
+var buf bytes.Buffer
+err := exporter.Export(ctx, "my-app", &buf)
+
+// Export subgraph from seeds
+err = exporter.ExportFromSeeds(ctx, "my-app", seedIDs, 3, &buf)
+
+// Import into another DB
+importer := snapshot.NewImporter(graph, vecs)
+err = importer.Import(ctx, "my-app", &buf)
+```
+
+The NDJSON format contains one record per line:
+
+```json
+{"type":"node","data":{...}}
+{"type":"edge","data":{...}}
+{"type":"source","data":{...}}
+```

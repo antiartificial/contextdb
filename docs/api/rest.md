@@ -20,6 +20,19 @@ contextdb exposes a REST API on port **7701**.
 | `GET` | `/v1/stats` | Runtime statistics |
 | `GET` | `/v1/ping` | Health check |
 
+## Authentication
+
+Pass a Bearer token in the `Authorization` header. The token format is `tenant:permissions:secret`:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
+  -H "Authorization: Bearer acme-corp:write:sk-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "...", "source_id": "..."}'
+```
+
+See [RBAC](../concepts/rbac) for details on the token format and permission model.
+
 ## Write
 
 ```bash
@@ -52,12 +65,21 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
 }
 ```
 
+**Write with conflict:**
+```json
+{
+  "node_id": "550e8400-e29b-41d4-a716-446655440000",
+  "admitted": true,
+  "conflict_ids": ["660e8400-e29b-41d4-a716-446655440001"]
+}
+```
+
 ### Request fields
 
 | Field | Type | Required | Description |
 |:------|:-----|:---------|:------------|
 | `mode` | string | No | Namespace mode: `general`, `belief_system`, `agent_memory`, `procedural` |
-| `content` | string | Yes | Text content |
+| `content` | string | Yes | Text content (auto-embedded if no vector provided and server has embedder) |
 | `source_id` | string | Yes | External source identifier |
 | `labels` | string[] | No | Node labels |
 | `properties` | object | No | Arbitrary metadata |
@@ -81,6 +103,33 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
       "recency_weight": 0.15,
       "utility_weight": 0.05
     }
+  }'
+```
+
+### Text-based query
+
+Send `text` instead of `vector` to have the server auto-embed the query:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "What changed in Go 1.22?",
+    "top_k": 5
+  }'
+```
+
+### Label filtering
+
+Filter results to nodes with all specified labels:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "routing patterns",
+    "labels": ["Claim", "Verified"],
+    "top_k": 10
   }'
 ```
 
@@ -109,8 +158,11 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
 | Field | Type | Required | Description |
 |:------|:-----|:---------|:------------|
 | `vector` | float[] | For vector search | Query embedding |
+| `vectors` | float[][] | For multi-vector | Multiple query embeddings fused |
+| `text` | string | For text search | Auto-embedded server-side |
 | `seed_ids` | string[] | For graph walk | Known relevant node IDs |
 | `top_k` | int | No | Max results (default: 10) |
+| `labels` | string[] | No | Filter to nodes with all specified labels |
 | `score_params` | object | No | Override scoring weights |
 | `as_of` | string | No | ISO 8601 timestamp for point-in-time query |
 
@@ -201,14 +253,28 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
   -d '{"content": "...", "source_id": "..."}'
 ```
 
-Or use Bearer token prefix:
+Or use Bearer token prefix (recommended for production):
 
 ```bash
 curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
-  -H "Authorization: Bearer acme-corp:secret-token" \
+  -H "Authorization: Bearer acme-corp:write:sk-secret" \
   -H "Content-Type: application/json" \
   -d '{"content": "...", "source_id": "..."}'
 ```
+
+## Admin UI
+
+The admin dashboard is served on the observe port (**7702**):
+
+```bash
+# Dashboard
+open http://localhost:7702/admin/
+
+# Admin stats API
+curl http://localhost:7702/admin/api/stats
+```
+
+The dashboard displays ingest/retrieval counters, error rates, and links to metrics and profiling endpoints.
 
 ## Observability
 

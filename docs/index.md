@@ -22,13 +22,15 @@ contextdb stores claims, facts, memories, and beliefs as nodes in a graph. Every
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need more:
 
-- **Facts expire.** A claim that was true yesterday may not be true today. contextdb tracks `valid_time` (when the fact was true in the world) and `transaction_time` (when the system learned it) independently. Point-in-time queries are first-class.
+- **Facts expire.** contextdb tracks `valid_time` (when the fact was true in the world) and `transaction_time` (when the system learned it) independently. Point-in-time queries are first-class.
 
-- **Sources lie.** Not all information sources are equally trustworthy. contextdb tracks source credibility and uses it as an admission gate -- troll-flood and poisoning attacks are stopped at write time, not post-hoc.
+- **Sources lie.** contextdb tracks source credibility and uses it as an admission gate. Credibility is learned over time via Bayesian updates -- sources that produce validated information gain trust; those that contradict reliable facts lose it.
 
-- **Memory decays.** Different kinds of knowledge decay at different rates. Episodic memories fade in hours; procedural skills persist for months. contextdb models this with configurable exponential decay.
+- **Memory decays.** Different kinds of knowledge decay at different rates. Episodic memories fade in hours; procedural skills persist for months. Background workers consolidate episodic memories into durable semantic knowledge.
 
 - **Context matters.** A chatbot, an autonomous agent, and a RAG pipeline need different retrieval strategies. contextdb ships four namespace modes with tuned defaults -- switch between them with a single parameter.
+
+- **Contradictions happen.** contextdb detects conflicting claims at write time, tracks them as `contradicts` edges in the graph, and lets retrieval strategies account for them.
 
 ## Five lines to a working database
 
@@ -41,7 +43,7 @@ ns := db.Namespace("my-app", namespace.ModeGeneral)
 res, _ := ns.Write(ctx, client.WriteRequest{
     Content:  "Go 1.22 added routing patterns to net/http",
     SourceID: "docs-crawler",
-    Vector:   embedding, // your embedding here
+    Vector:   embedding, // or use auto-embedding
 })
 
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
@@ -50,7 +52,59 @@ results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
 })
 ```
 
-Zero external dependencies. No Docker. No config files. One `go get` and you're running.
+Zero external dependencies. No Docker. No config files. One `go get` and you're running. Auto-embedding lets you skip the vector -- just send text.
+
+## Architecture at a glance
+
+```mermaid
+graph LR
+    subgraph Client SDKs
+        GO[Go SDK]
+        PY[Python SDK]
+        TS[TypeScript SDK]
+    end
+
+    subgraph Server
+        GRPC[gRPC :7700]
+        REST[REST :7701]
+        OBS[Observe :7702]
+        ADMIN[Admin UI]
+    end
+
+    subgraph Core
+        EMB[Auto-Embedding]
+        ING[Ingest + Conflict Detection]
+        RET[Retrieval + Reranking]
+        BG[Consolidation + Recall]
+    end
+
+    subgraph Backends
+        MEM[Memory]
+        BAD[BadgerDB + HNSW]
+        PG[Postgres + pgvector]
+        QD[Qdrant]
+        RD[Redis]
+    end
+
+    GO --> GRPC
+    PY --> REST
+    TS --> REST
+    GRPC --> EMB
+    REST --> EMB
+    EMB --> ING
+    EMB --> RET
+    ING --> MEM & BAD & PG & QD & RD
+    RET --> MEM & BAD & PG & QD & RD
+    BG --> MEM & BAD & PG & QD & RD
+
+    style GRPC fill:#4a9eff,stroke:#333,color:#fff
+    style REST fill:#4a9eff,stroke:#333,color:#fff
+    style MEM fill:#2ecc71,stroke:#333,color:#fff
+    style BAD fill:#27ae60,stroke:#333,color:#fff
+    style PG fill:#16a085,stroke:#333,color:#fff
+    style QD fill:#8e44ad,stroke:#333,color:#fff
+    style RD fill:#c0392b,stroke:#333,color:#fff
+```
 
 ## The scoring function
 
@@ -65,23 +119,6 @@ score = w_sim  * cosine_similarity(candidate, query)
 
 All weights are normalised at query time. You supply `alpha` (decay rate) and the four weights -- or use namespace mode defaults.
 
-## Architecture at a glance
-
-```mermaid
-graph LR
-    A[Your App] -->|Go SDK| B[contextdb]
-    B --> C{Store Layer}
-    C -->|embedded| D[BadgerDB + HNSW]
-    C -->|standard| E[Postgres + pgvector]
-    B --> F[gRPC :7700]
-    B --> G[REST :7701]
-    B --> H[Metrics :7702]
-
-    style B fill:#4a9eff,stroke:#333,color:#fff
-    style D fill:#2d8659,stroke:#333,color:#fff
-    style E fill:#2d8659,stroke:#333,color:#fff
-```
-
 ## Deployment modes
 
 | Mode | Backend | Use case |
@@ -89,6 +126,7 @@ graph LR
 | **Embedded** | In-memory or BadgerDB | Development, testing, sidecars, CLIs |
 | **Standard** | Postgres + pgvector | Production single-node, teams |
 | **Remote** | gRPC to contextdb server | Microservices, multi-language clients |
+| **Scaled** | Qdrant + Redis + Postgres | High-throughput production |
 
 ## Namespace modes
 
@@ -98,6 +136,24 @@ graph LR
 | `agent_memory` | Agentic workflows with task feedback | utility + recency |
 | `general` | Balanced RAG, document retrieval | similarity |
 | `procedural` | Skill and workflow storage | confidence, slow decay |
+
+## Key features
+
+| Feature | Description |
+|:--------|:------------|
+| [Auto-embedding](architecture/embedding) | Text automatically embedded via OpenAI, local, or custom providers with LRU cache |
+| [Conflict detection](concepts/conflict-detection) | Near-duplicate scan, contradiction tracking, `contradicts` edges |
+| [Credibility learning](concepts/credibility) | Bayesian source trust updates based on validation/refutation |
+| [Reranking](architecture/read-path) | Optional LLM cross-encoder reranking after fusion |
+| [Label filtering](api/go-sdk) | Filter retrieval by node labels |
+| [Background workers](architecture/background-workers) | Memory consolidation and active recall |
+| [RBAC](concepts/rbac) | Token-based read/write/admin permissions per tenant |
+| [Snapshot/restore](api/go-sdk#export--import) | NDJSON namespace export and import |
+| [Python SDK](api/python-sdk) | REST client for Python applications |
+| [TypeScript SDK](api/typescript-sdk) | REST client for TypeScript/Node.js applications |
+| [Scaled deployment](deployment/scaled) | Qdrant + Redis + Postgres for high throughput |
+| [Benchmarks](benchmarks) | MTEB, adversarial, LongMemEval, fitness suite |
+| [Admin UI](deployment/scaled) | Built-in dashboard on observe port |
 
 ---
 
