@@ -1,0 +1,42 @@
+# ContextDB Development Configuration
+server:
+  grpc_port: 7700
+  http_port: 7701
+  log_level: debug
+  
+datastore:
+  driver: badger
+  directory: ~/.contextdb/data
+  
+index:
+  hnsw_path: ~/.contextdb/index
+  
+ namespaces:
+   agent_memory:
+     enabled: true
+     default_weights:
+       similarity: 0.3
+       confidence: 0.2
+       recency: 0.4
+       utility: 0.1
+   belief_system:
+     enabled: true
+     default_weights:
+       similarity: 0.2
+       confidence: 0.6
+       recency: 0.2
+       utility: 0.0
+   general:
+     enabled: true
+     default_weights:
+       similarity: 0.7
+       confidence: 0.2
+       recency: 0.1
+       utility: 0.0
+   procedural:
+     enabled: true
+     default_weights:
+       similarity: 0.4
+       confidence: 0.5
+       recency: 0.1
+       utility: 0.0

@@ -100,6 +100,21 @@ func agentVec(memType core.MemoryType, topicDim int) []float32 {
 	}
 }
 
+// TopicVecExported is an exported version of topicVec for use by external test packages.
+func TopicVecExported(topicDim int, noiseDim int, topicWeight, noiseWeight float64) []float32 {
+	return topicVec(topicDim, noiseDim, topicWeight, noiseWeight)
+}
+
+// QueryVecExported is an exported version of queryVec for use by external test packages.
+func QueryVecExported(topicDim int, drift float64) []float32 {
+	return queryVec(topicDim, drift)
+}
+
+// TrollVecExported is an exported version of trollVec for use by external test packages.
+func TrollVecExported(topicDim int, idx int) []float32 {
+	return trollVec(topicDim, idx)
+}
+
 func normalise(v []float32) []float32 {
 	var sum float64
 	for _, x := range v {

@@ -2,7 +2,7 @@ MODULE := github.com/antiartificial/contextdb
 BIN    := contextdb
 GOFLAGS := -mod=mod
 
-.PHONY: all build test test-verbose cover bench longmemeval fitness run lint tidy clean helm-lint help
+.PHONY: all build test test-verbose cover bench longmemeval fitness bench-mteb bench-adversarial run lint tidy clean helm-lint help
 
 all: tidy build test ## Build, then run tests (default)
 
@@ -38,6 +38,14 @@ fitness: ## Run fitness evaluation suite
 
 longmemeval: ## Run LongMemEval benchmark (synthetic dataset)
 	go test $(GOFLAGS) -v -run TestRunner ./bench/longmemeval/...
+
+bench-mteb: ## Run MTEB retrieval quality benchmark
+	go test $(GOFLAGS) -v -run TestRunner ./bench/mteb/...
+	@echo ""
+	@echo "MTEB benchmark complete."
+
+bench-adversarial: ## Run adversarial poisoning and temporal consistency tests
+	go test $(GOFLAGS) -v ./bench/adversarial/...
 
 helm-lint: ## Lint Helm chart
 	helm lint deploy/helm/contextdb

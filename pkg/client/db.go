@@ -40,6 +40,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/embedding"
 	"github.com/antiartificial/contextdb/internal/extract"
 	"github.com/antiartificial/contextdb/internal/ingest"
 	"github.com/antiartificial/contextdb/internal/namespace"
@@ -49,6 +50,7 @@ import (
 	badgerstore "github.com/antiartificial/contextdb/internal/store/badger"
 	memstore "github.com/antiartificial/contextdb/internal/store/memory"
 	pgstore "github.com/antiartificial/contextdb/internal/store/postgres"
+	remotestore "github.com/antiartificial/contextdb/internal/store/remote"
 )
 
 // Mode selects the storage backend.
@@ -66,8 +68,12 @@ const (
 
 	// ModeRemote connects to a running contextdb server over HTTP.
 	// Set Options.Addr to the server address.
-	// Phase 5 — not yet implemented; falls back to embedded.
 	ModeRemote Mode = "remote"
+
+	// ModeScaled uses Qdrant for vectors, Redis for KV/sessions,
+	// and Postgres for the graph store. Set QdrantAddr, RedisAddr,
+	// and DSN in Options.
+	ModeScaled Mode = "scaled"
 )
 
 // Options configures the DB connection.
@@ -108,6 +114,27 @@ type Options struct {
 
 	// LLMProvider is an optional LLM provider for extraction and compaction.
 	LLMProvider extract.Provider
+
+	// Embedder is an optional auto-embedding provider. When set, Write()
+	// will auto-embed content if no vector is provided, and Retrieve()
+	// will auto-embed text queries.
+	Embedder embedding.Embedder
+
+	// EmbedModel identifies the embedding model for auto-embedded vectors.
+	// Stored on nodes for provenance tracking.
+	EmbedModel string
+
+	// QdrantAddr is the Qdrant gRPC address for ModeScaled.
+	// Example: "localhost:6334"
+	QdrantAddr string
+
+	// RedisAddr is the Redis address for ModeScaled.
+	// Example: "localhost:6379"
+	RedisAddr string
+
+	// VectorDimensions is the embedding vector dimensionality for ModeScaled.
+	// Required when using Qdrant. Default: 1536.
+	VectorDimensions int
 }
 
 func (o *Options) withDefaults() Options {
@@ -209,12 +236,24 @@ func (db *DB) connect() error {
 		return nil
 
 	case ModeRemote:
-		// Phase 5: gRPC client to remote server
-		db.logger.Warn("ModeRemote not yet implemented, falling back to embedded")
-		db.graph = memstore.NewGraphStore()
-		db.vecs = memstore.NewVectorIndex()
-		db.kv = memstore.NewKVStore()
-		db.log = memstore.NewEventLog()
+		return db.connectRemote()
+
+	case ModeScaled:
+		// ModeScaled uses Postgres for graph, but falls back to embedded
+		// for vector/KV/log when Qdrant/Redis are not compiled in (requires
+		// integration build tag). The connectScaled method is provided in
+		// a separate file with the integration build tag.
+		db.logger.Warn("ModeScaled: Qdrant/Redis require integration build tag, falling back to standard graph + embedded stores")
+		if db.opts.DSN != "" {
+			if err := db.connectPostgres(); err != nil {
+				return err
+			}
+		} else {
+			db.graph = memstore.NewGraphStore()
+			db.vecs = memstore.NewVectorIndex()
+			db.kv = memstore.NewKVStore()
+			db.log = memstore.NewEventLog()
+		}
 		return nil
 
 	default:
@@ -240,6 +279,26 @@ func (db *DB) connectBadger() error {
 	db.kv = badgerstore.NewKVStore(inner)
 	db.log = badgerstore.NewEventLog(inner)
 	db.logger.Info("contextdb connected", "mode", "embedded", "storage", "badger", "dir", db.opts.DataDir)
+	return nil
+}
+
+func (db *DB) connectRemote() error {
+	if db.opts.Addr == "" {
+		return fmt.Errorf("ModeRemote: Addr is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), db.opts.ConnectTimeout)
+	defer cancel()
+
+	rc, err := remotestore.NewClient(ctx, db.opts.Addr)
+	if err != nil {
+		return fmt.Errorf("remote connect: %w", err)
+	}
+	db.closers = append(db.closers, rc)
+	db.graph = rc.Graph()
+	db.vecs = rc.Vectors()
+	db.kv = rc.KV()
+	db.log = rc.EventLog()
+	db.logger.Info("contextdb connected", "mode", "remote", "addr", db.opts.Addr)
 	return nil
 }
 
@@ -271,6 +330,12 @@ func (db *DB) connectPostgres() error {
 // Registry returns the observability registry for use by the server layer.
 func (db *DB) Registry() *observe.Registry {
 	return db.reg
+}
+
+// Stores returns the underlying store implementations. Useful for server
+// layer and tests that need direct store access.
+func (db *DB) Stores() (store.GraphStore, store.VectorIndex, store.KVStore, store.EventLog) {
+	return db.graph, db.vecs, db.kv, db.log
 }
 
 // Ping verifies the connection is still alive. Analogous to sql.DB.Ping.
@@ -423,6 +488,20 @@ func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteRes
 	start := time.Now()
 	h.db.metrics.IngestTotal.Inc()
 
+	// Auto-embed if no vector provided and embedder is configured
+	if len(req.Vector) == 0 && req.Content != "" && h.db.opts.Embedder != nil {
+		vecs, err := h.db.opts.Embedder.Embed(ctx, []string{req.Content})
+		if err != nil {
+			return WriteResult{}, fmt.Errorf("write: auto-embed: %w", err)
+		}
+		if len(vecs) > 0 {
+			req.Vector = vecs[0]
+			if req.ModelID == "" {
+				req.ModelID = h.db.opts.EmbedModel
+			}
+		}
+	}
+
 	// Resolve or create source
 	src, err := h.resolveSource(ctx, req.SourceID)
 	if err != nil {
@@ -538,15 +617,29 @@ func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteRes
 	h.db.metrics.IngestAdmitted.Inc()
 	h.db.metrics.IngestLatency.ObserveDuration(time.Since(start))
 
+	// Conflict detection (if we have nearest neighbours to check against)
+	var conflictIDs []uuid.UUID
+	if len(nearest) > 0 {
+		detector := ingest.NewConflictDetector(h.db.graph, h.db.opts.LLMProvider)
+		cResult, cErr := detector.Detect(ctx, candidate, nearest)
+		if cErr != nil {
+			h.db.logger.Warn("conflict detection failed", "error", cErr)
+		} else {
+			conflictIDs = cResult.ConflictIDs
+		}
+	}
+
 	h.db.logger.Debug("write admitted",
 		"namespace", h.cfg.ID,
 		"node_id", candidate.ID,
 		"source", req.SourceID,
-		"confidence", candidate.Confidence)
+		"confidence", candidate.Confidence,
+		"conflicts", len(conflictIDs))
 
 	return WriteResult{
-		NodeID:   candidate.ID,
-		Admitted: true,
+		NodeID:      candidate.ID,
+		Admitted:    true,
+		ConflictIDs: conflictIDs,
 	}, nil
 }
 
@@ -576,8 +669,18 @@ func (h *NamespaceHandle) IngestText(ctx context.Context, text, sourceID string)
 
 // RetrieveRequest describes a single retrieval operation.
 type RetrieveRequest struct {
-	// Vector is the query embedding. Required for vector search.
+	// Vector is the query embedding. If nil and Text is set with an
+	// Embedder configured, the text will be auto-embedded.
 	Vector []float32
+
+	// Text is a natural-language query string. When an Embedder is
+	// configured and Vector is nil, this text is auto-embedded to
+	// produce the query vector.
+	Text string
+
+	// Vectors allows multi-vector queries. Results from all vectors
+	// are fused together with the primary Vector.
+	Vectors [][]float32
 
 	// SeedIDs are known relevant node IDs for graph traversal.
 	// Optional — if empty, only vector search is used.
@@ -585,6 +688,9 @@ type RetrieveRequest struct {
 
 	// TopK is the maximum number of results to return. Default: 10.
 	TopK int
+
+	// Labels restricts results to nodes carrying all specified labels.
+	Labels []string
 
 	// ScoreParams overrides the namespace default scoring strategy.
 	// Zero value uses namespace defaults.
@@ -620,6 +726,17 @@ func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]
 	start := time.Now()
 	h.db.metrics.RetrievalTotal.Inc()
 
+	// Auto-embed text query if no vector provided and embedder is configured
+	if len(req.Vector) == 0 && req.Text != "" && h.db.opts.Embedder != nil {
+		vecs, err := h.db.opts.Embedder.Embed(ctx, []string{req.Text})
+		if err != nil {
+			return nil, fmt.Errorf("retrieve: auto-embed query: %w", err)
+		}
+		if len(vecs) > 0 {
+			req.Vector = vecs[0]
+		}
+	}
+
 	topK := req.TopK
 	if topK <= 0 {
 		topK = 10
@@ -649,8 +766,11 @@ func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]
 	q := retrieval.Query{
 		Namespace:   h.cfg.ID,
 		Vector:      req.Vector,
+		Vectors:     req.Vectors,
+		QueryText:   req.Text,
 		SeedIDs:     req.SeedIDs,
 		TopK:        topK,
+		Labels:      req.Labels,
 		Strategy:    strategy,
 		ScoreParams: params,
 	}

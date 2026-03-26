@@ -44,8 +44,45 @@ services:
       timeout: 3s
       retries: 5
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: contextdb-qdrant
+    restart: unless-stopped
+    profiles:
+      - scaled
+    ports:
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: contextdb-redis
+    restart: unless-stopped
+    profiles:
+      - scaled
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   contextdb-data:
     driver: local
   pg-data:
+    driver: local
+  qdrant-data:
+    driver: local
+  redis-data:
     driver: local
