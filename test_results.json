@@ -1,0 +1,13 @@
+{
+  "status": "success",
+  "system": "contextdb",
+  "knowledge_items": 8,
+  "timestamp": "2026-03-26T01:31:09.893698",
+  "tests_completed": 6,
+  "performance": {
+    "similarity": "75.10ms",
+    "confidence": "17.79ms",
+    "recency": "53.94ms",
+    "utility": "15.61ms"
+  }
+}
