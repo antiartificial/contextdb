@@ -77,8 +77,11 @@ type writeResponse struct {
 
 type retrieveRequest struct {
 	Vector      []float32    `json:"vector"`
+	Vectors     [][]float32  `json:"vectors"`
+	Text        string       `json:"text"`
 	SeedIDs     []string     `json:"seed_ids"`
 	TopK        int          `json:"top_k"`
+	Labels      []string     `json:"labels"`
 	ScoreParams *scoreParams `json:"score_params,omitempty"`
 	AsOf        *time.Time   `json:"as_of,omitempty"`
 }
@@ -225,8 +228,11 @@ func (s *RESTServer) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 
 	results, err := h.Retrieve(r.Context(), client.RetrieveRequest{
 		Vector:      req.Vector,
+		Vectors:     req.Vectors,
+		Text:        req.Text,
 		SeedIDs:     seedIDs,
 		TopK:        req.TopK,
+		Labels:      req.Labels,
 		ScoreParams: sp,
 		AsOf:        asOf,
 	})
