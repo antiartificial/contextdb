@@ -16,8 +16,11 @@ import (
 type Query struct {
 	Namespace   string
 	Vector      []float32
+	Vectors     [][]float32 // multi-vector queries: fan-out and merge
+	QueryText   string      // original text for reranking
 	SeedIDs     []uuid.UUID
 	TopK        int
+	Labels      []string
 	Strategy    HybridStrategy
 	ScoreParams core.ScoreParams
 }
@@ -43,9 +46,10 @@ func defaultStrategy() HybridStrategy {
 
 // Engine executes hybrid retrieval across graph, vector, and KV stores.
 type Engine struct {
-	Graph   store.GraphStore
-	Vectors store.VectorIndex
-	KV      store.KVStore
+	Graph    store.GraphStore
+	Vectors  store.VectorIndex
+	KV       store.KVStore
+	Reranker Reranker // optional — if set, top results are reranked
 }
 
 type fanResult struct {
@@ -67,21 +71,33 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 		q.ScoreParams.AsOf = time.Now()
 	}
 
-	var wg sync.WaitGroup
-	resultCh := make(chan fanResult, 3)
+	// Collect all query vectors (primary + multi-vector)
+	var queryVectors [][]float32
+	if len(q.Vector) > 0 {
+		queryVectors = append(queryVectors, q.Vector)
+	}
+	queryVectors = append(queryVectors, q.Vectors...)
 
-	if len(q.Vector) > 0 && e.Vectors != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			res, err := e.Vectors.Search(ctx, store.VectorQuery{
-				Namespace: q.Namespace,
-				Vector:    q.Vector,
-				TopK:      q.TopK * 2,
-				AsOf:      q.ScoreParams.AsOf,
-			})
-			resultCh <- fanResult{vectorResults: res, err: err, source: "vector"}
-		}()
+	// Fan out concurrently
+	fanCount := len(queryVectors) + 1 // +1 for graph walk
+	var wg sync.WaitGroup
+	resultCh := make(chan fanResult, fanCount)
+
+	for _, vec := range queryVectors {
+		if e.Vectors != nil {
+			wg.Add(1)
+			go func(v []float32) {
+				defer wg.Done()
+				res, err := e.Vectors.Search(ctx, store.VectorQuery{
+					Namespace: q.Namespace,
+					Vector:    v,
+					TopK:      q.TopK * 2,
+					Labels:    q.Labels,
+					AsOf:      q.ScoreParams.AsOf,
+				})
+				resultCh <- fanResult{vectorResults: res, err: err, source: "vector"}
+			}(vec)
+		}
 	}
 
 	if len(q.SeedIDs) > 0 && e.Graph != nil {
@@ -104,7 +120,7 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 		close(resultCh)
 	}()
 
-	var vectorResults []core.ScoredNode
+	var allVectorResults []core.ScoredNode
 	var graphResults []core.Node
 	for r := range resultCh {
 		if r.err != nil {
@@ -112,13 +128,28 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 		}
 		switch r.source {
 		case "vector":
-			vectorResults = r.vectorResults
+			allVectorResults = append(allVectorResults, r.vectorResults...)
 		case "graph":
 			graphResults = r.graphResults
 		}
 	}
 
-	return e.fuse(vectorResults, graphResults, nil, q), nil
+	results := e.fuse(allVectorResults, graphResults, nil, q)
+
+	// Rerank if configured and we have a query text
+	if e.Reranker != nil && q.QueryText != "" && len(results) > 0 {
+		rerankInput := make([]core.Node, len(results))
+		for i, r := range results {
+			rerankInput[i] = r.Node
+		}
+		reranked, err := e.Reranker.Rerank(ctx, q.QueryText, rerankInput, q.TopK)
+		if err == nil && len(reranked) > 0 {
+			return reranked, nil
+		}
+		// On rerank failure, fall through to original results
+	}
+
+	return results, nil
 }
 
 func (e *Engine) fuse(
