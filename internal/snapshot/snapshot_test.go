@@ -78,13 +78,14 @@ func TestExportImport_RoundTrip(t *testing.T) {
 
 	// Write a source
 	is.NoErr(srcGraph.UpsertSource(ctx, core.Source{
-		ID:               uuid.New(),
-		Namespace:        ns,
-		ExternalID:       "alice",
-		Labels:           []string{"moderator"},
-		CredibilityScore: 0.95,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		ID:         uuid.New(),
+		Namespace:  ns,
+		ExternalID: "alice",
+		Labels:     []string{"moderator"},
+		Alpha:      9.5, // moderator label overrides anyway
+		Beta:       0.5,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}))
 
 	// Export from seeds

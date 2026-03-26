@@ -128,6 +128,14 @@ func (g *GraphStore) InvalidateEdge(_ context.Context, ns string, id uuid.UUID, 
 	return nil
 }
 
+func (g *GraphStore) GetEdges(_ context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
+	return g.EdgesFrom(context.Background(), ns, nodeID, nil)
+}
+
+func (g *GraphStore) GetEdgesTo(_ context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
+	return g.EdgesTo(context.Background(), ns, nodeID, nil)
+}
+
 func (g *GraphStore) EdgesFrom(_ context.Context, ns string, nodeID uuid.UUID, edgeTypes []string) ([]core.Edge, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -266,7 +274,20 @@ func (g *GraphStore) UpdateCredibility(_ context.Context, ns string, id uuid.UUI
 
 	for k, s := range g.sources {
 		if s.Namespace == ns && s.ID == id {
-			s.CredibilityScore = clamp01(s.CredibilityScore + delta)
+			// Update Beta distribution: shift mean toward positive/negative
+			// Positive delta increases Alpha, negative increases Beta
+			if delta > 0 {
+				s.Alpha += delta * 10 // scale delta to reasonable update magnitude
+			} else {
+				s.Beta += -delta * 10
+			}
+			// Ensure Alpha, Beta stay positive
+			if s.Alpha < 1 {
+				s.Alpha = 1
+			}
+			if s.Beta < 1 {
+				s.Beta = 1
+			}
 			s.UpdatedAt = time.Now()
 			g.sources[k] = s
 			return nil

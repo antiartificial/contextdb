@@ -132,12 +132,13 @@ func TestRemoteGraphStore(t *testing.T) {
 
 	// Source management
 	src := core.Source{
-		ID:               uuid.New(),
-		Namespace:        "remote-test",
-		ExternalID:       "remote-src",
-		CredibilityScore: 0.8,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		ID:         uuid.New(),
+		Namespace:  "remote-test",
+		ExternalID: "remote-src",
+		Alpha:      8,
+		Beta:       2,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 	err = graph.UpsertSource(ctx, src)
 	is.NoErr(err)

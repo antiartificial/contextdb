@@ -15,7 +15,8 @@ func makeSource(cred float64, labels ...string) core.Source {
 	return core.Source{
 		ID: uuid.New(), Namespace: "test",
 		ExternalID: uuid.New().String(),
-		CredibilityScore: cred, Labels: labels,
+		Alpha: cred * 10,
+		Beta:  (1 - cred) * 10, Labels: labels,
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 }

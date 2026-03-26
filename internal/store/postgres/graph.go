@@ -130,6 +130,14 @@ func (g *GraphStore) InvalidateEdge(ctx context.Context, ns string, id uuid.UUID
 	return nil
 }
 
+func (g *GraphStore) GetEdges(ctx context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
+	return g.EdgesFrom(ctx, ns, nodeID, nil)
+}
+
+func (g *GraphStore) GetEdgesTo(ctx context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
+	return g.EdgesTo(ctx, ns, nodeID, nil)
+}
+
 func (g *GraphStore) EdgesFrom(ctx context.Context, ns string, nodeID uuid.UUID, edgeTypes []string) ([]core.Edge, error) {
 	return g.queryEdges(ctx, ns, nodeID, edgeTypes, "src")
 }
@@ -256,7 +264,7 @@ func (g *GraphStore) UpsertSource(ctx context.Context, s core.Source) error {
 			claims_validated = EXCLUDED.claims_validated,
 			claims_refuted = EXCLUDED.claims_refuted,
 			updated_at = EXCLUDED.updated_at
-	`, s.ID, s.Namespace, s.ExternalID, s.Labels, s.CredibilityScore,
+	`, s.ID, s.Namespace, s.ExternalID, s.Labels, s.Alpha, s.Beta,
 		s.ClaimsAsserted, s.ClaimsValidated, s.ClaimsRefuted, s.CreatedAt, s.UpdatedAt)
 	return err
 }
@@ -269,7 +277,7 @@ func (g *GraphStore) GetSourceByExternalID(ctx context.Context, ns, externalID s
 	`, ns, externalID)
 
 	var s core.Source
-	err := row.Scan(&s.ID, &s.Namespace, &s.ExternalID, &s.Labels, &s.CredibilityScore,
+	err := row.Scan(&s.ID, &s.Namespace, &s.ExternalID, &s.Labels, &s.Alpha, &s.Beta,
 		&s.ClaimsAsserted, &s.ClaimsValidated, &s.ClaimsRefuted, &s.CreatedAt, &s.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil

@@ -3,31 +3,25 @@ package compact
 import (
 	"context"
 	"log/slog"
-	"math/rand/v2"
+	"math"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/store"
 )
 
-// RecallConfig configures the active recall worker.
+// RecallConfig configures the active recall (SM-2 spaced repetition) worker.
 type RecallConfig struct {
 	// Interval is the polling interval for the recall cycle.
 	// Default: 1h.
 	Interval time.Duration
 
-	// QueriesPerCycle is the number of random probe queries per cycle.
-	// Default: 10.
-	QueriesPerCycle int
-
-	// BoostAmount is the utility score increase applied to successfully
-	// retrieved nodes. Default: 0.05.
-	BoostAmount float64
-
-	// DecayAmount is the utility score decrease applied to nodes that
-	// were not retrieved in the cycle. Default: 0.01.
-	DecayAmount float64
+	// MaxReviewsPerCycle is the maximum number of due memories to review
+	// per cycle. Default: 20.
+	MaxReviewsPerCycle int
 
 	// Namespaces restricts recall to these namespaces.
 	// Empty means no namespaces are processed.
@@ -38,22 +32,19 @@ func (c RecallConfig) withDefaults() RecallConfig {
 	if c.Interval == 0 {
 		c.Interval = 1 * time.Hour
 	}
-	if c.QueriesPerCycle == 0 {
-		c.QueriesPerCycle = 10
-	}
-	if c.BoostAmount == 0 {
-		c.BoostAmount = 0.05
-	}
-	if c.DecayAmount == 0 {
-		c.DecayAmount = 0.01
+	if c.MaxReviewsPerCycle == 0 {
+		c.MaxReviewsPerCycle = 20
 	}
 	return c
 }
 
-// RecallWorker implements active recall by periodically probing the
-// vector index with random queries. Nodes that are successfully
-// retrieved have their utility scores boosted; nodes that are not
-// retrieved experience a small decay.
+// RecallWorker implements SM-2 spaced repetition for memory nodes.
+// It periodically scans for due memories, simulates retrieval attempts,
+// and updates SM-2 parameters (easiness factor, interval, next review date).
+//
+// The SM-2 algorithm optimizes memory retention by scheduling reviews
+// at increasing intervals for easy items and shorter intervals for
+// difficult items, maximizing long-term retention with minimal effort.
 type RecallWorker struct {
 	graph  store.GraphStore
 	vecs   store.VectorIndex
@@ -66,7 +57,7 @@ type RecallWorker struct {
 	running bool
 }
 
-// NewRecallWorker creates an active recall worker.
+// NewRecallWorker creates an active recall worker implementing SM-2.
 func NewRecallWorker(
 	graph store.GraphStore,
 	vecs store.VectorIndex,
@@ -143,90 +134,186 @@ func (w *RecallWorker) runAll(ctx context.Context) {
 	}
 }
 
+// processCycle runs the SM-2 active recall for due memories.
+// It finds memories with NextReviewDate <= now, simulates retrieval quality
+// based on current node state, and updates SM-2 scheduling parameters.
 func (w *RecallWorker) processCycle(ctx context.Context, ns string) error {
-	// Generate random probe vectors and query the index.
-	// Nodes that appear in results get boosted; we track which
-	// nodes were retrieved so we can decay the rest.
-	dim := w.probeDimension()
-	if dim == 0 {
-		// Cannot probe without knowing the vector dimension.
-		// Try a small default dimension.
-		dim = 8
+	now := time.Now()
+
+	// Find due memories by walking the graph for nodes with SM-2 data
+	// that are scheduled for review
+	dueNodes, err := w.findDueMemories(ctx, ns, now)
+	if err != nil {
+		return err
 	}
 
-	retrieved := make(map[string]bool)
+	if len(dueNodes) == 0 {
+		w.logger.Debug("no memories due for review", "namespace", ns)
+		return nil
+	}
 
-	for i := 0; i < w.config.QueriesPerCycle; i++ {
-		// Generate a random unit vector
-		vec := randomVector(dim)
+	// Limit reviews per cycle
+	if len(dueNodes) > w.config.MaxReviewsPerCycle {
+		dueNodes = dueNodes[:w.config.MaxReviewsPerCycle]
+	}
 
-		results, err := w.vecs.Search(ctx, store.VectorQuery{
-			Namespace: ns,
-			Vector:    vec,
-			TopK:      5,
-		})
-		if err != nil {
-			w.logger.Debug("recall probe failed", "error", err)
+	reviewed := 0
+	for _, node := range dueNodes {
+		if err := w.reviewMemory(ctx, node, now); err != nil {
+			w.logger.Error("review failed", "node_id", node.ID, "error", err)
 			continue
 		}
-
-		for _, sn := range results {
-			key := sn.Node.ID.String()
-			if !retrieved[key] {
-				retrieved[key] = true
-				// Boost utility for retrieved nodes
-				w.boostUtility(ctx, &sn.Node, w.config.BoostAmount)
-			}
-		}
+		reviewed++
 	}
 
-	w.logger.Debug("recall cycle complete",
+	w.logger.Info("recall cycle complete",
 		"namespace", ns,
-		"queries", w.config.QueriesPerCycle,
-		"retrieved_unique", len(retrieved),
+		"due_count", len(dueNodes),
+		"reviewed", reviewed,
 	)
 
 	return nil
 }
 
-// probeDimension returns the vector dimension to use for probes.
-// It attempts to determine this from the vector index.
-func (w *RecallWorker) probeDimension() int {
-	type dimensioner interface {
-		Dimension() int
+// findDueMemories scans for nodes with due SM-2 review dates.
+// Uses graph walk to find candidate memories, then filters by SM-2 state.
+func (w *RecallWorker) findDueMemories(ctx context.Context, ns string, now time.Time) ([]core.Node, error) {
+	// Get all nodes in namespace - in production this would use a more
+	// targeted query. For now, walk from a nil seed to get all nodes.
+	var allNodes []core.Node
+
+	// Try to get nodes via graph walk with high depth
+	if w.graph != nil {
+		// Get a sample of recent nodes by walking with empty seeds
+		// This is a simplified approach - production would use a proper query
+		walked, err := w.graph.Walk(ctx, store.WalkQuery{
+			Namespace: ns,
+			SeedIDs:   []uuid.UUID{},
+			MaxDepth:  5,
+			Strategy:  store.StrategyBFS,
+			AsOf:      now,
+		})
+		if err == nil {
+			allNodes = walked
+		}
 	}
-	if d, ok := w.vecs.(dimensioner); ok {
-		return d.Dimension()
+
+	// Filter for nodes with SM-2 data that are due
+	var due []core.Node
+	for _, node := range allNodes {
+		sm2 := core.Sm2FromProperties(node.Properties)
+		if sm2.IsDue(now) {
+			due = append(due, node)
+		}
 	}
-	return 0
+
+	return due, nil
 }
 
-// boostUtility increases the utility property on a node.
-func (w *RecallWorker) boostUtility(ctx context.Context, n *core.Node, amount float64) {
-	if n.Properties == nil {
-		return
+// reviewMemory performs an SM-2 review on a memory node.
+// It simulates retrieval quality based on the node's current state,
+// then updates the SM-2 parameters accordingly.
+func (w *RecallWorker) reviewMemory(ctx context.Context, node core.Node, now time.Time) error {
+	sm2 := core.Sm2FromProperties(node.Properties)
+
+	// Simulate retrieval quality based on node properties
+	// Quality 0-5 based on: confidence, recency, utility
+	quality := w.simulateRetrievalQuality(node)
+
+	// Apply SM-2 update
+	newSM2 := sm2.Update(quality)
+
+	// Persist updated SM-2 data back to node properties
+	node.Properties = newSM2.ToProperties(node.Properties)
+
+	// Update utility score based on retrieval success
+	// Success (quality >= 3) boosts utility, failure reduces it
+	utility := w.computeUtility(node, quality)
+	node.Properties["utility"] = utility
+
+	// Persist node changes
+	if err := w.graph.UpsertNode(ctx, node); err != nil {
+		return err
 	}
 
-	utility := 0.5 // default neutral utility
-	if u, ok := n.Properties["utility"].(float64); ok {
+	w.logger.Debug("memory reviewed",
+		"node_id", node.ID,
+		"quality", quality,
+		"new_interval", newSM2.IntervalDays,
+		"new_ef", newSM2.EasinessFactor,
+		"next_review", newSM2.NextReviewDate.Format(time.RFC3339),
+	)
+
+	return nil
+}
+
+// simulateRetrievalQuality generates a quality rating (0-5) based on
+// the node's current state: confidence, recency, and utility.
+// This simulates how well the memory would be recalled.
+func (w *RecallWorker) simulateRetrievalQuality(node core.Node) int {
+	// Base quality on node confidence
+	confidence := node.Confidence
+	if confidence == 0 {
+		confidence = 0.5
+	}
+
+	// Get utility if available
+	utility := 0.5
+	if u, ok := node.Properties["utility"].(float64); ok {
 		utility = u
 	}
 
-	utility += amount
-	if utility > 1.0 {
-		utility = 1.0
-	}
+	// Calculate recency factor
+	age := time.Since(node.ValidFrom).Hours()
+	recency := math.Exp(-0.05 * age) // exponential decay
 
-	n.Properties["utility"] = utility
-	n.Properties["last_recalled"] = time.Now().Format(time.RFC3339)
+	// Combined score
+	score := 0.4*confidence + 0.3*utility + 0.3*recency
+
+	// Map to quality rating 0-5
+	// 0.9+ → 5 (perfect)
+	// 0.7-0.9 → 4 (good)
+	// 0.5-0.7 → 3 (pass)
+	// 0.3-0.5 → 2 (fail, seemed easy)
+	// 0.1-0.3 → 1 (fail, remembered)
+	// <0.1 → 0 (blackout)
+	switch {
+	case score >= 0.9:
+		return 5
+	case score >= 0.7:
+		return 4
+	case score >= 0.5:
+		return 3
+	case score >= 0.3:
+		return 2
+	case score >= 0.1:
+		return 1
+	default:
+		return 0
+	}
 }
 
-// randomVector generates a random float32 vector of the given dimension.
-// Values are sampled uniformly from [-1, 1].
-func randomVector(dim int) []float32 {
-	vec := make([]float32, dim)
-	for i := range vec {
-		vec[i] = float32(rand.Float64()*2 - 1)
+// computeUtility updates the utility score based on retrieval quality.
+func (w *RecallWorker) computeUtility(node core.Node, quality int) float64 {
+	current := 0.5
+	if u, ok := node.Properties["utility"].(float64); ok {
+		current = u
 	}
-	return vec
+
+	if quality >= 3 {
+		// Successful recall: boost utility
+		current += 0.05 * float64(quality) / 5.0
+	} else {
+		// Failed recall: reduce utility
+		current -= 0.02 * float64(3-quality)
+	}
+
+	// Clamp to [0, 1]
+	if current > 1.0 {
+		return 1.0
+	}
+	if current < 0 {
+		return 0
+	}
+	return current
 }

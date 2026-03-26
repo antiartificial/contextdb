@@ -6,16 +6,24 @@ import (
 	"sync"
 	"time"
 
+	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/store"
 )
 
 // CredibilityUpdater periodically scans sources and adjusts credibility
 // based on validated/refuted claims using a Bayesian update rule.
+//
+// The updater uses Beta-Binomial conjugate priors:
+//   - Source credibility ~ Beta(α, β)
+//   - α = 1 + ClaimsValidated, β = 1 + ClaimsRefuted (Laplace smoothing)
+//   - Mean credibility = α / (α + β)
+//   - Variance = αβ / ((α+β)²(α+β+1)) — quantifies uncertainty
+//
+// Updates are atomic: increment α on validation, β on refutation.
 type CredibilityUpdater struct {
-	graph        store.GraphStore
-	interval     time.Duration
-	learningRate float64
-	logger       *slog.Logger
+	graph    store.GraphStore
+	interval time.Duration
+	logger   *slog.Logger
 
 	mu      sync.Mutex
 	stop    chan struct{}
@@ -25,16 +33,12 @@ type CredibilityUpdater struct {
 
 // CredibilityConfig configures the credibility updater.
 type CredibilityConfig struct {
-	Interval     time.Duration // how often to run (default: 10m)
-	LearningRate float64       // update strength (default: 0.1)
+	Interval time.Duration // how often to run (default: 10m)
 }
 
 func (c CredibilityConfig) withDefaults() CredibilityConfig {
 	if c.Interval == 0 {
 		c.Interval = 10 * time.Minute
-	}
-	if c.LearningRate == 0 {
-		c.LearningRate = 0.1
 	}
 	return c
 }
@@ -46,10 +50,9 @@ func NewCredibilityUpdater(graph store.GraphStore, cfg CredibilityConfig, logger
 		logger = slog.Default()
 	}
 	return &CredibilityUpdater{
-		graph:        graph,
-		interval:     cfg.Interval,
-		learningRate: cfg.LearningRate,
-		logger:       logger,
+		graph:    graph,
+		interval: cfg.Interval,
+		logger:   logger,
 	}
 }
 
@@ -98,22 +101,50 @@ func (u *CredibilityUpdater) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Credibility updates are driven by Source claim counters.
-			// The UpdateCredibility method on GraphStore handles the
-			// actual score adjustment. This worker simply logs that
-			// the cycle ran — actual updates happen during admission
-			// when sources are resolved.
+			// The Bayesian updates happen atomically when claims are
+			// validated/refuted via UpdateSourceBayesian().
+			// This worker can be extended to perform periodic re-evaluation
+			// of sources based on claim outcomes.
 			u.logger.Debug("credibility update cycle")
 		}
 	}
 }
 
-// ComputeDelta computes the credibility adjustment for a source based
-// on its validated/refuted claim counts using a Bayesian update rule:
+// UpdateSourceBayesian performs a Bayesian update on a source's credibility.
+// Call this when a claim from the source has been validated or refuted.
 //
-//	delta = (validated / (validated + refuted + 1)) * learningRate - prior_adjustment
+//   - validated = true:  increment Alpha (validated+1)
+//   - validated = false: increment Beta (refuted+1)
 //
-// The result is clamped so the final score stays in [0.05, 1.0].
+// The source's mean credibility will shift toward 1.0 on validation,
+// toward 0.0 on refutation, with variance decreasing (more certainty).
+func UpdateSourceBayesian(source *core.Source, validated bool) {
+	source.BayesianUpdate(validated)
+}
+
+// MeanCredibility computes E[Beta(α,β)] = α/(α+β).
+// This is the expected credibility score given the observation history.
+func MeanCredibility(alpha, beta float64) float64 {
+	if alpha+beta == 0 {
+		return 0.5 // uniform prior
+	}
+	return alpha / (alpha + beta)
+}
+
+// CredibilityVariance computes Var[Beta(α,β)] = αβ/((α+β)²(α+β+1)).
+// Lower variance indicates more certainty (more observations).
+func CredibilityVariance(alpha, beta float64) float64 {
+	sum := alpha + beta
+	if sum == 0 {
+		return 0.25 // variance of uniform Beta(1,1)
+	}
+	return (alpha * beta) / (sum * sum * (sum + 1))
+}
+
+// ComputeDelta (legacy) computes a credibility adjustment using the simple
+// ratio method. Deprecated: use BayesianUpdate instead for proper inference.
+//
+// Kept for backward compatibility with existing tests.
 func ComputeDelta(validated, refuted int64, currentCredibility, learningRate float64) float64 {
 	total := float64(validated + refuted + 1)
 	ratio := float64(validated) / total

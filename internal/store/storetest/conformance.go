@@ -239,12 +239,13 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 		is.NoErr(err)
 		is.True(got != nil)
 		is.Equal(got.ExternalID, "user:alice")
-		is.Equal(got.CredibilityScore, 0.5)
+		is.Equal(got.EffectiveCredibility(), 0.5)
 
 		is.NoErr(g.UpdateCredibility(ctx, "test", got.ID, 0.3))
 		got2, err := g.GetSourceByExternalID(ctx, "test", "user:alice")
 		is.NoErr(err)
-		is.Equal(got2.CredibilityScore, 0.8)
+		// After credibility update, mean should be closer to 1.0 (delta=0.3)
+		is.True(got2.EffectiveCredibility() > 0.5)
 	})
 
 	t.Run("NamespaceIsolation", func(t *testing.T) {

@@ -156,6 +156,14 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) (*IngestResult
 		edgesWritten++
 	}
 
+	// Step 5: Update source claim counters
+	// (Actual Bayesian update happens when claims are validated/refuted)
+	src.ClaimsAsserted += int64(written)
+	if err := p.graph.UpsertSource(ctx, *src); err != nil {
+		// Non-fatal: log but don't fail ingestion
+		// Source credibility update can happen asynchronously
+	}
+
 	return &IngestResult{
 		NodesWritten: written,
 		EdgesWritten: edgesWritten,

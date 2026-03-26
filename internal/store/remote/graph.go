@@ -81,6 +81,14 @@ func (g *GraphStore) InvalidateEdge(ctx context.Context, ns string, id uuid.UUID
 	}{Namespace: ns, ID: id.String(), At: at}, &resp)
 }
 
+func (g *GraphStore) GetEdges(ctx context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
+	return g.EdgesFrom(ctx, ns, nodeID, nil)
+}
+
+func (g *GraphStore) GetEdgesTo(ctx context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
+	return g.EdgesTo(ctx, ns, nodeID, nil)
+}
+
 func (g *GraphStore) EdgesFrom(ctx context.Context, ns string, nodeID uuid.UUID, edgeTypes []string) ([]core.Edge, error) {
 	var resp struct {
 		Edges []core.Edge `json:"edges"`

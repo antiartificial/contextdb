@@ -32,6 +32,12 @@ type GraphStore interface {
 	// InvalidateEdge sets InvalidatedAt on an edge (non-destructive delete).
 	InvalidateEdge(ctx context.Context, ns string, id uuid.UUID, at time.Time) error
 
+	// GetEdges returns all currently active edges originating from nodeID.
+	GetEdges(ctx context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error)
+
+	// GetEdgesTo returns all currently active edges pointing at nodeID.
+	GetEdgesTo(ctx context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error)
+
 	// EdgesFrom returns all currently active edges originating from nodeID.
 	// edgeTypes filters by type; nil = all types.
 	EdgesFrom(ctx context.Context, ns string, nodeID uuid.UUID, edgeTypes []string) ([]core.Edge, error)
