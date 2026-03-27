@@ -18,7 +18,7 @@ features:
   - icon: <i class="fa-solid fa-shield-halved"></i>
     title: Sources lie
     details: Bayesian credibility tracking with an admission gate. Sources earn or lose trust based on how their claims hold up.
-  - icon: <i class="fa-solid fa-chart-line-down"></i>
+  - icon: <i class="fa-solid fa-hourglass-half"></i>
     title: Memory decays
     details: Episodic memories fade in hours. Procedural skills persist for months. Background workers consolidate knowledge automatically.
   - icon: <i class="fa-solid fa-code-compare"></i>
