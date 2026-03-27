@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/ingest"
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
@@ -43,6 +44,9 @@ func (s *RESTServer) Handler() http.Handler {
 
 	// POST /v1/namespaces/{ns}/sources/label
 	mux.HandleFunc("POST /v1/namespaces/{ns}/sources/label", s.handleLabelSource)
+
+	// POST /v1/namespaces/{ns}/consensus/{claimID}
+	mux.HandleFunc("POST /v1/namespaces/{ns}/consensus/{claimID}", s.handleConsensus)
 
 	// GET /v1/stats
 	mux.HandleFunc("GET /v1/stats", s.handleStats)
@@ -121,6 +125,14 @@ type ingestResponse struct {
 	NodesWritten int `json:"nodes_written"`
 	EdgesWritten int `json:"edges_written"`
 	Rejected     int `json:"rejected"`
+}
+
+type consensusResponse struct {
+	ClaimID     string  `json:"claim_id"`
+	Probability float64 `json:"probability"`
+	Confidence  float64 `json:"confidence"`
+	SourceCount int     `json:"source_count"`
+	Method      string  `json:"method"`
 }
 
 type labelSourceRequest struct {
@@ -357,6 +369,38 @@ func (s *RESTServer) handleLabelSource(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *RESTServer) handleConsensus(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	claimIDStr := r.PathValue("claimID")
+	claimID, err := uuid.Parse(claimIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid claim id: %w", err))
+		return
+	}
+
+	graph, _, _, _ := s.db.Stores()
+	resolver := ingest.NewConsensusResolver(graph, nil)
+
+	estimate, err := resolver.ResolveTruth(r.Context(), claimID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, consensusResponse{
+		ClaimID:     estimate.ClaimID.String(),
+		Probability: estimate.Probability,
+		Confidence:  estimate.Confidence,
+		SourceCount: estimate.SourceCount,
+		Method:      estimate.Method,
+	})
 }
 
 func (s *RESTServer) handleStats(w http.ResponseWriter, r *http.Request) {

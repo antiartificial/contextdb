@@ -153,6 +153,12 @@ func (r *ConsensusResolver) collectAssertions(ctx context.Context, claimID uuid.
 	var claimDomain string
 	if claimNode, err := r.graph.GetNode(ctx, "default", claimID); err == nil && claimNode != nil {
 		claimDomain, _ = claimNode.Properties["domain"].(string)
+		// If no explicit domain property is set, derive it from the first label.
+		// This ensures domain-scoped credibility is used even when the domain
+		// property is absent, as long as the node carries at least one label.
+		if claimDomain == "" && len(claimNode.Labels) > 0 {
+			claimDomain = claimNode.Labels[0]
+		}
 	}
 
 	var assertions []ClaimAssertion

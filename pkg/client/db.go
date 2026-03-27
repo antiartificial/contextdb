@@ -853,6 +853,20 @@ func (h *NamespaceHandle) LabelSource(ctx context.Context, externalID string, la
 	return h.db.graph.UpsertSource(ctx, src)
 }
 
+// Consensus resolves the truth estimate for a claim node by aggregating all
+// source assertions recorded against that claim ID. It uses a credibility-
+// weighted vote (see ingest.MultiSourceConsensus). Domain-scoped credibility
+// is applied automatically when the claim node carries a "domain" property or
+// labels that can be used as a domain proxy.
+func (h *NamespaceHandle) Consensus(ctx context.Context, claimID uuid.UUID) (*ingest.TruthEstimate, error) {
+	resolver := ingest.NewConsensusResolver(h.db.graph, h.db.logger)
+	est, err := resolver.ResolveTruth(ctx, claimID)
+	if err != nil {
+		return nil, fmt.Errorf("consensus: %w", err)
+	}
+	return &est, nil
+}
+
 // ── Enhanced SDK (Phase 6) ────────────────────────────────────────────────
 
 // WriteBatch writes multiple items in a single call. Returns results
