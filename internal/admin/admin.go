@@ -9,27 +9,35 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"strings"
+	"time"
 
+	"github.com/antiartificial/contextdb/internal/store"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
 
 // adminHandler serves the admin dashboard.
 type adminHandler struct {
-	db  *client.DB
-	mux *http.ServeMux
-	tmpl *template.Template
+	db    *client.DB
+	graph store.GraphStore
+	mux   *http.ServeMux
+	tmpl  *template.Template
 }
 
 // New creates an http.Handler that serves the admin UI at /admin/.
 func New(db *client.DB) http.Handler {
+	graph, _, _, _ := db.Stores()
 	h := &adminHandler{
-		db:  db,
-		mux: http.NewServeMux(),
+		db:    db,
+		graph: graph,
+		mux:   http.NewServeMux(),
 	}
 	h.tmpl = template.Must(template.New("index").Parse(indexHTML))
 
 	h.mux.HandleFunc("GET /admin/", h.handleIndex)
 	h.mux.HandleFunc("GET /admin/api/stats", h.handleStats)
+	h.mux.HandleFunc("GET /admin/api/timetravel", h.handleTimeTravel)
+	h.mux.HandleFunc("GET /admin/api/diff", h.handleDiff)
 
 	return h
 }
@@ -50,6 +58,114 @@ func (h *adminHandler) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := h.db.Stats()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
+}
+
+// handleTimeTravel returns all nodes valid at a given point in time.
+// Query params:
+//   - ns: namespace (required)
+//   - asof: ISO 8601 timestamp (required)
+//   - labels: comma-separated label filter (optional)
+func (h *adminHandler) handleTimeTravel(w http.ResponseWriter, r *http.Request) {
+	ns := r.URL.Query().Get("ns")
+	if ns == "" {
+		http.Error(w, "missing ns parameter", http.StatusBadRequest)
+		return
+	}
+
+	asofStr := r.URL.Query().Get("asof")
+	if asofStr == "" {
+		http.Error(w, "missing asof parameter", http.StatusBadRequest)
+		return
+	}
+
+	asof, err := time.Parse(time.RFC3339, asofStr)
+	if err != nil {
+		// Try date-only format
+		asof, err = time.Parse("2006-01-02", asofStr)
+		if err != nil {
+			http.Error(w, "invalid asof format (use RFC3339 or YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+	}
+
+	var labels []string
+	if l := r.URL.Query().Get("labels"); l != "" {
+		labels = strings.Split(l, ",")
+	}
+
+	nodes, err := h.graph.ValidAt(r.Context(), ns, asof, labels)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"namespace": ns,
+		"as_of":     asof.Format(time.RFC3339),
+		"count":     len(nodes),
+		"nodes":     nodes,
+	})
+}
+
+// handleDiff returns what changed between two points in time.
+// Query params:
+//   - ns: namespace (required)
+//   - from: RFC3339 or YYYY-MM-DD start time (required)
+//   - to: RFC3339 or YYYY-MM-DD end time (required)
+func (h *adminHandler) handleDiff(w http.ResponseWriter, r *http.Request) {
+	ns := r.URL.Query().Get("ns")
+	if ns == "" {
+		http.Error(w, "missing ns parameter", http.StatusBadRequest)
+		return
+	}
+
+	fromStr := r.URL.Query().Get("from")
+	if fromStr == "" {
+		http.Error(w, "missing from parameter", http.StatusBadRequest)
+		return
+	}
+
+	toStr := r.URL.Query().Get("to")
+	if toStr == "" {
+		http.Error(w, "missing to parameter", http.StatusBadRequest)
+		return
+	}
+
+	parseTime := func(s string) (time.Time, error) {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			t, err = time.Parse("2006-01-02", s)
+		}
+		return t, err
+	}
+
+	from, err := parseTime(fromStr)
+	if err != nil {
+		http.Error(w, "invalid from format (use RFC3339 or YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+
+	to, err := parseTime(toStr)
+	if err != nil {
+		http.Error(w, "invalid to format (use RFC3339 or YYYY-MM-DD)", http.StatusBadRequest)
+		return
+	}
+
+	diffs, err := h.graph.Diff(r.Context(), ns, from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"namespace": ns,
+		"from":      from.Format(time.RFC3339),
+		"to":        to.Format(time.RFC3339),
+		"count":     len(diffs),
+		"changes":   diffs,
+	})
 }
 
 const indexHTML = `<!DOCTYPE html>
