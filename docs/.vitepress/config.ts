@@ -9,7 +9,6 @@ export default withMermaid(
 
     head: [
       ['link', { rel: 'stylesheet', href: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css', crossorigin: 'anonymous' }],
-      ['script', { src: 'https://kit.fontawesome.com/501e400daa.js', crossorigin: 'anonymous' }],
     ],
 
     themeConfig: {
