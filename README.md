@@ -96,11 +96,18 @@ defer db.Close()
 
 ns := db.Namespace("my-app", namespace.ModeGeneral)
 res, _ := ns.Write(ctx, client.WriteRequest{
-    Content: "Go 1.22 added routing patterns to net/http",
-    SourceID: "docs-crawler",
-    Vector:   embedding,
+    Content:  "Go 1.22 added routing patterns to net/http",
+    SourceID: "docs-crawler",  // tracks credibility of this source over time
+    Vector:   embedding,       // or omit — auto-embedded when an Embedder is configured
 })
-results, _ := ns.Retrieve(ctx, client.RetrieveRequest{Vector: queryVec, TopK: 5})
+results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
+    Vector: queryVec,
+    TopK:   5, // return the 5 highest-scoring results (default: 10)
+    // TopK controls the result set size. Lower values (1–5) are faster and
+    // more focused — good for single-answer lookups. Higher values (20–50)
+    // give the retrieval pipeline more candidates to score, rerank, and
+    // diversify — better for RAG contexts where you need broad coverage.
+})
 ```
 
 **Python:**
