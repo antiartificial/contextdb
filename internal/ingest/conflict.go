@@ -83,6 +83,16 @@ func (d *ConflictDetector) Detect(ctx context.Context, candidate core.Node, near
 			return result, fmt.Errorf("create contradicts edge: %w", err)
 		}
 
+		// Check for interference before decaying confidence
+		ifd := InterferenceDetector{graph: d.graph}
+		ifResult := ifd.Check(ctx, candidate.Namespace, candidate, nn.Node)
+		if ifResult.IsInterference {
+			// Still create the contradiction edge, but skip confidence decay
+			// The edge records the disagreement; interference means we trust the existing claim
+			result.ConflictIDs = append(result.ConflictIDs, nn.Node.ID)
+			continue
+		}
+
 		// Decay the contradicted node's confidence based on the strength
 		// of the contradiction and the candidate's own confidence
 		decay := weight * candidate.Confidence * 0.3 // max 30% reduction per contradiction
