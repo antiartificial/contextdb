@@ -46,6 +46,11 @@ type Config struct {
 	// Compaction settings.
 	CompactionEnabled bool
 	CompactionWorker  string // "raptor" | "none"
+
+	// ConflictBudget limits conflict detection operations per second.
+	// Zero = unlimited. When exceeded, conflict detection is skipped
+	// and an advisory is returned in WriteResult.
+	ConflictBudget int
 }
 
 // Defaults returns a Config populated with sensible defaults for the

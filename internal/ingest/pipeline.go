@@ -14,26 +14,31 @@ import (
 
 // Pipeline orchestrates: extract → admit → write for raw text ingestion.
 type Pipeline struct {
-	extractor extract.Extractor
-	graph     store.GraphStore
-	vecs      store.VectorIndex
-	log       store.EventLog
-	config    PipelineConfig
+	extractor       extract.Extractor
+	graph           store.GraphStore
+	vecs            store.VectorIndex
+	log             store.EventLog
+	config          PipelineConfig
+	anomalyDetector *WriteRateDetector
+	budgetTracker   *ConflictBudgetTracker
 }
 
 // PipelineConfig configures the ingest pipeline.
 type PipelineConfig struct {
 	AdmitThreshold float64 // admission threshold [0, 1]
+	ConflictBudget int     // max conflict detections per second, per namespace (0 = unlimited)
 }
 
 // NewPipeline returns a pipeline that extracts, admits, and writes graph elements.
 func NewPipeline(ext extract.Extractor, graph store.GraphStore, vecs store.VectorIndex, log store.EventLog, cfg PipelineConfig) *Pipeline {
 	return &Pipeline{
-		extractor: ext,
-		graph:     graph,
-		vecs:      vecs,
-		log:       log,
-		config:    cfg,
+		extractor:       ext,
+		graph:           graph,
+		vecs:            vecs,
+		log:             log,
+		config:          cfg,
+		anomalyDetector: NewWriteRateDetector(),
+		budgetTracker:   NewConflictBudgetTracker(),
 	}
 }
 
@@ -47,10 +52,12 @@ type IngestRequest struct {
 
 // IngestResult describes the outcome of a pipeline run.
 type IngestResult struct {
-	NodesWritten int
-	EdgesWritten int
-	Rejected     int
-	Entities     []extract.Entity
+	NodesWritten          int
+	EdgesWritten          int
+	Rejected              int
+	Entities              []extract.Entity
+	AnomalySignals        []AnomalySignal // non-nil when write-rate anomalies were detected
+	ConflictBudgetExceeded bool            // true when conflict detection was skipped due to budget
 }
 
 // Ingest runs raw text through extraction, admission, and persistence.
@@ -78,6 +85,13 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) (*IngestResult
 		}
 		src = &defaultSrc
 	}
+
+	// Step 2b: Record write for anomaly detection. All accumulated signals
+	// (including any burst detected here) are returned in IngestResult.
+	p.anomalyDetector.RecordWrite(req.Namespace, req.SourceID)
+
+	// Step 2c: Check conflict budget for this namespace.
+	conflictAllowed := p.budgetTracker.Allow(req.Namespace, p.config.ConflictBudget)
 
 	// Step 3: Admit and write each node
 	var written, rejected int
@@ -165,9 +179,11 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) (*IngestResult
 	}
 
 	return &IngestResult{
-		NodesWritten: written,
-		EdgesWritten: edgesWritten,
-		Rejected:     rejected,
-		Entities:     result.Entities,
+		NodesWritten:          written,
+		EdgesWritten:          edgesWritten,
+		Rejected:              rejected,
+		Entities:              result.Entities,
+		AnomalySignals:        p.anomalyDetector.Signals(),
+		ConflictBudgetExceeded: !conflictAllowed,
 	}, nil
 }
