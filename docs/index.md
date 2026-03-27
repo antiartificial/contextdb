@@ -6,7 +6,7 @@ nav_order: 1
 
 # contextdb
 
-**A temporal graph-vector database for AI systems that need memory.**
+**The epistemics layer for AI systems — memory that knows what it knows, what it doesn't, and why it believes what it does.**
 {: .fs-6 .fw-300 }
 
 contextdb stores claims, facts, memories, and beliefs as nodes in a graph. Every item carries an embedding vector, a temporal validity window, a confidence score, and a provenance chain. Retrieval scores across all four dimensions simultaneously -- the caller supplies the weights.
@@ -154,6 +154,23 @@ All weights are normalised at query time. You supply `alpha` (decay rate) and th
 | [Scaled deployment](deployment/scaled) | Qdrant + Redis + Postgres for high throughput |
 | [Benchmarks](benchmarks) | MTEB, adversarial, LongMemEval, fitness suite |
 | [Admin UI](deployment/scaled) | Built-in dashboard on observe port |
+
+## Epistemics layer
+
+Features that make AI memory auditable and trustworthy:
+
+| Feature | Description |
+|:--------|:------------|
+| [Belief reconciliation](concepts/belief-reconciliation) | Structured disagreements between agents with evidence chains — "git diff for beliefs" |
+| [Narrative retrieval](concepts/narrative-retrieval) | "Walk me through what you know about X and why" with full citations |
+| [Knowledge gap detection](concepts/knowledge-gaps) | "What don't I know?" — sparse region detection with acquisition suggestions |
+| [Calibration pipeline](concepts/calibration) | Brier score, ECE, Platt scaling — confidence becomes calibrated probability |
+| [GDPR erasure](concepts/gdpr) | Audit-trailed right-to-erasure across graph, vectors, KV, and event log |
+| [Interference detection](concepts/interference) | Low-credibility sources can't erode well-established claims |
+| [Claim federation](concepts/federation) | Gossip-based multi-instance replication with Beta-space credibility merge |
+| [Cascade retraction](concepts/retraction) | Non-destructive "I take this back" that cascades through derived claims |
+| [Active learning](concepts/active-learning) | System recommends what information to acquire next |
+| [Query DSL](api/dsl) | Pipe syntax and CQL with temporal, graph, and weight clauses |
 
 ---
 

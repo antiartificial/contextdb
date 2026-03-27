@@ -1,7 +1,7 @@
 # contextdb
 **[Documentation](docs/) | [Architecture](docs/architecture/) | [API](docs/api/) | [Quick Start](docs/quick-start.md)**
 
-**A temporal graph-vector database for AI systems that need memory.**
+**The epistemics layer for AI systems — memory that knows what it knows, what it doesn't, and why it believes what it does.**
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
@@ -30,6 +30,9 @@ curl "http://localhost:8080/v1/search?q=project+status"
 | "I don't know" | "Based on yesterday's standup (high credibility)..." |
 | Static RAG dumps | Temporal versioning - facts evolve |
 | All sources equal | Bayesian credibility propagation |
+| "I can't explain my reasoning" | Narrative retrieval with evidence chains and citations |
+| Uncalibrated confidence | Platt scaling: 0.7 confidence means 70% true |
+| Forget-nothing or forget-everything | GDPR erasure, interference protection, cascade retraction |
 
 See [docs/concepts/credibility.md](docs/concepts/credibility.md) and [docs/concepts/sm2.md](docs/concepts/sm2.md).
 ## Architecture
@@ -143,6 +146,14 @@ Zero external dependencies for embedded mode. One `go get` and you're running.
 | **RBAC** | Token-based read/write/admin permissions per tenant | No access control |
 | **Snapshot/restore** | NDJSON export and import per namespace | No portability |
 | **Admin UI** | Built-in dashboard on observe port | External tooling |
+| **Belief reconciliation** | "git diff" for beliefs — structured disagreements with evidence chains | No belief tracking |
+| **Narrative retrieval** | "Walk me through what you know about X and why" with citations | Ranked list of chunks |
+| **Knowledge gap detection** | "What don't I know?" — sparse region detection with acquisition suggestions | No gap awareness |
+| **Calibration pipeline** | Brier score, ECE, Platt scaling — confidence becomes calibrated probability | Uncalibrated scores |
+| **GDPR erasure** | Audit-trailed right-to-erasure across all storage layers | Manual deletion |
+| **Interference detection** | Low-credibility sources can't overwrite well-established claims | Last-write-wins |
+| **Claim federation** | Gossip-based multi-instance replication with Beta-space credibility merge | Single instance only |
+| **Retraction** | Non-destructive "I take this back" with cascade through derived claims | Hard delete or nothing |
 
 ## Scoring function
 
@@ -213,6 +224,7 @@ contextdb/
 │   ├── admin/               # admin dashboard UI
 │   ├── snapshot/            # NDJSON export/import
 │   ├── namespace/           # mode presets
+│   ├── federation/          # gossip-based claim federation
 │   └── observe/             # metrics, pprof, health
 ├── pkg/client/              # Go SDK
 ├── sdk/
