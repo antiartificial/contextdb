@@ -111,5 +111,15 @@ export default withMermaid(
     mermaid: {
       theme: 'dark',
     },
+
+    mermaidPlugin: {
+      class: 'mermaid',
+    },
+
+    vite: {
+      build: {
+        chunkSizeWarningLimit: 1500,
+      },
+    },
   })
 )
