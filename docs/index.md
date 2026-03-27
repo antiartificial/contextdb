@@ -9,12 +9,10 @@ nav_order: 1
 **The epistemics layer for AI systems — memory that knows what it knows, what it doesn't, and why it believes what it does.**
 {: .fs-6 .fw-300 }
 
-contextdb stores claims, facts, memories, and beliefs as nodes in a graph. Every item carries an embedding vector, a temporal validity window, a confidence score, and a provenance chain. Retrieval scores across all four dimensions simultaneously -- the caller supplies the weights.
+contextdb stores claims, facts, memories, and beliefs as nodes in a graph. Every item carries an embedding vector, a temporal validity window, a confidence score, and a provenance chain. Retrieval scores across all four dimensions simultaneously. The caller supplies the weights.
 
-[Get started]{: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[Get started]({{ site.baseurl }}/quick-start){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View on GitHub](https://github.com/antiartificial/contextdb){: .btn .fs-5 .mb-4 .mb-md-0 }
-
-[Get started]: {% link quick-start.md %}
 
 <div class="stat-row">
   <div class="stat-box">
@@ -69,7 +67,7 @@ Conflicting claims are detected at write time, tracked as graph edges, and accou
 
 ## Five lines to a working database
 
-Zero external dependencies. No Docker. No config files. One `go get` and you're running. Auto-embedding lets you skip the vector -- just send text.
+Zero external dependencies. No Docker. No config files. One `go get` and you're running. Auto-embedding lets you skip the vector. Just send text.
 
 <div class="code-tabs">
 <div class="tab-buttons">
@@ -191,7 +189,7 @@ score = w_sim  * cosine_similarity(candidate, query)
       + w_util * utility_feedback
 ```
 
-All weights are normalised at query time. You supply `alpha` (decay rate) and the four weights -- or use namespace mode defaults.
+All weights are normalised at query time. You supply `alpha` (decay rate) and the four weights, or use namespace mode defaults.
 
 ## Deployment modes
 
