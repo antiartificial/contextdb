@@ -77,8 +77,10 @@ Zero external dependencies. No Docker. No config files. One `go get` and you're 
   <button class="tab-btn" data-tab="curl"><i class="fa-solid fa-terminal"></i> curl</button>
 </div>
 
-<div class="tab-content active" data-lang="go">
-<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code>db := client.MustOpen(client.Options{})
+<div class="tab-content active" data-lang="go" markdown="block">
+
+```go
+db := client.MustOpen(client.Options{})
 defer db.Close()
 
 ns := db.Namespace("my-app", namespace.ModeGeneral)
@@ -88,29 +90,38 @@ ns.Write(ctx, client.WriteRequest{
 })
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
     Text: "What changed in Go 1.22?", TopK: 5,
-})</code></pre></div></div>
-</div>
+})
+```
 
-<div class="tab-content" data-lang="python">
-<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from contextdb import ContextDB
+</div>
+<div class="tab-content" data-lang="python" markdown="block">
+
+```python
+from contextdb import ContextDB
 
 db = ContextDB("http://localhost:7701")
 ns = db.namespace("my-app", mode="general")
 ns.write(content="Go 1.22 added routing patterns", source_id="docs-crawler")
-results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)</code></pre></div></div>
-</div>
+results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)
+```
 
-<div class="tab-content" data-lang="typescript">
-<div class="language-typescript highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import { ContextDB } from "contextdb";
+</div>
+<div class="tab-content" data-lang="typescript" markdown="block">
+
+```typescript
+import { ContextDB } from "contextdb";
 
 const db = new ContextDB("http://localhost:7701");
 const ns = db.namespace("my-app", "general");
 await ns.write({ content: "Go 1.22 added routing patterns", sourceId: "docs-crawler" });
-const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });</code></pre></div></div>
-</div>
+const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });
+```
 
-<div class="tab-content" data-lang="curl">
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Write
+</div>
+<div class="tab-content" data-lang="curl" markdown="block">
+
+```bash
+# Write
 curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
   -H "Content-Type: application/json" \
   -d '{"content": "Go 1.22 added routing patterns", "source_id": "docs-crawler"}'
@@ -118,7 +129,9 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
 # Retrieve
 curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
   -H "Content-Type: application/json" \
-  -d '{"text": "What changed in Go 1.22?", "top_k": 5}'</code></pre></div></div>
+  -d '{"text": "What changed in Go 1.22?", "top_k": 5}'
+```
+
 </div>
 </div>
 
