@@ -31,6 +31,8 @@ graph TD
     style V2 fill:#2ecc71,stroke:#333,color:#fff
 ```
 
+<TemporalExplorer />
+
 | Dimension | Field | Meaning |
 |:----------|:------|:--------|
 | **Valid time** | `ValidFrom` / `ValidUntil` | When the fact was true *in the world* |

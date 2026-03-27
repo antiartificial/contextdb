@@ -2,6 +2,10 @@
 title: Source Credibility
 ---
 
+<script setup>
+import CredibilityEvolution from '../.vitepress/components/CredibilityEvolution.vue'
+</script>
+
 # Source Credibility
 
 contextdb tracks the trustworthiness of information sources and uses it to gate admission and weight retrieval.
@@ -50,6 +54,8 @@ graph LR
     style C fill:#e67e22,stroke:#333,color:#fff
     style D fill:#27ae60,stroke:#333,color:#fff
 ```
+
+<CredibilityEvolution />
 
 ## Sources
 

@@ -27,6 +27,8 @@ All weights are normalised to sum to 1.0 at query time. You control `alpha` (dec
 | **Recency** | [0, 1] | Exponential decay from `valid_from` to now |
 | **Utility** | [0, 1] | Past usefulness feedback (agent memory mode) |
 
+<ScoringFunnel />
+
 ### How the dimensions interact
 
 Each dimension captures something the others miss. Here's how they play out in practice:
