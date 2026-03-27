@@ -41,25 +41,25 @@ Most vector databases treat embeddings as the whole story. But AI systems that i
 
 <div class="feature-grid">
 <div class="feature-card" markdown="1">
-<span class="feature-icon">&#x23F0;</span>
+<span class="feature-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
 ### Facts expire
 contextdb tracks `valid_time` (when the fact was true) and `transaction_time` (when the system learned it) independently. Point-in-time queries are first-class.
 </div>
 
 <div class="feature-card" markdown="1">
-<span class="feature-icon">&#x1F6E1;</span>
+<span class="feature-icon"><i class="fa-solid fa-shield-halved"></i></span>
 ### Sources lie
 Source credibility is tracked via Bayesian updates and used as an admission gate. Sources that produce validated info gain trust; those that contradict reliable facts lose it.
 </div>
 
 <div class="feature-card" markdown="1">
-<span class="feature-icon">&#x1F4C9;</span>
+<span class="feature-icon"><i class="fa-solid fa-chart-line-down"></i></span>
 ### Memory decays
 Different knowledge decays at different rates. Episodic memories fade in hours; procedural skills persist for months. Background workers consolidate episodic into durable semantic knowledge.
 </div>
 
 <div class="feature-card" markdown="1">
-<span class="feature-icon">&#x2696;</span>
+<span class="feature-icon"><i class="fa-solid fa-code-compare"></i></span>
 ### Contradictions happen
 Conflicting claims are detected at write time, tracked as graph edges, and accounted for in retrieval scoring. The system knows what it disagrees about.
 </div>
@@ -71,14 +71,14 @@ Zero external dependencies. No Docker. No config files. One `go get` and you're 
 
 <div class="code-tabs">
 <div class="tab-buttons">
-  <button class="tab-btn active" data-tab="go">Go</button>
-  <button class="tab-btn" data-tab="python">Python</button>
-  <button class="tab-btn" data-tab="typescript">TypeScript</button>
-  <button class="tab-btn" data-tab="curl">curl</button>
+  <button class="tab-btn active" data-tab="go"><i class="fa-brands fa-golang"></i> Go</button>
+  <button class="tab-btn" data-tab="python"><i class="fa-brands fa-python"></i> Python</button>
+  <button class="tab-btn" data-tab="typescript"><i class="fa-brands fa-js"></i> TypeScript</button>
+  <button class="tab-btn" data-tab="curl"><i class="fa-solid fa-terminal"></i> curl</button>
 </div>
-<div class="tab-content active" data-lang="go" markdown="1">
-```go
-db := client.MustOpen(client.Options{})
+
+<div class="tab-content active" data-lang="go">
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code>db := client.MustOpen(client.Options{})
 defer db.Close()
 
 ns := db.Namespace("my-app", namespace.ModeGeneral)
@@ -88,32 +88,29 @@ ns.Write(ctx, client.WriteRequest{
 })
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
     Text: "What changed in Go 1.22?", TopK: 5,
-})
-```
+})</code></pre></div></div>
 </div>
-<div class="tab-content" data-lang="python" markdown="1">
-```python
-from contextdb import ContextDB
+
+<div class="tab-content" data-lang="python">
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from contextdb import ContextDB
 
 db = ContextDB("http://localhost:7701")
 ns = db.namespace("my-app", mode="general")
 ns.write(content="Go 1.22 added routing patterns", source_id="docs-crawler")
-results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)
-```
+results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)</code></pre></div></div>
 </div>
-<div class="tab-content" data-lang="typescript" markdown="1">
-```typescript
-import { ContextDB } from "contextdb";
+
+<div class="tab-content" data-lang="typescript">
+<div class="language-typescript highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import { ContextDB } from "contextdb";
 
 const db = new ContextDB("http://localhost:7701");
 const ns = db.namespace("my-app", "general");
 await ns.write({ content: "Go 1.22 added routing patterns", sourceId: "docs-crawler" });
-const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });
-```
+const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });</code></pre></div></div>
 </div>
-<div class="tab-content" data-lang="curl" markdown="1">
-```bash
-# Write
+
+<div class="tab-content" data-lang="curl">
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code># Write
 curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
   -H "Content-Type: application/json" \
   -d '{"content": "Go 1.22 added routing patterns", "source_id": "docs-crawler"}'
@@ -121,8 +118,7 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
 # Retrieve
 curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
   -H "Content-Type: application/json" \
-  -d '{"text": "What changed in Go 1.22?", "top_k": 5}'
-```
+  -d '{"text": "What changed in Go 1.22?", "top_k": 5}'</code></pre></div></div>
 </div>
 </div>
 
