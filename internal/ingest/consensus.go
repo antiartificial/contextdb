@@ -82,10 +82,11 @@ func MultiSourceConsensus(claims []ClaimAssertion) TruthEstimate {
 type ClaimAssertion struct {
 	ClaimID            uuid.UUID
 	SourceID           uuid.UUID
-	SourceCredibility  float64 // mean of Beta distribution
+	SourceCredibility  float64 // mean of Beta distribution (optionally domain-scoped)
 	SourceVariance     float64 // uncertainty in credibility
 	AssertionType      string  // "supports", "contradicts", "abstains"
 	EpistemicType      string  // mirrors core.Node.EpistemicType
+	Domain             string  // optional domain scope for credibility lookup
 	Timestamp          time.Time
 }
 
@@ -147,6 +148,13 @@ func (r *ConsensusResolver) collectAssertions(ctx context.Context, claimID uuid.
 		return nil, err
 	}
 
+	// Attempt to read the domain from the target claim node so credibility
+	// lookups can be scoped to the relevant domain.
+	var claimDomain string
+	if claimNode, err := r.graph.GetNode(ctx, "default", claimID); err == nil && claimNode != nil {
+		claimDomain, _ = claimNode.Properties["domain"].(string)
+	}
+
 	var assertions []ClaimAssertion
 
 	for _, edge := range edges {
@@ -169,7 +177,8 @@ func (r *ConsensusResolver) collectAssertions(ctx context.Context, claimID uuid.
 		// Try to look up the source using the node's source information from properties.
 		if srcID, ok := srcNode.Properties["source_id"].(string); ok && srcID != "" {
 			if srcObj, err := r.graph.GetSourceByExternalID(ctx, edge.Namespace, srcID); err == nil && srcObj != nil {
-				sourceCred = srcObj.EffectiveCredibility()
+				// Use domain-scoped credibility when a domain is known; falls back to global.
+				sourceCred = srcObj.DomainCredibility(claimDomain)
 				sourceVariance = srcObj.CredibilityVariance()
 			}
 		}
@@ -185,6 +194,7 @@ func (r *ConsensusResolver) collectAssertions(ctx context.Context, claimID uuid.
 			SourceCredibility: sourceCred,
 			SourceVariance:    sourceVariance,
 			AssertionType:     assertionType,
+			Domain:            claimDomain,
 			Timestamp:         edge.TxTime,
 		})
 	}

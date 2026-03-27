@@ -477,6 +477,80 @@ func (g *GraphStore) UpdateCredibility(_ context.Context, ns string, id uuid.UUI
 	})
 }
 
+func (g *GraphStore) Diff(_ context.Context, ns string, t1, t2 time.Time) ([]store.NodeDiff, error) {
+	// Scan all versioned node keys under the namespace prefix and filter by TxTime.
+	nsPrefix := []byte(fmt.Sprintf("%s%s/", prefixNode, ns))
+	var diffs []store.NodeDiff
+
+	err := g.db.View(func(txn *badgerdb.Txn) error {
+		opts := badgerdb.DefaultIteratorOptions
+		opts.Prefix = nsPrefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(nsPrefix); it.ValidForPrefix(nsPrefix); it.Next() {
+			var n core.Node
+			if err := it.Item().Value(func(val []byte) error {
+				return json.Unmarshal(val, &n)
+			}); err != nil {
+				return err
+			}
+			if n.TxTime.After(t1) && !n.TxTime.After(t2) {
+				change := store.DiffAdded
+				if n.Version > 1 {
+					change = store.DiffModified
+				}
+				if n.ValidUntil != nil && !n.ValidUntil.After(t2) {
+					change = store.DiffRemoved
+				}
+				diffs = append(diffs, store.NodeDiff{Node: n, Change: change})
+			}
+		}
+		return nil
+	})
+	return diffs, err
+}
+
+func (g *GraphStore) ValidAt(_ context.Context, ns string, t time.Time, labels []string) ([]core.Node, error) {
+	// Scan latest node keys for the namespace and filter by IsValidAt.
+	nsPrefix := []byte(fmt.Sprintf("%s%s/", prefixNodeLatest, ns))
+	var result []core.Node
+
+	err := g.db.View(func(txn *badgerdb.Txn) error {
+		opts := badgerdb.DefaultIteratorOptions
+		opts.Prefix = nsPrefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(nsPrefix); it.ValidForPrefix(nsPrefix); it.Next() {
+			var n core.Node
+			if err := it.Item().Value(func(val []byte) error {
+				return json.Unmarshal(val, &n)
+			}); err != nil {
+				return err
+			}
+			if !n.IsValidAt(t) {
+				continue
+			}
+			if len(labels) > 0 && !badgerHasAllLabels(n, labels) {
+				continue
+			}
+			result = append(result, n)
+		}
+		return nil
+	})
+	return result, err
+}
+
+func badgerHasAllLabels(n core.Node, labels []string) bool {
+	for _, l := range labels {
+		if !n.HasLabel(l) {
+			return false
+		}
+	}
+	return true
+}
+
 func sliceToSet(ss []string) map[string]bool {
 	if len(ss) == 0 {
 		return nil

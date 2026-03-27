@@ -22,6 +22,14 @@ type ScoreParams struct {
 	// AsOf is the temporal anchor for validity and age calculations.
 	// Zero value defaults to time.Now().
 	AsOf time.Time
+
+	// ProvenanceDepth is the number of derives_from hops from the
+	// original source. Each hop attenuates confidence by ProvenanceDecay.
+	// Zero = direct claim (no attenuation).
+	ProvenanceDepth int
+
+	// ProvenanceDecay is the per-hop attenuation factor. Zero defaults to 0.9.
+	ProvenanceDecay float64
 }
 
 func (p ScoreParams) withDefaults() ScoreParams {
@@ -84,6 +92,15 @@ func ScoreNode(n Node, similarity, utility float64, p ScoreParams) ScoredNode {
 	conf := n.Confidence
 	if conf == 0 {
 		conf = 0.5
+	}
+
+	// Second-order provenance: attenuate confidence through derivation chains
+	if p.ProvenanceDepth > 0 {
+		decay := p.ProvenanceDecay
+		if decay <= 0 {
+			decay = 0.9
+		}
+		conf *= math.Pow(decay, float64(p.ProvenanceDepth))
 	}
 
 	// expiry-aware penalty: reduce confidence as ValidUntil approaches

@@ -54,6 +54,11 @@ func (d *ConflictDetector) Detect(ctx context.Context, candidate core.Node, near
 			continue
 		}
 
+		// Skip if valid_time windows don't overlap — both claims can be true at different times
+		if !temporalOverlap(candidate, nn.Node) {
+			continue
+		}
+
 		// Determine if it's a contradiction
 		weight, err := d.assessContradiction(ctx, candidate, nn.Node)
 		if err != nil {
@@ -78,10 +83,33 @@ func (d *ConflictDetector) Detect(ctx context.Context, candidate core.Node, near
 			return result, fmt.Errorf("create contradicts edge: %w", err)
 		}
 
+		// Decay the contradicted node's confidence based on the strength
+		// of the contradiction and the candidate's own confidence
+		decay := weight * candidate.Confidence * 0.3 // max 30% reduction per contradiction
+		nn.Node.Confidence = max(0.1, nn.Node.Confidence-decay)
+		if err := d.graph.UpsertNode(ctx, nn.Node); err != nil {
+			// Non-fatal — the edge was already created
+			_ = err
+		}
+
 		result.ConflictIDs = append(result.ConflictIDs, nn.Node.ID)
 	}
 
 	return result, nil
+}
+
+// temporalOverlap returns true if two nodes' validity windows overlap.
+// A nil ValidUntil means "still valid" (open-ended).
+func temporalOverlap(a, b core.Node) bool {
+	// a starts after b ends
+	if b.ValidUntil != nil && a.ValidFrom.After(*b.ValidUntil) {
+		return false
+	}
+	// b starts after a ends
+	if a.ValidUntil != nil && b.ValidFrom.After(*a.ValidUntil) {
+		return false
+	}
+	return true
 }
 
 // assessContradiction returns P(contradiction) between two nodes.

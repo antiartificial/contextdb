@@ -160,6 +160,28 @@ func TestPresetParams_AllWeightsPositive(t *testing.T) {
 	}
 }
 
+func TestScoreNode_ProvenanceAttenuation(t *testing.T) {
+	now := time.Now()
+	n := core.Node{
+		ID: uuid.New(), ValidFrom: now, Confidence: 0.9,
+	}
+
+	// Direct claim (depth 0)
+	direct := core.ScoreNode(n, 0.8, 1.0, core.ScoreParams{
+		SimilarityWeight: 0.4, ConfidenceWeight: 0.6,
+	})
+
+	// Derived claim (depth 3)
+	derived := core.ScoreNode(n, 0.8, 1.0, core.ScoreParams{
+		SimilarityWeight: 0.4, ConfidenceWeight: 0.6,
+		ProvenanceDepth: 3,
+	})
+
+	if derived.Score >= direct.Score {
+		t.Errorf("derived (%v) should score lower than direct (%v)", derived.Score, direct.Score)
+	}
+}
+
 func abs64(v float64) float64 {
 	if v < 0 {
 		return -v

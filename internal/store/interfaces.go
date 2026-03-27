@@ -62,7 +62,30 @@ type GraphStore interface {
 	// UpdateCredibility applies a delta to a source's credibility score,
 	// clamped to [0, 1].
 	UpdateCredibility(ctx context.Context, ns string, id uuid.UUID, delta float64) error
+
+	// Diff returns nodes that changed between t1 and t2 (by transaction time).
+	// Returns added, modified, and removed nodes as NodeDiff entries.
+	Diff(ctx context.Context, ns string, t1, t2 time.Time) ([]NodeDiff, error)
+
+	// ValidAt returns all nodes that were valid at the given time.
+	// Labels optionally filters results. If labels is nil, all valid nodes are returned.
+	ValidAt(ctx context.Context, ns string, t time.Time, labels []string) ([]core.Node, error)
 }
+
+// NodeDiff represents a change between two points in time.
+type NodeDiff struct {
+	Node   core.Node
+	Change DiffChange
+}
+
+// DiffChange describes the type of change.
+type DiffChange string
+
+const (
+	DiffAdded    DiffChange = "added"
+	DiffModified DiffChange = "modified"
+	DiffRemoved  DiffChange = "removed"
+)
 
 // WalkQuery parameterises a graph traversal.
 type WalkQuery struct {

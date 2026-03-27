@@ -204,6 +204,14 @@ func (g *GraphStore) GetSourceByExternalID(ctx context.Context, ns, externalID s
 	return resp.Source, nil
 }
 
+func (g *GraphStore) Diff(_ context.Context, _ string, _, _ time.Time) ([]store.NodeDiff, error) {
+	return nil, fmt.Errorf("not supported on remote store")
+}
+
+func (g *GraphStore) ValidAt(_ context.Context, _ string, _ time.Time, _ []string) ([]core.Node, error) {
+	return nil, fmt.Errorf("not supported on remote store")
+}
+
 func (g *GraphStore) UpdateCredibility(ctx context.Context, ns string, id uuid.UUID, delta float64) error {
 	var resp struct {
 		Source *core.Source `json:"source"`

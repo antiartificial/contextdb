@@ -6,6 +6,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -325,6 +326,69 @@ func (g *GraphStore) UpdateCredibility(_ context.Context, ns string, id uuid.UUI
 		}
 	}
 	return fmt.Errorf("source %s not found", id)
+}
+
+func (g *GraphStore) Diff(_ context.Context, ns string, t1, t2 time.Time) ([]store.NodeDiff, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	var diffs []store.NodeDiff
+	for key, versions := range g.nodes {
+		if !strings.HasPrefix(key, ns+"/") {
+			continue
+		}
+		for _, v := range versions {
+			if v.TxTime.After(t1) && !v.TxTime.After(t2) {
+				change := store.DiffAdded
+				if v.Version > 1 {
+					change = store.DiffModified
+				}
+				if v.ValidUntil != nil && !v.ValidUntil.After(t2) {
+					change = store.DiffRemoved
+				}
+				diffs = append(diffs, store.NodeDiff{Node: v, Change: change})
+			}
+		}
+	}
+	return diffs, nil
+}
+
+func (g *GraphStore) ValidAt(_ context.Context, ns string, t time.Time, labels []string) ([]core.Node, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	var result []core.Node
+	seen := make(map[string]bool)
+	for key, versions := range g.nodes {
+		if !strings.HasPrefix(key, ns+"/") {
+			continue
+		}
+		if seen[key] {
+			continue
+		}
+		// Find the latest version valid at time t.
+		for i := len(versions) - 1; i >= 0; i-- {
+			v := versions[i]
+			if v.IsValidAt(t) {
+				if len(labels) > 0 && !hasAllLabels(v, labels) {
+					break
+				}
+				result = append(result, v)
+				seen[key] = true
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func hasAllLabels(n core.Node, labels []string) bool {
+	for _, l := range labels {
+		if !n.HasLabel(l) {
+			return false
+		}
+	}
+	return true
 }
 
 func sliceToSet(ss []string) map[string]bool {

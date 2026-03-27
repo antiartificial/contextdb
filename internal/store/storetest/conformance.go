@@ -310,6 +310,105 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 		is.NoErr(err)
 		is.True(got == nil)
 	})
+
+	t.Run("Diff", func(t *testing.T) {
+		is := is.New(t)
+		g := factory(t)
+		ctx := context.Background()
+
+		id := uuid.New()
+		t0 := time.Now().Add(-2 * time.Hour)
+
+		// Create version 1 before t1.
+		n1 := core.Node{
+			ID: id, Namespace: "test",
+			Labels:     []string{"Claim"},
+			Properties: map[string]any{"text": "v1"},
+			Confidence: 0.5,
+			ValidFrom:  t0,
+			TxTime:     t0,
+		}
+		is.NoErr(g.UpsertNode(ctx, n1))
+
+		t1 := time.Now().Add(-time.Hour)
+
+		// Create version 2 between t1 and t2.
+		n2 := core.Node{
+			ID: id, Namespace: "test",
+			Labels:     []string{"Claim"},
+			Properties: map[string]any{"text": "v2"},
+			Confidence: 0.8,
+			ValidFrom:  t1.Add(time.Minute),
+			TxTime:     t1.Add(time.Minute),
+		}
+		is.NoErr(g.UpsertNode(ctx, n2))
+
+		t2 := time.Now()
+
+		diffs, err := g.Diff(ctx, "test", t1, t2)
+		is.NoErr(err)
+		is.True(len(diffs) >= 1)
+
+		// The version-2 entry should be DiffModified.
+		found := false
+		for _, d := range diffs {
+			if d.Node.ID == id && d.Change == store.DiffModified {
+				found = true
+				break
+			}
+		}
+		is.True(found)
+	})
+
+	t.Run("ValidAt", func(t *testing.T) {
+		is := is.New(t)
+		g := factory(t)
+		ctx := context.Background()
+
+		now := time.Now()
+		past := now.Add(-2 * time.Hour)
+		expired := now.Add(-time.Minute) // ValidUntil already passed
+
+		// Node that is currently valid.
+		nValid := core.Node{
+			ID: uuid.New(), Namespace: "test",
+			Labels:     []string{"Claim"},
+			Properties: map[string]any{"text": "valid"},
+			Confidence: 0.9,
+			ValidFrom:  past,
+			TxTime:     past,
+		}
+		is.NoErr(g.UpsertNode(ctx, nValid))
+
+		// Node whose ValidUntil is in the past — not valid at now.
+		nExpired := core.Node{
+			ID: uuid.New(), Namespace: "test",
+			Labels:     []string{"Claim"},
+			Properties: map[string]any{"text": "expired"},
+			Confidence: 0.9,
+			ValidFrom:  past,
+			ValidUntil: &expired,
+			TxTime:     past,
+		}
+		is.NoErr(g.UpsertNode(ctx, nExpired))
+
+		results, err := g.ValidAt(ctx, "test", now, nil)
+		is.NoErr(err)
+
+		// Only nValid should appear.
+		foundValid := false
+		foundExpired := false
+		for _, n := range results {
+			if n.ID == nValid.ID {
+				foundValid = true
+			}
+			if n.ID == nExpired.ID {
+				foundExpired = true
+			}
+		}
+		is.True(foundValid)
+		is.True(!foundExpired)
+	})
 }
 
 // RunVectorIndexTests runs the VectorIndex conformance suite.

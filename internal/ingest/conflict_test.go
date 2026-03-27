@@ -130,6 +130,149 @@ func TestNoConflictDifferentLabels(t *testing.T) {
 	is.Equal(len(result.ConflictIDs), 0)
 }
 
+func TestTemporalOverlap(t *testing.T) {
+	is := is.New(t)
+
+	now := time.Now()
+	past := now.Add(-48 * time.Hour)
+	recent := now.Add(-24 * time.Hour)
+	future := now.Add(24 * time.Hour)
+
+	// Helper to build a minimal node with given valid window.
+	node := func(from time.Time, until *time.Time) core.Node {
+		return core.Node{
+			ID:        uuid.New(),
+			Namespace: "test",
+			ValidFrom: from,
+			ValidUntil: until,
+		}
+	}
+	ptr := func(t time.Time) *time.Time { return &t }
+
+	// Both open-ended — always overlap.
+	is.True(temporalOverlap(node(past, nil), node(recent, nil)))
+
+	// a is entirely in the past, b starts after a ended.
+	//   a: [past, recent]   b: [now, ...]
+	is.True(!temporalOverlap(node(past, ptr(recent)), node(now, nil)))
+
+	// b is entirely in the past, a starts after b ended.
+	//   b: [past, recent]   a: [now, ...]
+	is.True(!temporalOverlap(node(now, nil), node(past, ptr(recent))))
+
+	// Touching boundary — a ends exactly when b starts: boundaries are inclusive so they overlap.
+	is.True(temporalOverlap(node(past, ptr(recent)), node(recent, nil)))
+
+	// Overlapping: a starts before b ends.
+	//   a: [past, future]   b: [recent, ...]
+	is.True(temporalOverlap(node(past, ptr(future)), node(recent, nil)))
+
+	// a open-ended, b has a closed future window — overlap.
+	is.True(temporalOverlap(node(now, nil), node(past, ptr(future))))
+}
+
+func TestConflictDetector_TemporalSkip(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	graph := memstore.NewGraphStore()
+	detector := NewConflictDetector(graph, nil)
+
+	now := time.Now()
+	pastEnd := now.Add(-24 * time.Hour)   // ended yesterday
+	pastStart := now.Add(-48 * time.Hour) // started two days ago
+
+	// Existing node: valid two days ago → yesterday (now expired).
+	existingID := uuid.New()
+	existing := core.Node{
+		ID:         existingID,
+		Namespace:  "test",
+		Labels:     []string{"Claim"},
+		Properties: map[string]any{"text": "The policy was X"},
+		Confidence: 0.9,
+		ValidFrom:  pastStart,
+		ValidUntil: &pastEnd, // expired
+		TxTime:     pastStart,
+	}
+	err := graph.UpsertNode(ctx, existing)
+	is.NoErr(err)
+
+	// Candidate: valid from now onward (no overlap with existing).
+	candidate := core.Node{
+		ID:         uuid.New(),
+		Namespace:  "test",
+		Labels:     []string{"Claim"},
+		Properties: map[string]any{"text": "The policy is Y"},
+		Confidence: 0.8,
+		ValidFrom:  now,
+		TxTime:     now,
+	}
+
+	nearest := []core.ScoredNode{
+		{
+			Node:            existing,
+			SimilarityScore: 0.7,
+			RetrievalSource: "vector",
+		},
+	}
+
+	result, err := detector.Detect(ctx, candidate, nearest)
+	is.NoErr(err)
+	// Non-overlapping time windows — should be skipped, no conflict.
+	is.Equal(len(result.ConflictIDs), 0)
+}
+
+func TestConflictDetector_ConfidenceDecay(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	graph := memstore.NewGraphStore()
+	detector := NewConflictDetector(graph, nil)
+
+	now := time.Now()
+
+	existingID := uuid.New()
+	existing := core.Node{
+		ID:         existingID,
+		Namespace:  "test",
+		Labels:     []string{"Claim"},
+		Properties: map[string]any{"text": "The sky is green"},
+		Confidence: 0.9,
+		ValidFrom:  now,
+		TxTime:     now,
+	}
+	err := graph.UpsertNode(ctx, existing)
+	is.NoErr(err)
+
+	candidate := core.Node{
+		ID:         uuid.New(),
+		Namespace:  "test",
+		Labels:     []string{"Claim"},
+		Properties: map[string]any{"text": "The sky is blue"},
+		Confidence: 0.8,
+		ValidFrom:  now,
+		TxTime:     now,
+	}
+
+	nearest := []core.ScoredNode{
+		{
+			Node:            existing,
+			SimilarityScore: 0.7,
+			RetrievalSource: "vector",
+		},
+	}
+
+	result, err := detector.Detect(ctx, candidate, nearest)
+	is.NoErr(err)
+	is.True(len(result.ConflictIDs) > 0) // contradiction detected
+
+	// Confidence of the contradicted node should have decayed.
+	updated, err := graph.GetNode(ctx, "test", existingID)
+	is.NoErr(err)
+	is.True(updated.Confidence < 0.9) // must be lower than original 0.9
+	is.True(updated.Confidence >= 0.1) // must not go below floor
+}
+
 func TestLabelOverlapRatio(t *testing.T) {
 	is := is.New(t)
 

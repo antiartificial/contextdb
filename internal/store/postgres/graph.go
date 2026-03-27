@@ -357,6 +357,74 @@ func (g *GraphStore) UpdateCredibility(ctx context.Context, ns string, id uuid.U
 	return nil
 }
 
+func (g *GraphStore) Diff(ctx context.Context, ns string, t1, t2 time.Time) ([]store.NodeDiff, error) {
+	rows, err := g.pool.Query(ctx, `
+		SELECT id, namespace, labels, properties, model_id, valid_from, valid_until, tx_time, confidence, version
+		FROM nodes
+		WHERE namespace = $1 AND tx_time > $2 AND tx_time <= $3
+		ORDER BY tx_time
+	`, ns, t1, t2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var diffs []store.NodeDiff
+	for rows.Next() {
+		n, err := scanNodeRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		change := store.DiffAdded
+		if n.Version > 1 {
+			change = store.DiffModified
+		}
+		if n.ValidUntil != nil && !n.ValidUntil.After(t2) {
+			change = store.DiffRemoved
+		}
+		diffs = append(diffs, store.NodeDiff{Node: n, Change: change})
+	}
+	return diffs, rows.Err()
+}
+
+func (g *GraphStore) ValidAt(ctx context.Context, ns string, t time.Time, labels []string) ([]core.Node, error) {
+	rows, err := g.pool.Query(ctx, `
+		SELECT DISTINCT ON (id) id, namespace, labels, properties, model_id,
+		       valid_from, valid_until, tx_time, confidence, version
+		FROM nodes
+		WHERE namespace = $1
+		  AND valid_from <= $2
+		  AND (valid_until IS NULL OR valid_until > $2)
+		ORDER BY id, version DESC
+	`, ns, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []core.Node
+	for rows.Next() {
+		n, err := scanNodeRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		if len(labels) > 0 {
+			skip := false
+			for _, l := range labels {
+				if !n.HasLabel(l) {
+					skip = true
+					break
+				}
+			}
+			if skip {
+				continue
+			}
+		}
+		result = append(result, n)
+	}
+	return result, rows.Err()
+}
+
 // ─── scan helpers ─────────────────────────────────────────────────────────────
 
 func (g *GraphStore) scanNode(ctx context.Context, query string, args ...any) (*core.Node, error) {
