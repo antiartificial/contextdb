@@ -52,9 +52,9 @@ func (p *cqlParser) parse() (*Query, error) {
 				return nil, err
 			}
 		case TokExclude:
-			// EXCLUDE is parsed but stored same as FOLLOW with exclude flag
-			// For now, skip — stub per spec
-			return nil, errAt(p.cur().Pos, "EXCLUDE not yet implemented")
+			if err := p.parseExcludeClause(q); err != nil {
+				return nil, err
+			}
 		case TokWeight:
 			if err := p.parseWeightClause(q); err != nil {
 				return nil, err
@@ -407,6 +407,30 @@ func (p *cqlParser) parseRerankClause(q *Query) error {
 			return err
 		}
 		q.RerankHint = hintTok.Lit
+	}
+	return nil
+}
+
+func (p *cqlParser) parseExcludeClause(q *Query) error {
+	p.advance() // consume EXCLUDE
+
+	// Expect SOURCES keyword
+	if p.cur().Type != TokSources {
+		return errAt(p.cur().Pos, "expected SOURCES after EXCLUDE")
+	}
+	p.advance() // consume SOURCES
+
+	// Parse comma-separated quoted strings
+	for {
+		tok, err := p.expect(TokString)
+		if err != nil {
+			return err
+		}
+		q.ExcludeSourceIDs = append(q.ExcludeSourceIDs, tok.Lit)
+		if p.cur().Type != TokComma {
+			break
+		}
+		p.advance()
 	}
 	return nil
 }

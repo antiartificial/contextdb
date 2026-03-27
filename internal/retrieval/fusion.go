@@ -18,8 +18,9 @@ type Query struct {
 	Vector      []float32
 	Vectors     [][]float32 // multi-vector queries: fan-out and merge
 	QueryText   string      // original text for reranking
-	SeedIDs     []uuid.UUID
-	TopK        int
+	SeedIDs        []uuid.UUID
+	SessionNodeIDs []uuid.UUID // IDs of recently-retrieved nodes from the current session
+	TopK           int
 	Labels      []string
 	Strategy    HybridStrategy
 	ScoreParams core.ScoreParams
@@ -27,11 +28,12 @@ type Query struct {
 
 // HybridStrategy controls the relative contribution of each retrieval path.
 type HybridStrategy struct {
-	VectorWeight  float64
-	GraphWeight   float64
-	SessionWeight float64
-	Traversal     store.TraversalStrategy
-	MaxDepth      int
+	VectorWeight   float64
+	GraphWeight    float64
+	SessionWeight  float64
+	Traversal      store.TraversalStrategy
+	MaxDepth       int
+	DiversityLambda float64 // MMR lambda: 0 = disabled, 0.7 = typical diversity
 }
 
 func defaultStrategy() HybridStrategy {
@@ -134,7 +136,23 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 		}
 	}
 
-	results := e.fuse(allVectorResults, graphResults, nil, q)
+	// Look up session nodes for reweighting
+	var sessionNodes []core.Node
+	if len(q.SessionNodeIDs) > 0 && e.Graph != nil {
+		for _, sid := range q.SessionNodeIDs {
+			n, err := e.Graph.GetNode(ctx, q.Namespace, sid)
+			if err == nil && n != nil {
+				sessionNodes = append(sessionNodes, *n)
+			}
+		}
+	}
+
+	results := e.fuse(allVectorResults, graphResults, sessionNodes, q)
+
+	// Apply MMR diversity reranking if configured
+	if q.Strategy.DiversityLambda > 0 {
+		results = mmrRerank(results, q.Strategy.DiversityLambda, q.TopK)
+	}
 
 	// Rerank if configured and we have a query text
 	if e.Reranker != nil && q.QueryText != "" && len(results) > 0 {
@@ -191,6 +209,34 @@ func (e *Engine) fuse(
 		merge(n, q.Strategy.SessionWeight, "session")
 	}
 
+	// Downweight candidates that are too similar to session nodes
+	if len(sessionResults) > 0 {
+		for _, c := range seen {
+			if len(c.node.Vector) == 0 {
+				continue
+			}
+			var maxSim float64
+			for _, sn := range sessionResults {
+				if len(sn.Vector) == 0 {
+					continue
+				}
+				sim := core.CosineSimilarity(c.node.Vector, sn.Vector)
+				if sim > maxSim {
+					maxSim = sim
+				}
+			}
+			// Reduce similarity score for nodes very similar to session
+			// (threshold 0.8 avoids penalizing loosely related results)
+			if maxSim > 0.8 {
+				penalty := 1.0 - (maxSim-0.8)*2.5 // linear from 1.0 at 0.8 to 0.5 at 1.0
+				if penalty < 0.5 {
+					penalty = 0.5
+				}
+				c.similarity *= penalty
+			}
+		}
+	}
+
 	result := make([]core.ScoredNode, 0, len(seen))
 	for _, c := range seen {
 		sn := core.ScoreNode(c.node, c.similarity, c.utility, q.ScoreParams)
@@ -207,4 +253,65 @@ func (e *Engine) fuse(
 		result = result[:q.TopK]
 	}
 	return result
+}
+
+// mmrRerank applies Maximal Marginal Relevance to reorder results,
+// balancing relevance (original score) against diversity (vector dissimilarity
+// to already-selected results). Lambda controls the trade-off: 1.0 = pure
+// relevance, 0.0 = pure diversity. The function preserves original scores;
+// it only changes ordering.
+func mmrRerank(results []core.ScoredNode, lambda float64, topK int) []core.ScoredNode {
+	if lambda <= 0 || len(results) <= 1 {
+		return results
+	}
+	if topK <= 0 || topK > len(results) {
+		topK = len(results)
+	}
+
+	selected := make([]core.ScoredNode, 0, topK)
+	remaining := make([]bool, len(results)) // true = still available
+	for i := range remaining {
+		remaining[i] = true
+	}
+
+	// Start with the highest-scoring result (results are already sorted by score).
+	selected = append(selected, results[0])
+	remaining[0] = false
+
+	for len(selected) < topK {
+		bestIdx := -1
+		bestMMR := -2.0 // scores can be negative in theory
+
+		for i, avail := range remaining {
+			if !avail {
+				continue
+			}
+			// Max cosine similarity to any already-selected node
+			maxSim := -1.0
+			candVec := results[i].Node.Vector
+			for _, sel := range selected {
+				if sim := core.CosineSimilarity(candVec, sel.Node.Vector); sim > maxSim {
+					maxSim = sim
+				}
+			}
+			// If vectors are missing, maxSim stays -1 → no diversity penalty
+			if maxSim < 0 {
+				maxSim = 0
+			}
+
+			mmrScore := lambda*results[i].Score - (1-lambda)*maxSim
+			if mmrScore > bestMMR {
+				bestMMR = mmrScore
+				bestIdx = i
+			}
+		}
+
+		if bestIdx < 0 {
+			break
+		}
+		selected = append(selected, results[bestIdx])
+		remaining[bestIdx] = false
+	}
+
+	return selected
 }

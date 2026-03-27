@@ -16,7 +16,8 @@ type Query struct {
 	Limit      int
 	Rerank     bool
 	RerankHint string   // optional model hint (CQL only)
-	Return     []string // projection field names; nil = all
+	Return           []string // projection field names; nil = all
+	ExcludeSourceIDs []string // source IDs to exclude from results
 }
 
 // Predicate is a single filter condition in a WHERE / where clause.

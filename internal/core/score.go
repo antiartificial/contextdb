@@ -86,6 +86,15 @@ func ScoreNode(n Node, similarity, utility float64, p ScoreParams) ScoredNode {
 		conf = 0.5
 	}
 
+	// expiry-aware penalty: reduce confidence as ValidUntil approaches
+	if n.ValidUntil != nil {
+		hoursUntilExpiry := n.ValidUntil.Sub(p.AsOf).Hours()
+		if hoursUntilExpiry > 0 {
+			// Exponential penalty with β = 0.02 (noticeable within ~48h of expiry)
+			conf *= clamp01(1.0 - math.Exp(-0.02*hoursUntilExpiry))
+		}
+	}
+
 	// clamp inputs
 	similarity = clamp01(similarity)
 	utility = clamp01(utility)

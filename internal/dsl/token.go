@@ -85,6 +85,7 @@ const (
 	TokFollow
 	TokExclude
 	TokLimit
+	TokSources
 )
 
 // keywords maps lowercase strings to their token types.
@@ -123,6 +124,7 @@ var keywords = map[string]TokenType{
 	"follow":    TokFollow,
 	"exclude":   TokExclude,
 	"limit":     TokLimit,
+	"sources":   TokSources,
 }
 
 func (t TokenType) String() string {

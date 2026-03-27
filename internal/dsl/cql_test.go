@@ -243,6 +243,19 @@ func TestCQLFullExample2(t *testing.T) {
 	}
 }
 
+func TestCQLExcludeSources(t *testing.T) {
+	q, err := ParseCQL(`FIND "test" EXCLUDE SOURCES "bot-123", "spam-456"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(q.ExcludeSourceIDs) != 2 {
+		t.Fatalf("got %d excluded sources", len(q.ExcludeSourceIDs))
+	}
+	if q.ExcludeSourceIDs[0] != "bot-123" {
+		t.Errorf("source[0] = %q", q.ExcludeSourceIDs[0])
+	}
+}
+
 func TestCQLErrorOnSingleQuotes(t *testing.T) {
 	_, err := ParseCQL(`FIND 'test'`)
 	if err == nil {
