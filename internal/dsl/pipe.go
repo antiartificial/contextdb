@@ -101,7 +101,7 @@ func (p *pipeParser) parseWhereStage(q *Query) error {
 
 func (p *pipeParser) parsePredicate() (Predicate, error) {
 	fieldTok := p.cur()
-	if fieldTok.Type != TokIdent && !p.isFieldKeyword(fieldTok.Type) {
+	if fieldTok.Type != TokIdent {
 		return Predicate{}, errAt(fieldTok.Pos, "expected field name")
 	}
 	field := fieldTok.Lit
@@ -133,13 +133,6 @@ func (p *pipeParser) parsePredicate() (Predicate, error) {
 		return Predicate{}, err
 	}
 	return Predicate{Field: field, Op: op, Value: val}, nil
-}
-
-// isFieldKeyword returns true for tokens that are valid as field names
-// even though they're also keywords (e.g. "label", "age").
-func (p *pipeParser) isFieldKeyword(t TokenType) bool {
-	// field names that happen to also be keywords
-	return false
 }
 
 func (p *pipeParser) parseWeightStage(q *Query) error {

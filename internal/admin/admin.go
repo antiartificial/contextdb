@@ -46,6 +46,15 @@ func (h *adminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mux.ServeHTTP(w, r)
 }
 
+// parseTime parses an RFC3339 or YYYY-MM-DD formatted time string.
+func parseTime(s string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t, err = time.Parse("2006-01-02", s)
+	}
+	return t, err
+}
+
 // handleIndex serves the main dashboard HTML page.
 func (h *adminHandler) handleIndex(w http.ResponseWriter, r *http.Request) {
 	stats := h.db.Stats()
@@ -78,14 +87,10 @@ func (h *adminHandler) handleTimeTravel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	asof, err := time.Parse(time.RFC3339, asofStr)
+	asof, err := parseTime(asofStr)
 	if err != nil {
-		// Try date-only format
-		asof, err = time.Parse("2006-01-02", asofStr)
-		if err != nil {
-			http.Error(w, "invalid asof format (use RFC3339 or YYYY-MM-DD)", http.StatusBadRequest)
-			return
-		}
+		http.Error(w, "invalid asof format (use RFC3339 or YYYY-MM-DD)", http.StatusBadRequest)
+		return
 	}
 
 	var labels []string
@@ -130,14 +135,6 @@ func (h *adminHandler) handleDiff(w http.ResponseWriter, r *http.Request) {
 	if toStr == "" {
 		http.Error(w, "missing to parameter", http.StatusBadRequest)
 		return
-	}
-
-	parseTime := func(s string) (time.Time, error) {
-		t, err := time.Parse(time.RFC3339, s)
-		if err != nil {
-			t, err = time.Parse("2006-01-02", s)
-		}
-		return t, err
 	}
 
 	from, err := parseTime(fromStr)

@@ -205,10 +205,7 @@ func (d *ConflictDetector) heuristicAssess(a, b core.Node) float64 {
 }
 
 func nodeText(n core.Node) string {
-	if t, ok := n.Properties["text"].(string); ok {
-		return t
-	}
-	return ""
+	return core.NodeText(n)
 }
 
 func sharesLabel(a, b []string) bool {

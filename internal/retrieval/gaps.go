@@ -3,6 +3,7 @@ package retrieval
 import (
 	"context"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -72,8 +73,10 @@ func (d *GapDetector) DetectGaps(ctx context.Context, ns string, q GapQuery) ([]
 		q.MaxGaps = 10
 	}
 
+	now := time.Now()
+
 	// Get sample of current nodes
-	nodes, err := d.graph.ValidAt(ctx, ns, time.Now(), nil)
+	nodes, err := d.graph.ValidAt(ctx, ns, now, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +130,6 @@ func (d *GapDetector) DetectGaps(ctx context.Context, ns string, q GapQuery) ([]
 			// Compute gap metrics
 			var avgSim, avgConf float64
 			var newestAge time.Duration
-			now := time.Now()
 
 			for _, r := range results {
 				avgSim += r.SimilarityScore
@@ -208,11 +210,9 @@ func vectorMidpoint(a, b []float32) []float32 {
 }
 
 func sortGapsByDensity(gaps []KnowledgeGap) {
-	for i := 1; i < len(gaps); i++ {
-		for j := i; j > 0 && gaps[j].DensityScore < gaps[j-1].DensityScore; j-- {
-			gaps[j], gaps[j-1] = gaps[j-1], gaps[j]
-		}
-	}
+	sort.Slice(gaps, func(i, j int) bool {
+		return gaps[i].DensityScore < gaps[j].DensityScore
+	})
 }
 
 func nodeTopicText(n core.Node) string {

@@ -58,3 +58,15 @@ func (n Node) HasLabel(label string) bool {
 	}
 	return false
 }
+
+// NodeText extracts the text content from a node's properties.
+// Checks "text" first, then "content". Returns "" if neither exists.
+func NodeText(n Node) string {
+	if t, ok := n.Properties["text"].(string); ok {
+		return t
+	}
+	if t, ok := n.Properties["content"].(string); ok {
+		return t
+	}
+	return ""
+}

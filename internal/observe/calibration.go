@@ -22,20 +22,16 @@ func BrierScore(predictions []PredictionOutcome) float64 {
 	return sum / float64(len(predictions))
 }
 
-// ExpectedCalibrationError computes the ECE by binning predictions.
-// Lower is better. Range [0, 1].
-func ExpectedCalibrationError(predictions []PredictionOutcome, bins int) float64 {
-	if len(predictions) == 0 || bins <= 0 {
-		return 0
-	}
+// calibrationBin holds aggregated prediction data for a single probability bin.
+type calibrationBin struct {
+	sumPredicted float64
+	sumActual    float64
+	count        int
+}
 
-	type bin struct {
-		sumPredicted float64
-		sumActual    float64
-		count        int
-	}
-
-	buckets := make([]bin, bins)
+// fillBins groups predictions into equally-spaced bins over [0, 1].
+func fillBins(predictions []PredictionOutcome, bins int) []calibrationBin {
+	buckets := make([]calibrationBin, bins)
 	for _, p := range predictions {
 		idx := int(p.Predicted * float64(bins))
 		if idx >= bins {
@@ -45,7 +41,17 @@ func ExpectedCalibrationError(predictions []PredictionOutcome, bins int) float64
 		buckets[idx].sumActual += p.Actual
 		buckets[idx].count++
 	}
+	return buckets
+}
 
+// ExpectedCalibrationError computes the ECE by binning predictions.
+// Lower is better. Range [0, 1].
+func ExpectedCalibrationError(predictions []PredictionOutcome, bins int) float64 {
+	if len(predictions) == 0 || bins <= 0 {
+		return 0
+	}
+
+	buckets := fillBins(predictions, bins)
 	n := float64(len(predictions))
 	var ece float64
 	for _, b := range buckets {
@@ -65,23 +71,7 @@ func MaxCalibrationError(predictions []PredictionOutcome, bins int) float64 {
 		return 0
 	}
 
-	type bin struct {
-		sumPredicted float64
-		sumActual    float64
-		count        int
-	}
-
-	buckets := make([]bin, bins)
-	for _, p := range predictions {
-		idx := int(p.Predicted * float64(bins))
-		if idx >= bins {
-			idx = bins - 1
-		}
-		buckets[idx].sumPredicted += p.Predicted
-		buckets[idx].sumActual += p.Actual
-		buckets[idx].count++
-	}
-
+	buckets := fillBins(predictions, bins)
 	var mce float64
 	for _, b := range buckets {
 		if b.count == 0 {

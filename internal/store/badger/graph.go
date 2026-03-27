@@ -388,7 +388,7 @@ func (g *GraphStore) RetractNode(ctx context.Context, ns string, id uuid.UUID, r
 		Namespace:  ns,
 		Src:        id,
 		Dst:        id,
-		Type:       "retracted",
+		Type:       core.EdgeRetracted,
 		Weight:     1.0,
 		Properties: map[string]any{"reason": reason},
 		ValidFrom:  at,
@@ -560,14 +560,4 @@ func sliceToSet(ss []string) map[string]bool {
 		m[s] = true
 	}
 	return m
-}
-
-func clamp01(v float64) float64 {
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
 }

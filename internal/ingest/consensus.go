@@ -104,8 +104,9 @@ func (ca ClaimAssertion) VoteValue() float64 {
 
 // ConsensusResolver handles multi-source truth inference and credibility feedback.
 type ConsensusResolver struct {
-	graph  store.GraphStore
-	logger *slog.Logger
+	graph     store.GraphStore
+	logger    *slog.Logger
+	Namespace string // namespace used for claim lookups; defaults to "default" when empty
 }
 
 // NewConsensusResolver creates a resolver for truth inference.
@@ -142,8 +143,13 @@ func (r *ConsensusResolver) ResolveTruth(ctx context.Context, claimID uuid.UUID)
 
 // collectAssertions gathers all source assertions for a claim.
 func (r *ConsensusResolver) collectAssertions(ctx context.Context, claimID uuid.UUID) ([]ClaimAssertion, error) {
-	// Find edges where this claim is the target (search in "default" namespace)
-	edges, err := r.graph.GetEdgesTo(ctx, "default", claimID)
+	ns := r.Namespace
+	if ns == "" {
+		ns = "default"
+	}
+
+	// Find edges where this claim is the target.
+	edges, err := r.graph.GetEdgesTo(ctx, ns, claimID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +157,7 @@ func (r *ConsensusResolver) collectAssertions(ctx context.Context, claimID uuid.
 	// Attempt to read the domain from the target claim node so credibility
 	// lookups can be scoped to the relevant domain.
 	var claimDomain string
-	if claimNode, err := r.graph.GetNode(ctx, "default", claimID); err == nil && claimNode != nil {
+	if claimNode, err := r.graph.GetNode(ctx, ns, claimID); err == nil && claimNode != nil {
 		claimDomain, _ = claimNode.Properties["domain"].(string)
 		// If no explicit domain property is set, derive it from the first label.
 		// This ensures domain-scoped credibility is used even when the domain

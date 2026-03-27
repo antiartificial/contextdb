@@ -288,9 +288,25 @@ func mmrRerank(results []core.ScoredNode, lambda float64, topK int) []core.Score
 		remaining[i] = true
 	}
 
+	// maxSimToSelected[i] tracks the maximum cosine similarity of results[i]
+	// to any already-selected item. Updated incrementally after each selection
+	// to avoid O(k) recomputation per candidate per iteration.
+	maxSimToSelected := make([]float64, len(results))
+
 	// Start with the highest-scoring result (results are already sorted by score).
 	selected = append(selected, results[0])
 	remaining[0] = false
+
+	// Initialize maxSimToSelected against the first selected item.
+	for i, avail := range remaining {
+		if !avail {
+			continue
+		}
+		sim := core.CosineSimilarity(results[i].Node.Vector, results[0].Node.Vector)
+		if sim > maxSimToSelected[i] {
+			maxSimToSelected[i] = sim
+		}
+	}
 
 	for len(selected) < topK {
 		bestIdx := -1
@@ -300,19 +316,8 @@ func mmrRerank(results []core.ScoredNode, lambda float64, topK int) []core.Score
 			if !avail {
 				continue
 			}
-			// Max cosine similarity to any already-selected node
-			maxSim := -1.0
-			candVec := results[i].Node.Vector
-			for _, sel := range selected {
-				if sim := core.CosineSimilarity(candVec, sel.Node.Vector); sim > maxSim {
-					maxSim = sim
-				}
-			}
-			// If vectors are missing, maxSim stays -1 → no diversity penalty
-			if maxSim < 0 {
-				maxSim = 0
-			}
-
+			maxSim := maxSimToSelected[i]
+			// If vectors are missing, maxSim stays 0 → no diversity penalty
 			mmrScore := lambda*results[i].Score - (1-lambda)*maxSim
 			if mmrScore > bestMMR {
 				bestMMR = mmrScore
@@ -325,6 +330,18 @@ func mmrRerank(results []core.ScoredNode, lambda float64, topK int) []core.Score
 		}
 		selected = append(selected, results[bestIdx])
 		remaining[bestIdx] = false
+
+		// Update maxSimToSelected for all remaining candidates against the
+		// newly selected item, so the next iteration stays O(n) not O(n*k).
+		for i, avail := range remaining {
+			if !avail {
+				continue
+			}
+			sim := core.CosineSimilarity(results[i].Node.Vector, results[bestIdx].Node.Vector)
+			if sim > maxSimToSelected[i] {
+				maxSimToSelected[i] = sim
+			}
+		}
 	}
 
 	return selected

@@ -171,7 +171,7 @@ func (g *GraphStore) RetractNode(ctx context.Context, ns string, id uuid.UUID, r
 		Namespace:  ns,
 		Src:        id,
 		Dst:        id,
-		Type:       "retracted",
+		Type:       core.EdgeRetracted,
 		Weight:     1.0,
 		Properties: map[string]any{"reason": reason},
 		ValidFrom:  at,

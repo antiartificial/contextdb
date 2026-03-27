@@ -214,11 +214,7 @@ func nodeToCitedClaim(n core.Node, relation string) CitedClaim {
 		ValidUntil:    n.ValidUntil,
 		Relation:      relation,
 	}
-	if text, ok := n.Properties["text"].(string); ok {
-		cc.Text = text
-	} else if content, ok := n.Properties["content"].(string); ok {
-		cc.Text = content
-	}
+	cc.Text = core.NodeText(n)
 	if sid, ok := n.Properties["source_id"].(string); ok {
 		cc.SourceID = sid
 	}

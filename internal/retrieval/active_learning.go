@@ -67,7 +67,7 @@ func (l *ActiveLearner) Suggest(ctx context.Context, ns string, budget int) ([]A
 
 		// 1. Low confidence claims that might benefit from verification
 		if conf < 0.4 {
-			text := activeNodeText(n)
+			text := core.NodeText(n)
 			suggestions = append(suggestions, AcquisitionSuggestion{
 				Type:           AcquireLowConfidence,
 				Priority:       1.0 - conf, // lower confidence = higher priority
@@ -82,7 +82,7 @@ func (l *ActiveLearner) Suggest(ctx context.Context, ns string, budget int) ([]A
 			hoursUntilExpiry := n.ValidUntil.Sub(now).Hours()
 			if hoursUntilExpiry > 0 && hoursUntilExpiry < 168 { // within 7 days
 				priority := 1.0 - (hoursUntilExpiry / 168.0)
-				text := activeNodeText(n)
+				text := core.NodeText(n)
 				suggestions = append(suggestions, AcquisitionSuggestion{
 					Type:           AcquireRefreshStale,
 					Priority:       priority,
@@ -99,7 +99,7 @@ func (l *ActiveLearner) Suggest(ctx context.Context, ns string, budget int) ([]A
 			// Check if it has contradictions — if so, it needs verification
 			edges, err := l.graph.EdgesFrom(ctx, ns, n.ID, []string{core.EdgeContradicts})
 			if err == nil && len(edges) > 0 {
-				text := activeNodeText(n)
+				text := core.NodeText(n)
 				suggestions = append(suggestions, AcquisitionSuggestion{
 					Type:           AcquireVerifyClaim,
 					Priority:       0.7,
@@ -122,17 +122,6 @@ func (l *ActiveLearner) Suggest(ctx context.Context, ns string, budget int) ([]A
 	}
 
 	return suggestions, nil
-}
-
-// activeNodeText extracts the human-readable text from a node's properties.
-func activeNodeText(n core.Node) string {
-	if t, ok := n.Properties["text"].(string); ok {
-		return t
-	}
-	if t, ok := n.Properties["content"].(string); ok {
-		return t
-	}
-	return ""
 }
 
 // activeTruncate shortens s to at most maxLen characters, appending "..." if truncated.

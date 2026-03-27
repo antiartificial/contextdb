@@ -23,10 +23,6 @@ func (p *parser) cur() Token {
 	return p.tokens[p.pos]
 }
 
-func (p *parser) peek() Token {
-	return p.cur()
-}
-
 func (p *parser) advance() Token {
 	tok := p.cur()
 	if p.pos < len(p.tokens) {
@@ -45,19 +41,6 @@ func (p *parser) expect(typ TokenType) (Token, error) {
 	}
 	p.advance()
 	return tok, nil
-}
-
-func (p *parser) match(types ...TokenType) bool {
-	for _, t := range types {
-		if p.cur().Type == t {
-			return true
-		}
-	}
-	return false
-}
-
-func (p *parser) isKeyword(kw TokenType) bool {
-	return p.cur().Type == kw
 }
 
 // parseValue parses a scalar value (string, number, relative time, now, date).

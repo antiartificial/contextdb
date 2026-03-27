@@ -19,6 +19,7 @@ const (
 	EdgeRefines      = "refines"       // source narrows or clarifies destination
 	EdgeGeneralizes  = "generalizes"   // source broadens destination
 	EdgeIsExampleOf  = "is_example_of" // source is a concrete instance of destination
+	EdgeRetracted    = "retracted"     // node was retracted (audit marker)
 )
 
 // Edge is a directed, typed, weighted relationship between two nodes.

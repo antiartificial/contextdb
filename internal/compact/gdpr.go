@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/store"
 )
 
@@ -112,7 +113,7 @@ func (p *GDPRProcessor) ProcessErasure(ctx context.Context, req ErasureRequest) 
 			continue
 		}
 		for _, e := range edges {
-			if e.Type == "retracted" && e.Src == e.Dst {
+			if e.Type == core.EdgeRetracted && e.Src == e.Dst {
 				continue // skip the self-retraction marker
 			}
 			if err := p.graph.InvalidateEdge(ctx, req.Namespace, e.ID, req.EffectiveAt); err != nil {
@@ -126,7 +127,7 @@ func (p *GDPRProcessor) ProcessErasure(ctx context.Context, req ErasureRequest) 
 			continue
 		}
 		for _, e := range edgesTo {
-			if e.Type == "retracted" && e.Src == e.Dst {
+			if e.Type == core.EdgeRetracted && e.Src == e.Dst {
 				continue // skip the self-retraction marker
 			}
 			if err := p.graph.InvalidateEdge(ctx, req.Namespace, e.ID, req.EffectiveAt); err != nil {
