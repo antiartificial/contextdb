@@ -1,0 +1,44 @@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<script src="https://kit.fontawesome.com/501e400daa.js" crossorigin="anonymous"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Code language tabs
+  document.querySelectorAll('.code-tabs').forEach(function(tabs) {
+    var buttons = tabs.querySelectorAll('.tab-btn');
+    var contents = tabs.querySelectorAll('.tab-content');
+    buttons.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var target = btn.getAttribute('data-tab');
+        buttons.forEach(function(b) { b.classList.remove('active'); });
+        contents.forEach(function(c) { c.classList.remove('active'); });
+        btn.classList.add('active');
+        var panel = tabs.querySelector('[data-lang="' + target + '"]');
+        if (panel) panel.classList.add('active');
+      });
+    });
+  });
+
+  // Dark/light mode toggle
+  var toggle = document.getElementById('theme-toggle');
+  if (toggle) {
+    var saved = localStorage.getItem('contextdb-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-color-scheme', saved);
+      updateIcon(toggle, saved);
+    }
+    toggle.addEventListener('click', function() {
+      var current = document.documentElement.getAttribute('data-color-scheme') || 'dark';
+      var next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-color-scheme', next);
+      localStorage.setItem('contextdb-theme', next);
+      updateIcon(toggle, next);
+    });
+  }
+  function updateIcon(el, scheme) {
+    el.innerHTML = scheme === 'dark'
+      ? '<i class="fa-solid fa-sun"></i>'
+      : '<i class="fa-solid fa-moon"></i>';
+    el.title = scheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  }
+});
+</script>

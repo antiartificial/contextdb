@@ -3,6 +3,8 @@ bin/
 *.out
 /tmp/
 *.html
+!docs/**/*.html
+!docs/**/*.scss
 
 # editor
 .idea/
