@@ -134,33 +134,92 @@ Zero external dependencies for embedded mode. One `go get` and you're running.
 
 ## What makes it different
 
-| Feature | contextdb | Typical vector DB |
-|:--------|:----------|:------------------|
-| **Bi-temporal storage** | `valid_time` + `transaction_time` tracked independently | Single timestamp or none |
-| **Source credibility** | Admission gate rejects trolls and spam at write time | Trust everything equally |
-| **Conflict detection** | Contradictions identified and tracked as graph edges | No contradiction awareness |
-| **Credibility learning** | Bayesian updates adjust source trust over time | Static trust scores |
-| **Auto-embedding** | Text automatically embedded via OpenAI, local, or custom providers | Bring your own vectors |
-| **Memory decay** | Exponential decay with configurable half-lives per memory type | No decay model |
-| **Hybrid retrieval** | Vector + graph + session fan-out with unified scoring | Vector-only |
-| **Reranking** | Optional LLM cross-encoder reranking after fusion | No reranking |
-| **Label filtering** | Filter retrieval results by node labels | No label support |
-| **Memory consolidation** | Episodic → semantic promotion via LLM | No consolidation |
-| **Active recall** | Spaced-repetition utility boosting | No recall model |
-| **Caller-supplied weights** | Similarity, confidence, recency, utility -- per query | Fixed ranking |
-| **Query DSL** | Pipe syntax (REPL) and CQL (apps) with temporal, graph, and weight clauses | API-only |
-| **Namespace modes** | belief_system, agent_memory, general, procedural | One-size-fits-all |
-| **RBAC** | Token-based read/write/admin permissions per tenant | No access control |
-| **Snapshot/restore** | NDJSON export and import per namespace | No portability |
-| **Admin UI** | Built-in dashboard on observe port | External tooling |
-| **Belief reconciliation** | "git diff" for beliefs — structured disagreements with evidence chains | No belief tracking |
-| **Narrative retrieval** | "Walk me through what you know about X and why" with citations | Ranked list of chunks |
-| **Knowledge gap detection** | "What don't I know?" — sparse region detection with acquisition suggestions | No gap awareness |
-| **Calibration pipeline** | Brier score, ECE, Platt scaling — confidence becomes calibrated probability | Uncalibrated scores |
-| **GDPR erasure** | Audit-trailed right-to-erasure across all storage layers | Manual deletion |
-| **Interference detection** | Low-credibility sources can't overwrite well-established claims | Last-write-wins |
-| **Claim federation** | Gossip-based multi-instance replication with Beta-space credibility merge | Single instance only |
-| **Retraction** | Non-destructive "I take this back" with cascade through derived claims | Hard delete or nothing |
+### Data model
+
+**[Bi-temporal storage](docs/concepts/temporal.md)** -- Every node tracks `valid_time` (when the fact was true in the world) and `transaction_time` (when the system learned it). Query what the database knew on any date. *Typical vector DBs: single timestamp or none.*
+
+```go
+// What did we know about rate limits on June 1st?
+results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
+    Text: "API rate limit", TopK: 1, AsOf: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+})
+```
+
+**[Source credibility](docs/concepts/credibility.md)** -- Sources have Bayesian credibility (Beta distribution). The admission gate rejects low-credibility writes before they enter the graph. *Typical vector DBs: trust everything equally.*
+
+```go
+// Moderator writes are always admitted at full confidence
+ns.LabelSource(ctx, "moderator:alice", []string{"moderator"})
+
+// Flag a troll -- all future writes rejected at the gate
+ns.LabelSource(ctx, "user:spammer", []string{"troll"})
+```
+
+**[Conflict detection](docs/concepts/conflict-detection.md)** -- Contradictions are identified at write time via semantic similarity + label overlap, then tracked as `contradicts` edges in the graph. [Example](docs/examples.md#belief-reconciliation-when-agents-disagree). *Typical vector DBs: no contradiction awareness.*
+
+**[Credibility learning](docs/concepts/credibility.md)** -- Sources that produce validated claims gain trust; those that contradict reliable facts lose it. Updates are Bayesian -- uncertainty decreases with more observations. [Example](docs/examples.md#belief-system-channel-fact-tracker). *Typical vector DBs: static trust scores.*
+
+**[Memory decay](docs/concepts/memory-types.md)** -- Different knowledge decays at different rates. Episodic memories (half-life ~9h) fade quickly; procedural skills (half-life ~29d) persist. Background workers consolidate episodic memories into durable semantic knowledge. [Example](docs/examples.md#agent-memory-task-aware-retrieval). *Typical vector DBs: no decay model.*
+
+### Retrieval
+
+**[Hybrid retrieval](docs/architecture/read-path.md)** -- Fan out to vector ANN, graph walk, and session context simultaneously, then fuse with configurable weights. MMR diversity prevents near-duplicate results. [Example](docs/examples.md#rag-pipeline-document-retrieval). *Typical vector DBs: vector-only.*
+
+**[Reranking](docs/architecture/read-path.md)** -- Optional LLM cross-encoder reranking after fusion. Falls back gracefully on LLM failure. *Typical vector DBs: no reranking.*
+
+**[Caller-supplied weights](docs/concepts/scoring.md)** -- Every query can tune the balance between similarity, confidence, recency, and utility. Or use namespace mode defaults. *Typical vector DBs: fixed ranking.*
+
+```go
+// Boost recency for a news-focused query
+results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
+    Text: "latest updates", TopK: 10,
+    ScoreParams: core.ScoreParams{SimilarityWeight: 0.3, RecencyWeight: 0.5, ConfidenceWeight: 0.1, UtilityWeight: 0.1},
+})
+```
+
+**[Query DSL](docs/api/dsl.md)** -- Two syntax tiers. Pipe syntax for the REPL (`search "x" | where confidence > 0.7 | top 5`). CQL for apps (`FIND "x" WHERE ... WEIGHT ... LIMIT 5`). Both compile to the same AST. [Example](docs/examples.md#query-dsl-pipe-syntax-and-cql). *Typical vector DBs: API-only.*
+
+**[Label filtering](docs/api/go-sdk.md)** -- Restrict retrieval to nodes carrying specific labels. Push-down to backend when supported. *Typical vector DBs: no label support.*
+
+### Trust & epistemics
+
+**[Belief reconciliation](docs/examples.md#belief-reconciliation-when-agents-disagree)** -- When agents disagree, get a structured diff: which claims conflict, the evidence chain for each side, the credibility gap. "Git diff for beliefs." *Typical vector DBs: no belief tracking.*
+
+```go
+diff, _ := retrieval.ComputeBeliefDiff(ctx, graph, "ops", nil)
+// diff.Conflicts[0].ClaimA: "Deploy uses blue-green" (conf: 0.9, 3 supporters)
+// diff.Conflicts[0].ClaimB: "Deploy uses canary" (conf: 0.7, 1 supporter)
+```
+
+**[Narrative retrieval](docs/examples.md#narrative-retrieval-explain-what-you-know)** -- "Walk me through what you know about X and why." Returns a structured report with citations, evidence chains, contradictions, and a confidence explanation. [Example](docs/examples.md#narrative-retrieval-explain-what-you-know). *Typical vector DBs: ranked list of chunks.*
+
+**[Calibration pipeline](docs/examples.md#calibration-turning-confidence-into-probability)** -- Measure how well confidence predicts truth (Brier score, ECE). Correct it with Platt scaling or isotonic regression. A claim with 0.7 confidence should be true ~70% of the time. [Example](docs/examples.md#calibration-turning-confidence-into-probability). *Typical vector DBs: uncalibrated scores.*
+
+**[Interference detection](docs/examples.md#interference-detection-protecting-established-knowledge)** -- A low-credibility source can't erode a well-established, well-cited claim. The contradiction is tracked, but the original claim's confidence is protected. [Example](docs/examples.md#interference-detection-protecting-established-knowledge). *Typical vector DBs: last-write-wins.*
+
+**[Knowledge gap detection](docs/examples.md#knowledge-gaps-what-dont-i-know)** -- "What don't I know about X?" Detects sparse regions in the semantic space and suggests what information to acquire next. [Example](docs/examples.md#knowledge-gaps-what-dont-i-know). *Typical vector DBs: no gap awareness.*
+
+### Operations
+
+**[Retraction](docs/examples.md#cascade-retraction-when-a-source-claim-is-wrong)** -- Non-destructive "I take this back" that cascades through `derives_from` edges. The audit trail is preserved -- retraction markers, not deletion. [Example](docs/examples.md#cascade-retraction-when-a-source-claim-is-wrong). *Typical vector DBs: hard delete or nothing.*
+
+**[GDPR erasure](docs/examples.md#gdpr-erasure-audit-trailed-right-to-be-forgotten)** -- Audit-trailed right-to-erasure across graph, vectors, KV cache, and event log. Retracts nodes, deletes embeddings, invalidates edges, preserves the audit shape. [Example](docs/examples.md#gdpr-erasure-audit-trailed-right-to-be-forgotten). *Typical vector DBs: manual deletion.*
+
+**[Claim federation](docs/examples.md#federation-multi-instance-shared-memory)** -- Gossip-based multi-instance replication using hashicorp/memberlist. Source credibility merges additively in Beta space -- two instances observing the same source is more evidence, not a conflict. [Example](docs/examples.md#federation-multi-instance-shared-memory). *Typical vector DBs: single instance only.*
+
+**[Namespace modes](docs/concepts/namespaces.md)** -- `belief_system`, `agent_memory`, `general`, `procedural`. Each ships tuned defaults for scoring weights, decay rates, and compaction. Switch with one parameter. *Typical vector DBs: one-size-fits-all.*
+
+**[Auto-embedding](docs/architecture/embedding.md)** -- Text automatically embedded via OpenAI, local, or custom providers with LRU cache. Send text, get vectors — or bring your own. *Typical vector DBs: bring your own vectors.*
+
+**[Active recall](docs/concepts/sm2.md)** -- SM-2 spaced repetition boosts utility for memories that are successfully recalled. Background worker handles scheduling. [Example](docs/concepts/sm2.md#example). *Typical vector DBs: no recall model.*
+
+**[Memory consolidation](docs/architecture/background-workers.md)** -- RAPTOR compaction clusters similar nodes and summarizes them. Episodic memories promote to durable semantic knowledge. *Typical vector DBs: no consolidation.*
+
+**[RBAC](docs/concepts/rbac.md)** -- Token-based `tenant:permissions:secret` controlling read/write/admin per namespace. *Typical vector DBs: no access control.*
+
+**[Snapshot/restore](docs/api/go-sdk.md#export--import)** -- NDJSON export and import per namespace, including full version history. *Typical vector DBs: no portability.*
+
+**[Admin UI](docs/deployment/scaled.md)** -- Built-in dashboard on the observe port with stats, metrics links, and [time-travel queries](docs/examples.md#time-travel-admin-api). *Typical vector DBs: external tooling.*
 
 ## Scoring function
 
