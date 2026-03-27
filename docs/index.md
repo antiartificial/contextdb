@@ -12,16 +12,16 @@ hero:
       text: View on GitHub
       link: https://github.com/antiartificial/contextdb
 features:
-  - icon: 🕰️
+  - icon: <i class="fa-solid fa-clock-rotate-left"></i>
     title: Facts expire
     details: Bi-temporal storage tracks when facts were true and when the system learned them. Point-in-time queries are first-class.
-  - icon: 🛡️
+  - icon: <i class="fa-solid fa-shield-halved"></i>
     title: Sources lie
     details: Bayesian credibility tracking with an admission gate. Sources earn or lose trust based on how their claims hold up.
-  - icon: ⏳
+  - icon: <i class="fa-solid fa-hourglass-half"></i>
     title: Memory decays
     details: Episodic memories fade in hours. Procedural skills persist for months. Background workers consolidate knowledge automatically.
-  - icon: ⚖️
+  - icon: <i class="fa-solid fa-code-compare"></i>
     title: Contradictions happen
     details: Conflicting claims detected at write time, tracked as graph edges, and scored during retrieval. The system knows what it disagrees about.
 ---
