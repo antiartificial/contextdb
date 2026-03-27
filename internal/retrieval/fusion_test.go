@@ -191,6 +191,76 @@ func TestEngine_TopKRespected(t *testing.T) {
 	}
 }
 
+func TestEngine_ExcludeSourceIDs(t *testing.T) {
+	is := is.New(t)
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	kv := memstore.NewKVStore()
+	ctx := context.Background()
+
+	// Create nodes with different source_id properties
+	nodes := []core.Node{
+		{ID: uuid.New(), Namespace: testNS, Labels: []string{"Claim"},
+			Properties: map[string]any{"text": "from source A", "source_id": "source-A"},
+			Confidence: 0.9, ValidFrom: time.Now()},
+		{ID: uuid.New(), Namespace: testNS, Labels: []string{"Claim"},
+			Properties: map[string]any{"text": "from source B", "source_id": "source-B"},
+			Confidence: 0.9, ValidFrom: time.Now()},
+		{ID: uuid.New(), Namespace: testNS, Labels: []string{"Claim"},
+			Properties: map[string]any{"text": "from source A again", "source_id": "source-A"},
+			Confidence: 0.9, ValidFrom: time.Now()},
+		{ID: uuid.New(), Namespace: testNS, Labels: []string{"Claim"},
+			Properties: map[string]any{"text": "no source id"},
+			Confidence: 0.9, ValidFrom: time.Now()},
+	}
+
+	for i, n := range nodes {
+		if err := graph.UpsertNode(ctx, n); err != nil {
+			t.Fatalf("upsert node: %v", err)
+		}
+		vecs.RegisterNode(n)
+		nID := n.ID
+		if err := vecs.Index(ctx, core.VectorEntry{
+			ID: uuid.New(), Namespace: testNS, NodeID: &nID,
+			Vector: makeVec(i, 8), Text: n.Properties["text"].(string),
+			ModelID: "test", CreatedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("index vector: %v", err)
+		}
+	}
+
+	engine := &retrieval.Engine{Graph: graph, Vectors: vecs, KV: kv}
+
+	// Baseline: no exclusion — all 4 nodes returned
+	qAll := retrieval.Query{
+		Namespace: testNS, Vector: makeVec(0, 8), TopK: 10,
+		ScoreParams: core.GeneralParams(),
+	}
+	qAll.ScoreParams.AsOf = time.Now()
+	allResults, err := engine.Retrieve(ctx, qAll)
+	is.NoErr(err)
+	is.Equal(4, len(allResults))
+
+	// Counterfactual: exclude source-A — should drop 2 nodes
+	qExclude := retrieval.Query{
+		Namespace:        testNS,
+		Vector:           makeVec(0, 8),
+		TopK:             10,
+		ExcludeSourceIDs: []string{"source-A"},
+		ScoreParams:      core.GeneralParams(),
+	}
+	qExclude.ScoreParams.AsOf = time.Now()
+	filtered, err := engine.Retrieve(ctx, qExclude)
+	is.NoErr(err)
+	is.Equal(2, len(filtered))
+
+	// Verify none of the remaining results have source-A
+	for _, r := range filtered {
+		srcID, _ := r.Properties["source_id"].(string)
+		is.True(srcID != "source-A") // excluded source should not appear
+	}
+}
+
 func TestEngine_EmptyStoreReturnsEmpty(t *testing.T) {
 	is := is.New(t)
 	engine := &retrieval.Engine{

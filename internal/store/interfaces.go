@@ -54,6 +54,11 @@ type GraphStore interface {
 	// GetSource returns a source by external ID.
 	GetSourceByExternalID(ctx context.Context, ns, externalID string) (*core.Source, error)
 
+	// RetractNode marks a node as retracted by setting ValidUntil on its
+	// current version and creating a "retracted" edge. The node remains
+	// in history for temporal queries. reason is stored in edge properties.
+	RetractNode(ctx context.Context, ns string, id uuid.UUID, reason string, at time.Time) error
+
 	// UpdateCredibility applies a delta to a source's credibility score,
 	// clamped to [0, 1].
 	UpdateCredibility(ctx context.Context, ns string, id uuid.UUID, delta float64) error
@@ -122,6 +127,7 @@ const (
 	EventNodeUpsert     EventType = "node_upsert"
 	EventEdgeUpsert     EventType = "edge_upsert"
 	EventEdgeInvalidate EventType = "edge_invalidate"
+	EventNodeRetract    EventType = "node_retract"
 	EventSourceUpdate   EventType = "source_update"
 )
 

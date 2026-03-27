@@ -245,6 +245,37 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 	return result, nil
 }
 
+func (g *GraphStore) RetractNode(_ context.Context, ns string, id uuid.UUID, reason string, at time.Time) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	key := nodeKey(ns, id)
+	versions := g.nodes[key]
+	if len(versions) == 0 {
+		return fmt.Errorf("node %s not found in namespace %s", id, ns)
+	}
+
+	// Set ValidUntil on the latest version.
+	latest := &versions[len(versions)-1]
+	latest.ValidUntil = &at
+	g.nodes[key] = versions
+
+	// Create a retraction edge.
+	edgeID := uuid.New()
+	g.edges[edgeID] = core.Edge{
+		ID:         edgeID,
+		Namespace:  ns,
+		Src:        id,
+		Dst:        id,
+		Type:       "retracted",
+		Weight:     1.0,
+		Properties: map[string]any{"reason": reason},
+		ValidFrom:  at,
+		TxTime:     at,
+	}
+	return nil
+}
+
 func (g *GraphStore) UpsertSource(_ context.Context, s core.Source) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()

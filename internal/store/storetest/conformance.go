@@ -248,6 +248,51 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 		is.True(got2.EffectiveCredibility() > 0.5)
 	})
 
+	t.Run("RetractNode", func(t *testing.T) {
+		is := is.New(t)
+		g := factory(t)
+		ctx := context.Background()
+
+		id := uuid.New()
+		now := time.Now()
+		n := core.Node{
+			ID: id, Namespace: "test",
+			Labels:     []string{"Claim"},
+			Properties: map[string]any{"text": "earth is flat"},
+			Confidence: 0.9,
+			ValidFrom:  now.Add(-time.Hour),
+			TxTime:     now.Add(-time.Hour),
+		}
+		is.NoErr(g.UpsertNode(ctx, n))
+
+		retractAt := now
+		is.NoErr(g.RetractNode(ctx, "test", id, "proven wrong", retractAt))
+
+		// Verify: GetNode returns node with ValidUntil set
+		got, err := g.GetNode(ctx, "test", id)
+		is.NoErr(err)
+		is.True(got != nil)
+		is.True(got.ValidUntil != nil)
+
+		// Verify: EdgesFrom returns a "retracted" edge
+		edges, err := g.EdgesFrom(ctx, "test", id, []string{"retracted"})
+		is.NoErr(err)
+		is.Equal(len(edges), 1)
+		is.Equal(edges[0].Type, "retracted")
+		is.Equal(edges[0].Src, id)
+		is.Equal(edges[0].Dst, id)
+		is.Equal(edges[0].Properties["reason"], "proven wrong")
+
+		// Verify: History still has the node
+		hist, err := g.History(ctx, "test", id)
+		is.NoErr(err)
+		is.True(len(hist) >= 1)
+
+		// Verify: retract of non-existent node returns error
+		err = g.RetractNode(ctx, "test", uuid.New(), "no reason", now)
+		is.True(err != nil)
+	})
+
 	t.Run("NamespaceIsolation", func(t *testing.T) {
 		is := is.New(t)
 		g := factory(t)

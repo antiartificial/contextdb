@@ -42,6 +42,15 @@ func MultiSourceConsensus(claims []ClaimAssertion) TruthEstimate {
 		vote := ca.VoteValue()
 		weight := ca.SourceCredibility
 
+		// Observations carry less weight than assertions
+		epistemicMultiplier := 1.0
+		if ca.EpistemicType == core.EpistemicObservation {
+			epistemicMultiplier = 0.6
+		} else if ca.EpistemicType == core.EpistemicInference {
+			epistemicMultiplier = 0.8
+		}
+		weight *= epistemicMultiplier
+
 		weightedSum += weight * vote
 		totalWeight += weight
 	}
@@ -76,6 +85,7 @@ type ClaimAssertion struct {
 	SourceCredibility  float64 // mean of Beta distribution
 	SourceVariance     float64 // uncertainty in credibility
 	AssertionType      string  // "supports", "contradicts", "abstains"
+	EpistemicType      string  // mirrors core.Node.EpistemicType
 	Timestamp          time.Time
 }
 

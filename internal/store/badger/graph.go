@@ -357,6 +357,45 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 	return result, nil
 }
 
+func (g *GraphStore) RetractNode(ctx context.Context, ns string, id uuid.UUID, reason string, at time.Time) error {
+	n, err := g.GetNode(ctx, ns, id)
+	if err != nil {
+		return err
+	}
+	if n == nil {
+		return fmt.Errorf("node %s not found in namespace %s", id, ns)
+	}
+
+	n.ValidUntil = &at
+
+	// Write back the updated node (latest key + versioned key).
+	data, err := json.Marshal(n)
+	if err != nil {
+		return fmt.Errorf("marshal node: %w", err)
+	}
+	if err := g.db.Update(func(txn *badgerdb.Txn) error {
+		if err := txn.Set(nodeKey(ns, id, n.Version), data); err != nil {
+			return err
+		}
+		return txn.Set(nodeLatestKey(ns, id), data)
+	}); err != nil {
+		return err
+	}
+
+	// Create retraction edge.
+	return g.UpsertEdge(ctx, core.Edge{
+		ID:         uuid.New(),
+		Namespace:  ns,
+		Src:        id,
+		Dst:        id,
+		Type:       "retracted",
+		Weight:     1.0,
+		Properties: map[string]any{"reason": reason},
+		ValidFrom:  at,
+		TxTime:     at,
+	})
+}
+
 func (g *GraphStore) UpsertSource(_ context.Context, s core.Source) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()

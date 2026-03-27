@@ -33,6 +33,9 @@ func ToRetrieveRequest(q *Query) client.RetrieveRequest {
 	// Labels extracted from predicates
 	req.Labels = extractLabels(q.Predicates)
 
+	// Counterfactual source exclusion
+	req.ExcludeSourceIDs = q.ExcludeSourceIDs
+
 	return req
 }
 

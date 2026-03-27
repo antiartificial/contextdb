@@ -21,9 +21,10 @@ type Query struct {
 	SeedIDs        []uuid.UUID
 	SessionNodeIDs []uuid.UUID // IDs of recently-retrieved nodes from the current session
 	TopK           int
-	Labels      []string
-	Strategy    HybridStrategy
-	ScoreParams core.ScoreParams
+	Labels           []string
+	ExcludeSourceIDs []string // source IDs to exclude from results (counterfactual queries)
+	Strategy         HybridStrategy
+	ScoreParams      core.ScoreParams
 }
 
 // HybridStrategy controls the relative contribution of each retrieval path.
@@ -233,6 +234,19 @@ func (e *Engine) fuse(
 					penalty = 0.5
 				}
 				c.similarity *= penalty
+			}
+		}
+	}
+
+	// Counterfactual: exclude nodes from specific sources
+	if len(q.ExcludeSourceIDs) > 0 {
+		excludeSet := make(map[string]bool, len(q.ExcludeSourceIDs))
+		for _, id := range q.ExcludeSourceIDs {
+			excludeSet[id] = true
+		}
+		for id, c := range seen {
+			if sourceID, ok := c.node.Properties["source_id"].(string); ok && excludeSet[sourceID] {
+				delete(seen, id)
 			}
 		}
 	}

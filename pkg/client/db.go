@@ -462,6 +462,12 @@ type WriteRequest struct {
 	// MemType sets the memory type for decay rate selection.
 	// Only meaningful for agent-memory namespaces.
 	MemType core.MemoryType
+
+	// DependsOn lists node IDs that must be written before this request.
+	// Used by WriteBatchOrdered to determine write order. Each UUID should
+	// match a "node_id" property on another request in the same batch.
+	// Dependencies on IDs outside the batch are silently ignored.
+	DependsOn []uuid.UUID
 }
 
 // WriteResult describes the outcome of a write operation.
@@ -702,6 +708,10 @@ type RetrieveRequest struct {
 	// AsOf pins retrieval to a historical time (temporal query).
 	// Zero value = now.
 	AsOf time.Time
+
+	// ExcludeSourceIDs filters out nodes from specific sources.
+	// Supports counterfactual queries: "what if source X didn't exist?"
+	ExcludeSourceIDs []string
 }
 
 // Result is a single retrieval result with its score breakdown.
@@ -764,15 +774,16 @@ func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]
 	}
 
 	q := retrieval.Query{
-		Namespace:   h.cfg.ID,
-		Vector:      req.Vector,
-		Vectors:     req.Vectors,
-		QueryText:   req.Text,
-		SeedIDs:     req.SeedIDs,
-		TopK:        topK,
-		Labels:      req.Labels,
-		Strategy:    strategy,
-		ScoreParams: params,
+		Namespace:        h.cfg.ID,
+		Vector:           req.Vector,
+		Vectors:          req.Vectors,
+		QueryText:        req.Text,
+		SeedIDs:          req.SeedIDs,
+		TopK:             topK,
+		Labels:           req.Labels,
+		ExcludeSourceIDs: req.ExcludeSourceIDs,
+		Strategy:         strategy,
+		ScoreParams:      params,
 	}
 
 	scored, err := h.engine.Retrieve(ctx, q)
@@ -863,6 +874,32 @@ func (h *NamespaceHandle) WriteBatch(ctx context.Context, reqs []WriteRequest) (
 		results[i] = res
 	}
 	return results, firstErr
+}
+
+// WriteBatchOrdered writes nodes in dependency order. Requests are
+// topologically sorted by DependsOn before writing. If there is a
+// cycle, an error is returned. Requests without dependencies are
+// written first. Results are indexed to match the original request
+// slice, not the execution order.
+func (h *NamespaceHandle) WriteBatchOrdered(ctx context.Context, reqs []WriteRequest) ([]WriteResult, error) {
+	if len(reqs) <= 1 {
+		return h.WriteBatch(ctx, reqs)
+	}
+
+	ordered, err := topoSort(reqs)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]WriteResult, len(reqs))
+	for _, idx := range ordered {
+		res, err := h.Write(ctx, reqs[idx])
+		results[idx] = res
+		if err != nil {
+			return results, fmt.Errorf("write %d: %w", idx, err)
+		}
+	}
+	return results, nil
 }
 
 // GetNode retrieves a single node by ID from this namespace.

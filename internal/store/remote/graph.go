@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -148,6 +149,34 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 		return nil, err
 	}
 	return resp.Nodes, nil
+}
+
+func (g *GraphStore) RetractNode(ctx context.Context, ns string, id uuid.UUID, reason string, at time.Time) error {
+	// Composite operation over existing RPCs: get, modify, upsert + create edge.
+	n, err := g.GetNode(ctx, ns, id)
+	if err != nil {
+		return err
+	}
+	if n == nil {
+		return fmt.Errorf("node %s not found in namespace %s", id, ns)
+	}
+
+	n.ValidUntil = &at
+	if err := g.UpsertNode(ctx, *n); err != nil {
+		return err
+	}
+
+	return g.UpsertEdge(ctx, core.Edge{
+		ID:         uuid.New(),
+		Namespace:  ns,
+		Src:        id,
+		Dst:        id,
+		Type:       "retracted",
+		Weight:     1.0,
+		Properties: map[string]any{"reason": reason},
+		ValidFrom:  at,
+		TxTime:     at,
+	})
 }
 
 func (g *GraphStore) UpsertSource(ctx context.Context, s core.Source) error {

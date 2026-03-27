@@ -247,6 +247,59 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 	return nodes, rows.Err()
 }
 
+func (g *GraphStore) RetractNode(ctx context.Context, ns string, id uuid.UUID, reason string, at time.Time) error {
+	tx, err := g.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE nodes SET valid_until = $1 WHERE namespace = $2 AND id = $3 AND valid_until IS NULL
+	`, at, ns, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("node %s not found in namespace %s", id, ns)
+	}
+
+	// Create retraction edge via the pool (outside tx) would skip the tx,
+	// so insert directly within the transaction.
+	retractionEdge := core.Edge{
+		ID:         uuid.New(),
+		Namespace:  ns,
+		Src:        id,
+		Dst:        id,
+		Type:       "retracted",
+		Weight:     1.0,
+		Properties: map[string]any{"reason": reason},
+		ValidFrom:  at,
+		TxTime:     at,
+	}
+
+	props, err := json.Marshal(retractionEdge.Properties)
+	if err != nil {
+		return fmt.Errorf("marshal edge properties: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO edges (id, namespace, src, dst, type, weight, properties, valid_from, valid_until, tx_time, invalidated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (id) DO UPDATE SET
+			weight = EXCLUDED.weight,
+			properties = EXCLUDED.properties,
+			invalidated_at = EXCLUDED.invalidated_at
+	`, retractionEdge.ID, retractionEdge.Namespace, retractionEdge.Src, retractionEdge.Dst,
+		retractionEdge.Type, retractionEdge.Weight, props,
+		retractionEdge.ValidFrom, retractionEdge.ValidUntil, retractionEdge.TxTime, retractionEdge.InvalidatedAt)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (g *GraphStore) UpsertSource(ctx context.Context, s core.Source) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()

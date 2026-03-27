@@ -6,6 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	EpistemicAssertion   = "assertion"   // stated as fact (e.g., calendar event)
+	EpistemicObservation = "observation" // reported/observed (e.g., "I think...")
+	EpistemicInference   = "inference"   // derived from other claims
+)
+
 // Node is the fundamental storage unit. Schema-free — callers define what
 // Labels and Properties mean. The database enforces temporal correctness
 // and namespace isolation; it does not interpret content.
@@ -24,7 +30,11 @@ type Node struct {
 
 	// epistemic
 	Confidence float64 // 0.0–1.0; 0 treated as 0.5 (unknown)
-	Version    uint64
+	// EpistemicType classifies the claim's epistemic status.
+	// Values: "assertion", "observation", "inference", or "" (untyped).
+	// Observations carry less weight in consensus than assertions.
+	EpistemicType string
+	Version       uint64
 }
 
 // IsValidAt reports whether the node represents a currently valid fact
