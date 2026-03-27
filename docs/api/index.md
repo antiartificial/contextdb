@@ -13,5 +13,6 @@ contextdb exposes five interfaces:
 - [**REST API**](rest) -- HTTP/JSON on port 7701
 - [**Python SDK**](python-sdk) -- REST client for Python applications
 - [**TypeScript SDK**](typescript-sdk) -- REST client for TypeScript/Node.js applications
+- [**Query DSL**](dsl) -- Pipe syntax and CQL query languages
 
-The Go SDK supports all four deployment modes (embedded, standard, remote, scaled). The Python and TypeScript SDKs connect to a running contextdb server via the REST API.
+The Go SDK supports all four deployment modes (embedded, standard, remote, scaled). The Python and TypeScript SDKs connect to a running contextdb server via the REST API. The Query DSL provides two syntax tiers (pipe and CQL) that compile to the same AST.

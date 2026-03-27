@@ -1,6 +1,5 @@
 # contextdb
 **[Documentation](docs/) | [Architecture](docs/architecture/) | [API](docs/api/) | [Quick Start](docs/quick-start.md)**
-**[Documentation](docs/) | [Architecture](docs/architecture/) | [API](docs/api/) | [Quick Start](docs/quick-start.md)**
 
 **A temporal graph-vector database for AI systems that need memory.**
 
@@ -139,6 +138,7 @@ Zero external dependencies for embedded mode. One `go get` and you're running.
 | **Memory consolidation** | Episodic → semantic promotion via LLM | No consolidation |
 | **Active recall** | Spaced-repetition utility boosting | No recall model |
 | **Caller-supplied weights** | Similarity, confidence, recency, utility -- per query | Fixed ranking |
+| **Query DSL** | Pipe syntax (REPL) and CQL (apps) with temporal, graph, and weight clauses | API-only |
 | **Namespace modes** | belief_system, agent_memory, general, procedural | One-size-fits-all |
 | **RBAC** | Token-based read/write/admin permissions per tenant | No access control |
 | **Snapshot/restore** | NDJSON export and import per namespace | No portability |
@@ -207,6 +207,7 @@ contextdb/
 │   ├── extract/             # LLM entity/relation extraction
 │   ├── ingest/              # admission gate, conflict detection, credibility learning
 │   ├── compact/             # RAPTOR compaction, memory consolidation, active recall
+│   ├── dsl/                 # query languages (pipe syntax + CQL)
 │   ├── retrieval/           # hybrid retrieval, scoring, reranking
 │   ├── server/              # gRPC + REST + RBAC + auth
 │   ├── admin/               # admin dashboard UI
