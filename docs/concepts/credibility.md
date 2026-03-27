@@ -113,7 +113,7 @@ The combined score `credibility * novelty` must exceed the namespace's admission
 |:----------|:----------|:-------|
 | belief_system | 0.15 | Low bar. Credibility gates retrieval instead |
 | general | 0.25 | Balanced |
-| agent_memory | 0.35 | Stricter -- avoid low-value episodes |
+| agent_memory | 0.35 | Stricter. Avoids low-value episodes |
 | procedural | 0.40 | Only well-established procedures admitted |
 
 ## Bayesian credibility learning

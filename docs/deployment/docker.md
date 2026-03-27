@@ -22,7 +22,7 @@ docker run --rm \
   contextdb:dev
 ```
 
-The Docker image is built from `scratch` -- no shell, no OS, just the static binary and TLS certificates. Image size is typically under 20MB.
+The Docker image is built from `scratch`: no shell, no OS, just the static binary and TLS certificates. Image size is typically under 20MB.
 
 ## With Postgres (Docker Compose)
 
@@ -110,6 +110,6 @@ docker run --rm -p 7701:7701 ghcr.io/antiartificial/contextdb:latest
 ```
 
 Tags:
-- `latest` -- latest main branch build
-- `sha-<commit>` -- specific commit
-- `main` -- branch tag
+- `latest`: latest main branch build
+- `sha-<commit>`: specific commit
+- `main`: branch tag

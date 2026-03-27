@@ -44,7 +44,7 @@ flowchart TD
 // Create or get a namespace with the desired mode
 ns := db.Namespace("channel:general", namespace.ModeBeliefSystem)
 
-// The mode sets defaults -- you can override per-query
+// The mode sets defaults. You can override per-query
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
     Vector: queryVec,
     TopK:   10,
@@ -59,7 +59,7 @@ Designed for multi-source fact tracking where trust matters more than freshness.
 - Source credibility is weighted highest (0.45)
 - Troll and spam sources are rejected at the gate
 - Wide graph traversal (depth 4) finds corroborating evidence
-- Low admission threshold (0.15) -- credibility gates retrieval, not ingestion
+- Low admission threshold (0.15). Credibility gates retrieval, not ingestion
 
 **Use cases**: Discord channel bots, knowledge bases with community input, fact-checking systems.
 

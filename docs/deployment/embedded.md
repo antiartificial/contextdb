@@ -66,9 +66,9 @@ CONTEXTDB_DATA_DIR=/data ./contextdb
 ```
 
 Ports:
-- `:7700` -- gRPC API
-- `:7701` -- REST API
-- `:7702` -- Metrics + pprof + health
+- `:7700`: gRPC API
+- `:7701`: REST API
+- `:7702`: Metrics + pprof + health
 
 ## Configuration
 
