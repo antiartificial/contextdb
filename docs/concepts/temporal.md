@@ -116,6 +116,8 @@ node.IsValidAt(time.Now()) // true if currently valid
 
 ## Version history
 
+<VersionHistory />
+
 Track how a fact evolved over time:
 
 ```go

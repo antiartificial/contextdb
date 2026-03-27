@@ -88,6 +88,8 @@ Recency uses exponential decay:
 recency = exp(-alpha * age_in_hours)
 ```
 
+<RecencyDecay />
+
 ```mermaid
 graph LR
     subgraph Decay Rates

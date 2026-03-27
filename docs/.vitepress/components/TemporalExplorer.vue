@@ -74,7 +74,7 @@
             <span class="te-fact-dot"></span>
             <div>
               <div class="te-fact-text">{{ fact.text }}</div>
-              <div class="te-fact-meta">valid {{ fmt(fact.validFrom) }}{{ fact.validUntil ? ' → ' + fmt(fact.validUntil) : '' }}</div>
+              <div class="te-fact-meta">valid {{ fmt(fact.validFrom) }}{{ fact.validUntil ? ' → ' + fmt(fact.validUntil) : '' }}{{ fact.retracted && fact.retractReason ? ' · retracted: ' + fact.retractReason : '' }}</div>
             </div>
           </div>
           <div v-if="worldView.length === 0" key="empty" class="te-empty">No facts valid at this time.</div>
@@ -145,9 +145,19 @@ const facts = [
     id: 'team-8',
     text: 'Team size: 8',
     validFrom:  new Date('2025-04-01'),
-    validUntil: new Date('2025-06-01'),
+    validUntil: null,
     txTime:     new Date('2025-04-01'),
+    retracted:  false,
+  },
+  {
+    id: 'office-a',
+    text: 'Office location: Building A',
+    validFrom:  new Date('2025-01-01'),
+    validUntil: new Date('2025-05-01'),
+    txTime:     new Date('2025-01-01'),
     retracted:  true,
+    retractedAt: new Date('2025-03-15'),
+    retractReason: 'incorrect — building was B',
   },
 ]
 
@@ -181,8 +191,10 @@ function barStyle(from, until) {
 }
 
 // ── Computed views ────────────────────────────────────────────────────────────
-function factState(fact) {
-  return fact.retracted ? 'retracted' : fact.validUntil ? 'past' : 'active'
+function factState(fact, t) {
+  if (fact.retracted) return 'retracted'
+  if (fact.validUntil && fact.validUntil <= t) return 'past'
+  return 'active'
 }
 
 const worldView = computed(() => {
@@ -193,7 +205,7 @@ const worldView = computed(() => {
       const before = !f.validUntil || f.validUntil > t
       return after && before
     })
-    .map(f => ({ ...f, state: factState(f), notYetKnown: false }))
+    .map(f => ({ ...f, state: factState(f, t), notYetKnown: false }))
 })
 
 const systemView = computed(() => {
@@ -201,9 +213,8 @@ const systemView = computed(() => {
   return facts
     .filter(f => f.txTime <= t)
     .map(f => {
-      const validNow = f.validFrom <= t && (!f.validUntil || f.validUntil > t)
       const notYetKnown = false // system already learned it by txTime
-      return { ...f, state: factState(f), notYetKnown }
+      return { ...f, state: factState(f, t), notYetKnown }
     })
 })
 
@@ -261,15 +272,46 @@ onMounted(() => {
 /* Slider */
 .te-slider-wrap { position: absolute; bottom: 0; left: 5rem; right: 0; }
 .te-slider {
-  width: 100%; appearance: none;
-  height: 4px; border-radius: 2px;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
   background: var(--vp-c-divider);
-  cursor: pointer; outline: none;
+  cursor: pointer;
+  outline: none;
+}
+.te-slider::-webkit-slider-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vp-c-divider);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.te-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vp-c-divider);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .te-slider::-webkit-slider-thumb {
-  appearance: none; width: 16px; height: 16px;
-  border-radius: 50%; background: var(--vp-c-brand-1, #646cff);
-  cursor: grab; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-1, #646cff);
+  cursor: grab;
+  border: 2px solid var(--vp-c-bg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.te-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-1, #646cff);
+  cursor: grab;
+  border: 2px solid var(--vp-c-bg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 .te-needle {
   position: absolute; top: -4.5rem; bottom: 1.25rem;

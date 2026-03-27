@@ -64,6 +64,8 @@ graph TD
 
 Gap detection probes the vector space between known nodes to find sparse regions, then suggests what information to acquire.
 
+<KnowledgeGaps />
+
 ## Calibration
 
 Confidence scores are only meaningful if they're *calibrated* — a claim with 0.7 confidence should be true about 70% of the time.
