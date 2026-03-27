@@ -1,7 +1,5 @@
 ---
 title: Kubernetes
-parent: Deployment
-nav_order: 3
 ---
 
 # Kubernetes (Helm)

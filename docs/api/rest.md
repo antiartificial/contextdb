@@ -1,7 +1,5 @@
 ---
 title: REST API
-parent: API Reference
-nav_order: 3
 ---
 
 # REST API

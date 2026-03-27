@@ -1,7 +1,5 @@
 ---
 title: RBAC
-parent: Concepts
-nav_order: 7
 ---
 
 # Role-Based Access Control

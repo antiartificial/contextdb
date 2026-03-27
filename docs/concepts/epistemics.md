@@ -1,15 +1,14 @@
 ---
 title: Epistemics Layer
-parent: Concepts
-nav_order: 9
 ---
 
 # Epistemics Layer
 
 contextdb goes beyond storage to become the **epistemics layer** for AI systems — the component that makes AI memory auditable, trustworthy, and self-aware.
 
-{: .note }
-> **Epistemics** is the branch of philosophy concerned with the nature and scope of knowledge. An epistemics layer doesn't just store facts — it tracks *why* the system believes them, *how confident* it should be, and *what it doesn't know*.
+::: info
+**Epistemics** is the branch of philosophy concerned with the nature and scope of knowledge. An epistemics layer doesn't just store facts — it tracks *why* the system believes them, *how confident* it should be, and *what it doesn't know*.
+:::
 
 ## Belief reconciliation
 
@@ -71,8 +70,9 @@ Confidence scores are only meaningful if they're *calibrated* — a claim with 0
 
 contextdb measures calibration quality via **Brier score** and **Expected Calibration Error**, then corrects it with **Platt scaling** (logistic regression on predicted vs actual outcomes).
 
-{: .tip }
-> Calibration requires at least 50 resolved truth estimates before activation. Until then, raw confidence is used as-is.
+::: tip
+Calibration requires at least 50 resolved truth estimates before activation. Until then, raw confidence is used as-is.
+:::
 
 ## Interference detection
 

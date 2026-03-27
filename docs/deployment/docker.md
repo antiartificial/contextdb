@@ -1,7 +1,5 @@
 ---
 title: Docker
-parent: Deployment
-nav_order: 2
 ---
 
 # Docker

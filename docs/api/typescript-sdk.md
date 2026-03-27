@@ -1,7 +1,5 @@
 ---
 title: TypeScript SDK
-parent: API Reference
-nav_order: 5
 ---
 
 # TypeScript SDK

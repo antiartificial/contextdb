@@ -1,7 +1,5 @@
 ---
 title: Read Path
-parent: Architecture
-nav_order: 3
 ---
 
 # Read Path

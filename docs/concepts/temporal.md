@@ -1,7 +1,5 @@
 ---
 title: Bi-Temporal Model
-parent: Concepts
-nav_order: 2
 ---
 
 # Bi-Temporal Model
@@ -59,8 +57,9 @@ Now queries understand that:
 - After March 15th: the limit is 500 req/s
 - Before March 20th: the system didn't know about the change
 
-{: .note }
-> **How this compares**: Most vector databases have a single `created_at` timestamp or none at all. PostgreSQL supports bi-temporal queries but requires manual schema design and application-level enforcement. contextdb makes bi-temporal semantics automatic — every write gets both timestamps, every query respects them.
+::: info How this compares
+Most vector databases have a single `created_at` timestamp or none at all. PostgreSQL supports bi-temporal queries but requires manual schema design and application-level enforcement. contextdb makes bi-temporal semantics automatic — every write gets both timestamps, every query respects them.
+:::
 
 ## Temporal diff queries
 

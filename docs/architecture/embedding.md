@@ -1,7 +1,5 @@
 ---
 title: Auto-Embedding
-parent: Architecture
-nav_order: 4
 ---
 
 # Auto-Embedding Pipeline

@@ -1,7 +1,5 @@
 ---
 title: Memory Types
-parent: Concepts
-nav_order: 5
 ---
 
 # Memory Types

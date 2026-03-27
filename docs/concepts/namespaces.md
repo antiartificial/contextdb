@@ -1,7 +1,5 @@
 ---
 title: Namespace Modes
-parent: Concepts
-nav_order: 4
 ---
 
 # Namespace Modes

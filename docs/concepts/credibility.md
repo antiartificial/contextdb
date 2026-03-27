@@ -1,7 +1,5 @@
 ---
 title: Source Credibility
-parent: Concepts
-nav_order: 3
 ---
 
 # Source Credibility
@@ -128,8 +126,9 @@ New sources start at Beta(1,1) — a uniform prior meaning "we know nothing." Ea
 
 This is mathematically principled: 1000 validated claims from a source that then gets one wrong doesn't crash its credibility to zero. The Beta distribution naturally handles this — it becomes a small dip in a well-established track record.
 
-{: .note }
-> **How this compares**: Most systems use static trust scores (0-100 set by an admin) or binary allow/deny lists. contextdb's Bayesian approach means credibility is *learned from evidence* — no manual tuning required. A new source starts neutral and earns or loses trust based on how its claims hold up over time.
+::: info How this compares
+Most systems use static trust scores (0-100 set by an admin) or binary allow/deny lists. contextdb's Bayesian approach means credibility is *learned from evidence* — no manual tuning required. A new source starts neutral and earns or loses trust based on how its claims hold up over time.
+:::
 
 ## Domain-scoped credibility
 

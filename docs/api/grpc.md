@@ -1,7 +1,5 @@
 ---
 title: gRPC API
-parent: API Reference
-nav_order: 2
 ---
 
 # gRPC API

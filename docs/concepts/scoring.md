@@ -1,7 +1,5 @@
 ---
 title: Scoring Function
-parent: Concepts
-nav_order: 1
 ---
 
 # Scoring Function
@@ -178,5 +176,6 @@ penalty = 1 - exp(-0.02 * hours_until_expiry)
 
 48 hours before expiry, confidence is reduced by ~60%. This is applied automatically — no configuration needed.
 
-{: .note }
-> **How this compares**: Most vector databases rank purely by embedding similarity. contextdb's four-dimensional scoring means a highly relevant but low-credibility result ranks below a moderately relevant but well-established one. This is the difference between "closest match" and "best answer."
+::: info How this compares
+Most vector databases rank purely by embedding similarity. contextdb's four-dimensional scoring means a highly relevant but low-credibility result ranks below a moderately relevant but well-established one. This is the difference between "closest match" and "best answer."
+:::

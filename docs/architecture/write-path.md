@@ -1,7 +1,5 @@
 ---
 title: Write Path
-parent: Architecture
-nav_order: 2
 ---
 
 # Write Path

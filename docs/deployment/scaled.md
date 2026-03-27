@@ -1,7 +1,5 @@
 ---
 title: Scaled Deployment
-parent: Deployment
-nav_order: 4
 ---
 
 # Scaled Deployment

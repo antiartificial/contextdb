@@ -1,18 +1,30 @@
 ---
-title: Home
 layout: home
-nav_order: 1
+hero:
+  name: contextdb
+  text: The epistemics layer for AI systems
+  tagline: Memory that knows what it knows, what it doesn't, and why it believes what it does.
+  actions:
+    - theme: brand
+      text: Get Started
+      link: /quick-start
+    - theme: alt
+      text: View on GitHub
+      link: https://github.com/antiartificial/contextdb
+features:
+  - icon: <i class="fa-solid fa-clock-rotate-left"></i>
+    title: Facts expire
+    details: Bi-temporal storage tracks when facts were true and when the system learned them. Point-in-time queries are first-class.
+  - icon: <i class="fa-solid fa-shield-halved"></i>
+    title: Sources lie
+    details: Bayesian credibility tracking with an admission gate. Sources earn or lose trust based on how their claims hold up.
+  - icon: <i class="fa-solid fa-chart-line-down"></i>
+    title: Memory decays
+    details: Episodic memories fade in hours. Procedural skills persist for months. Background workers consolidate knowledge automatically.
+  - icon: <i class="fa-solid fa-code-compare"></i>
+    title: Contradictions happen
+    details: Conflicting claims detected at write time, tracked as graph edges, and scored during retrieval. The system knows what it disagrees about.
 ---
-
-# contextdb
-
-**The epistemics layer for AI systems — memory that knows what it knows, what it doesn't, and why it believes what it does.**
-{: .fs-6 .fw-300 }
-
-contextdb stores claims, facts, memories, and beliefs as nodes in a graph. Every item carries an embedding vector, a temporal validity window, a confidence score, and a provenance chain. Retrieval scores across all four dimensions simultaneously. The caller supplies the weights.
-
-[Get started]({{ site.baseurl }}/quick-start){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[View on GitHub](https://github.com/antiartificial/contextdb){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 <div class="stat-row">
   <div class="stat-box">
@@ -35,51 +47,12 @@ contextdb stores claims, facts, memories, and beliefs as nodes in a graph. Every
 
 ---
 
-## Why contextdb?
-
-Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need more:
-
-<div class="feature-grid">
-<div class="feature-card" markdown="1">
-<span class="feature-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
-### Facts expire
-contextdb tracks `valid_time` (when the fact was true) and `transaction_time` (when the system learned it) independently. Point-in-time queries are first-class.
-</div>
-
-<div class="feature-card" markdown="1">
-<span class="feature-icon"><i class="fa-solid fa-shield-halved"></i></span>
-### Sources lie
-Source credibility is tracked via Bayesian updates and used as an admission gate. Sources that produce validated info gain trust; those that contradict reliable facts lose it.
-</div>
-
-<div class="feature-card" markdown="1">
-<span class="feature-icon"><i class="fa-solid fa-chart-line-down"></i></span>
-### Memory decays
-Different knowledge decays at different rates. Episodic memories fade in hours; procedural skills persist for months. Background workers consolidate episodic into durable semantic knowledge.
-</div>
-
-<div class="feature-card" markdown="1">
-<span class="feature-icon"><i class="fa-solid fa-code-compare"></i></span>
-### Contradictions happen
-Conflicting claims are detected at write time, tracked as graph edges, and accounted for in retrieval scoring. The system knows what it disagrees about.
-</div>
-</div>
-
 ## Five lines to a working database
 
 Zero external dependencies. No Docker. No config files. One `go get` and you're running. Auto-embedding lets you skip the vector. Just send text.
 
-<div class="code-tabs">
-<div class="tab-buttons">
-  <button class="tab-btn active" data-tab="go"><i class="fa-brands fa-golang"></i> Go</button>
-  <button class="tab-btn" data-tab="python"><i class="fa-brands fa-python"></i> Python</button>
-  <button class="tab-btn" data-tab="typescript"><i class="fa-brands fa-js"></i> TypeScript</button>
-  <button class="tab-btn" data-tab="curl"><i class="fa-solid fa-terminal"></i> curl</button>
-</div>
-
-<div class="tab-content active" data-lang="go" markdown="block">
-
-```go
+::: code-group
+```go [Go]
 db := client.MustOpen(client.Options{})
 defer db.Close()
 
@@ -93,10 +66,7 @@ results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
 })
 ```
 
-</div>
-<div class="tab-content" data-lang="python" markdown="block">
-
-```python
+```python [Python]
 from contextdb import ContextDB
 
 db = ContextDB("http://localhost:7701")
@@ -105,10 +75,7 @@ ns.write(content="Go 1.22 added routing patterns", source_id="docs-crawler")
 results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)
 ```
 
-</div>
-<div class="tab-content" data-lang="typescript" markdown="block">
-
-```typescript
+```typescript [TypeScript]
 import { ContextDB } from "contextdb";
 
 const db = new ContextDB("http://localhost:7701");
@@ -117,10 +84,7 @@ await ns.write({ content: "Go 1.22 added routing patterns", sourceId: "docs-craw
 const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });
 ```
 
-</div>
-<div class="tab-content" data-lang="curl" markdown="block">
-
-```bash
+```bash [curl]
 # Write
 curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
   -H "Content-Type: application/json" \
@@ -131,9 +95,7 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
   -H "Content-Type: application/json" \
   -d '{"text": "What changed in Go 1.22?", "top_k": 5}'
 ```
-
-</div>
-</div>
+:::
 
 ## Architecture at a glance
 
@@ -242,15 +204,15 @@ Features that make AI memory auditable and trustworthy:
 
 | Feature | Description |
 |:--------|:------------|
-| [Belief reconciliation](concepts/belief-reconciliation) | Structured disagreements between agents with evidence chains — "git diff for beliefs" |
-| [Narrative retrieval](concepts/narrative-retrieval) | "Walk me through what you know about X and why" with full citations |
-| [Knowledge gap detection](concepts/knowledge-gaps) | "What don't I know?" — sparse region detection with acquisition suggestions |
-| [Calibration pipeline](concepts/calibration) | Brier score, ECE, Platt scaling — confidence becomes calibrated probability |
-| [GDPR erasure](concepts/gdpr) | Audit-trailed right-to-erasure across graph, vectors, KV, and event log |
-| [Interference detection](concepts/interference) | Low-credibility sources can't erode well-established claims |
-| [Claim federation](concepts/federation) | Gossip-based multi-instance replication with Beta-space credibility merge |
-| [Cascade retraction](concepts/retraction) | Non-destructive "I take this back" that cascades through derived claims |
-| [Active learning](concepts/active-learning) | System recommends what information to acquire next |
+| [Belief reconciliation](concepts/epistemics#belief-reconciliation) | Structured disagreements between agents with evidence chains |
+| [Narrative retrieval](concepts/epistemics#narrative-retrieval) | "Walk me through what you know about X and why" with full citations |
+| [Knowledge gap detection](concepts/epistemics#knowledge-gap-detection) | "What don't I know?" Sparse region detection with acquisition suggestions |
+| [Calibration](concepts/epistemics#calibration) | Brier score, ECE, Platt scaling. Confidence becomes calibrated probability |
+| [GDPR erasure](concepts/epistemics#gdpr-erasure) | Audit-trailed right-to-erasure across graph, vectors, KV, and event log |
+| [Interference detection](concepts/epistemics#interference-detection) | Low-credibility sources can't erode well-established claims |
+| [Claim federation](examples#federation-multi-instance-shared-memory) | Gossip-based multi-instance replication with Beta-space credibility merge |
+| [Cascade retraction](examples#cascade-retraction-when-a-source-claim-is-wrong) | Non-destructive "I take this back" that cascades through derived claims |
+| [Active learning](concepts/epistemics#active-learning) | System recommends what information to acquire next |
 | [Query DSL](api/dsl) | Pipe syntax and CQL with temporal, graph, and weight clauses |
 
 ---

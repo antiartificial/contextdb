@@ -1,7 +1,5 @@
 ---
 title: Background Workers
-parent: Architecture
-nav_order: 5
 ---
 
 # Background Workers

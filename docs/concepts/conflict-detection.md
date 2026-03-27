@@ -1,7 +1,5 @@
 ---
 title: Conflict Detection
-parent: Concepts
-nav_order: 6
 ---
 
 # Conflict Detection

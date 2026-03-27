@@ -1,7 +1,5 @@
 ---
 title: Query DSL
-parent: API Reference
-nav_order: 7
 ---
 
 # Query DSL

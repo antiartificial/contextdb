@@ -1,7 +1,5 @@
 ---
 title: Active Recall (SM-2)
-parent: Concepts
-nav_order: 8
 ---
 
 # Active Recall (SM-2)

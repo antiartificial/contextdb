@@ -1,7 +1,5 @@
 ---
 title: Python SDK
-parent: API Reference
-nav_order: 4
 ---
 
 # Python SDK

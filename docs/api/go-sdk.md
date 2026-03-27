@@ -1,7 +1,5 @@
 ---
 title: Go SDK
-parent: API Reference
-nav_order: 1
 ---
 
 # Go SDK

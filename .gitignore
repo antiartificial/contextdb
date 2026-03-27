@@ -16,3 +16,7 @@ bin/
 .DS_Store
 Thumbs.db
 .claude
+
+node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
