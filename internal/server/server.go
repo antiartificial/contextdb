@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/antiartificial/contextdb/internal/federation"
 	"github.com/antiartificial/contextdb/internal/observe"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
@@ -19,6 +20,7 @@ type Config struct {
 	GRPCAddr    string // default: ":7700"
 	RESTAddr    string // default: ":7701"
 	ObserveAddr string // default: ":7702"
+	Federation  federation.Config
 }
 
 func (c Config) withDefaults() Config {
@@ -44,6 +46,7 @@ type Server struct {
 	grpcServer *grpc.Server
 	restServer *http.Server
 	obsServer  *http.Server
+	federation *federation.Federation
 }
 
 // New creates a new Server.
@@ -109,6 +112,17 @@ func (s *Server) Start() error {
 		}()
 	}
 
+	// Federation (optional)
+	if s.config.Federation.Enabled {
+		graph, vecs, _, log := s.db.Stores()
+		f := federation.New(graph, vecs, log, s.config.Federation, s.logger)
+		if err := f.Start(context.Background()); err != nil {
+			s.logger.Error("federation start failed", "error", err)
+		} else {
+			s.federation = f
+		}
+	}
+
 	return nil
 }
 
@@ -125,6 +139,9 @@ func (s *Server) Stop() {
 	}
 	if s.obsServer != nil {
 		s.obsServer.Shutdown(ctx)
+	}
+	if s.federation != nil {
+		s.federation.Stop()
 	}
 	s.logger.Info("all servers stopped")
 }

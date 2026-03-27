@@ -84,6 +84,30 @@ func (e *EventLog) Since(ctx context.Context, ns string, after time.Time) ([]sto
 	return events, nil
 }
 
+func (e *EventLog) SinceAll(ctx context.Context, ns string, after time.Time) ([]store.Event, error) {
+	// Same as Since but returns all events regardless of processed state.
+	startID := fmt.Sprintf("%d-0", after.UnixMilli())
+
+	msgs, err := e.client.XRange(ctx, e.streamKey(ns), startID, "+").Result()
+	if err != nil {
+		return nil, fmt.Errorf("xrange: %w", err)
+	}
+
+	events := make([]store.Event, 0, len(msgs))
+	for _, msg := range msgs {
+		data, ok := msg.Values["data"].(string)
+		if !ok {
+			continue
+		}
+		var event store.Event
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
 func (e *EventLog) MarkProcessed(ctx context.Context, eventID uuid.UUID) error {
 	// In a full implementation, we'd use consumer groups and XACK.
 	// For now, we store processed status in a separate set.

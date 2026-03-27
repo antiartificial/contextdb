@@ -47,6 +47,19 @@ func (l *EventLog) Since(_ context.Context, ns string, after time.Time) ([]store
 	return out, nil
 }
 
+func (l *EventLog) SinceAll(_ context.Context, ns string, after time.Time) ([]store.Event, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	var out []store.Event
+	for _, e := range l.events {
+		if e.Namespace == ns && e.TxTime.After(after) {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 func (l *EventLog) MarkProcessed(_ context.Context, eventID uuid.UUID) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()

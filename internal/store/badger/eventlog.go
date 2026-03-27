@@ -77,6 +77,33 @@ func (l *EventLog) Since(_ context.Context, ns string, after time.Time) ([]store
 	return events, err
 }
 
+func (l *EventLog) SinceAll(_ context.Context, ns string, after time.Time) ([]store.Event, error) {
+	var events []store.Event
+	prefix := eventNSPrefix(ns)
+	seekKey := []byte(fmt.Sprintf("%s%s/%020d/", prefixEvent, ns, after.UnixNano()))
+
+	err := l.db.View(func(txn *badgerdb.Txn) error {
+		opts := badgerdb.DefaultIteratorOptions
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(seekKey); it.ValidForPrefix(prefix); it.Next() {
+			var e store.Event
+			if err := it.Item().Value(func(val []byte) error {
+				return json.Unmarshal(val, &e)
+			}); err != nil {
+				continue
+			}
+			if e.TxTime.After(after) {
+				events = append(events, e)
+			}
+		}
+		return nil
+	})
+	return events, err
+}
+
 func (l *EventLog) MarkProcessed(_ context.Context, eventID uuid.UUID) error {
 	return l.db.Update(func(txn *badgerdb.Txn) error {
 		// scan all events to find by ID

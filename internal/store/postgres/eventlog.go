@@ -75,6 +75,32 @@ func (l *EventLog) Since(ctx context.Context, ns string, after time.Time) ([]sto
 	return events, rows.Err()
 }
 
+func (l *EventLog) SinceAll(ctx context.Context, ns string, after time.Time) ([]store.Event, error) {
+	rows, err := l.pool.Query(ctx, `
+		SELECT id, namespace, type, payload, tx_time, processed
+		FROM events
+		WHERE namespace = $1 AND tx_time > $2
+		ORDER BY tx_time ASC
+	`, ns, after)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []store.Event
+	for rows.Next() {
+		var e store.Event
+		var typ string
+		err := rows.Scan(&e.ID, &e.Namespace, &typ, &e.Payload, &e.TxTime, &e.Processed)
+		if err != nil {
+			return nil, err
+		}
+		e.Type = store.EventType(typ)
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
 func (l *EventLog) MarkProcessed(ctx context.Context, eventID uuid.UUID) error {
 	_, err := l.pool.Exec(ctx, "UPDATE events SET processed = TRUE WHERE id = $1", eventID)
 	return err

@@ -618,4 +618,42 @@ func RunEventLogTests(t *testing.T, factory func(t *testing.T) store.EventLog) {
 		is.NoErr(err)
 		is.Equal(len(events), 1)
 	})
+
+	t.Run("SinceAll", func(t *testing.T) {
+		is := is.New(t)
+		el := factory(t)
+		ctx := context.Background()
+
+		before := time.Now().Add(-time.Second)
+
+		// Append two events.
+		id1 := uuid.New()
+		id2 := uuid.New()
+		is.NoErr(el.Append(ctx, store.Event{
+			ID:        id1,
+			Namespace: "test",
+			Type:      store.EventNodeUpsert,
+			Payload:   []byte(`{}`),
+		}))
+		is.NoErr(el.Append(ctx, store.Event{
+			ID:        id2,
+			Namespace: "test",
+			Type:      store.EventEdgeUpsert,
+			Payload:   []byte(`{}`),
+		}))
+
+		// Mark the first event as processed.
+		is.NoErr(el.MarkProcessed(ctx, id1))
+
+		// Since should return only the unprocessed event.
+		unprocessed, err := el.Since(ctx, "test", before)
+		is.NoErr(err)
+		is.Equal(len(unprocessed), 1)
+		is.Equal(unprocessed[0].ID, id2)
+
+		// SinceAll should return both events.
+		all, err := el.SinceAll(ctx, "test", before)
+		is.NoErr(err)
+		is.Equal(len(all), 2)
+	})
 }

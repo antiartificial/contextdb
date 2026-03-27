@@ -141,6 +141,9 @@ type EventLog interface {
 	Append(ctx context.Context, event Event) error
 	Since(ctx context.Context, ns string, after time.Time) ([]Event, error)
 	MarkProcessed(ctx context.Context, eventID uuid.UUID) error
+	// SinceAll returns all events after the given time, regardless of Processed state.
+	// Used by federation replication to ensure no events are missed.
+	SinceAll(ctx context.Context, ns string, after time.Time) ([]Event, error)
 }
 
 // EventType enumerates the kinds of writes recorded in the event log.
@@ -162,4 +165,5 @@ type Event struct {
 	Payload   []byte // JSON-encoded core type
 	TxTime    time.Time
 	Processed bool
+	Origin    string // peer ID that originated the event; empty = local
 }
