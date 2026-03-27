@@ -145,11 +145,11 @@ graph TB
 - `EventLog`: append-only temporal event stream
 
 ### Backends
-- **Memory** -- in-process maps and slices, zero dependencies
-- **BadgerDB + HNSW** -- embedded persistent storage, single binary
-- **Postgres + pgvector** -- production-grade with recursive CTE graph traversal
-- **Qdrant** -- dedicated vector index for scaled mode
-- **Redis** -- KV store and event log for scaled mode
+- **Memory**: in-process maps and slices, zero dependencies
+- **BadgerDB + HNSW**: embedded persistent storage, single binary
+- **Postgres + pgvector**: production-grade with recursive CTE graph traversal
+- **Qdrant**: dedicated vector index for scaled mode
+- **Redis**: KV store and event log for scaled mode
 
 ## Project layout
 

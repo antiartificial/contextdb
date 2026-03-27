@@ -20,7 +20,7 @@ ns := db.Namespace("channel:general", namespace.ModeBeliefSystem)
 // Register a trusted moderator
 ns.LabelSource(ctx, "moderator:alice", []string{"moderator"})
 
-// Moderator writes -- always admitted, full confidence
+// Moderator writes: always admitted, full confidence
 ns.Write(ctx, client.WriteRequest{
     Content:    "The server runs Go 1.22",
     SourceID:   "moderator:alice",
@@ -29,7 +29,7 @@ ns.Write(ctx, client.WriteRequest{
     Confidence: 0.95,
 })
 
-// Unknown user writes -- admitted at neutral credibility (0.5)
+// Unknown user writes: admitted at neutral credibility (0.5)
 ns.Write(ctx, client.WriteRequest{
     Content:  "The server uses Python",
     SourceID: "user:bob",
@@ -37,7 +37,7 @@ ns.Write(ctx, client.WriteRequest{
     Vector:   embed("The server uses Python"),
 })
 
-// Flag a troll -- future writes from this source are rejected
+// Flag a troll: future writes from this source are rejected
 ns.LabelSource(ctx, "user:spammer", []string{"troll"})
 
 // This write is rejected at the admission gate
@@ -52,7 +52,7 @@ res, _ := ns.Write(ctx, client.WriteRequest{
 
 ## Agent memory: task-aware retrieval
 
-Store episodic memories from an autonomous agent. Memories decay naturally -- recent episodes rank higher than old ones.
+Store episodic memories from an autonomous agent. Memories decay naturally, so recent episodes rank higher than old ones.
 
 ```go
 ns := db.Namespace("agent:planner", namespace.ModeAgentMemory)
@@ -75,7 +75,7 @@ ns.Write(ctx, client.WriteRequest{
     MemType:  core.MemorySemantic, // half-life ~1.4 days
 })
 
-// Retrieve -- recency and utility are weighted heavily
+// Retrieve: recency and utility are weighted heavily
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
     Vector: embed("What do I know about auth?"),
     TopK:   10,
@@ -165,7 +165,7 @@ ns.Write(ctx, client.WriteRequest{
     Confidence: 1.0,
 })
 
-// Query as of yesterday -- returns the older value
+// Query as of yesterday: returns the older value
 yesterday := time.Now().Add(-24 * time.Hour)
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
     Vector: embed("What is the API rate limit?"),

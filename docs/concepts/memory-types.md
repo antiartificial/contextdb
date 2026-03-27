@@ -36,7 +36,7 @@ graph LR
 Set `MemType` on writes to control how fast a memory decays:
 
 ```go
-// This interaction happened just now -- will fade in hours
+// This interaction happened just now: will fade in hours
 ns.Write(ctx, client.WriteRequest{
     Content: "User asked about deployment",
     SourceID: "agent:self",
@@ -44,7 +44,7 @@ ns.Write(ctx, client.WriteRequest{
     MemType:  core.MemoryEpisodic,
 })
 
-// This is a learned fact -- will persist for days
+// This is a learned fact: will persist for days
 ns.Write(ctx, client.WriteRequest{
     Content: "The production database is on us-east-1",
     SourceID: "agent:self",
@@ -52,7 +52,7 @@ ns.Write(ctx, client.WriteRequest{
     MemType:  core.MemorySemantic,
 })
 
-// This is a learned procedure -- will persist for weeks
+// This is a learned procedure: will persist for weeks
 ns.Write(ctx, client.WriteRequest{
     Content: "To deploy: build, push image, helm upgrade",
     SourceID: "agent:self",
@@ -69,7 +69,7 @@ The decay function is:
 recency_score = exp(-alpha * age_in_hours)
 ```
 
-After one half-life, the recency score drops to 0.5. After two half-lives, it's 0.25. The memory doesn't disappear -- it just ranks lower in retrieval results.
+After one half-life, the recency score drops to 0.5. After two half-lives, it's 0.25. The memory doesn't disappear. It just ranks lower in retrieval results.
 
 | Hours elapsed | Working | Episodic | Semantic | Procedural |
 |:-------------|:--------|:---------|:---------|:-----------|

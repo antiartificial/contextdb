@@ -81,7 +81,7 @@ autoscaling:
   targetCPUUtilization: 80
 ```
 
-When autoscaling is enabled, the chart creates a HorizontalPodAutoscaler. Note that only Postgres mode supports multiple replicas -- embedded mode uses local storage.
+When autoscaling is enabled, the chart creates a HorizontalPodAutoscaler. Note that only Postgres mode supports multiple replicas. Embedded mode uses local storage.
 
 ## Ingress
 

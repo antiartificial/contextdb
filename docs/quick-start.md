@@ -30,7 +30,7 @@ import (
 func main() {
     ctx := context.Background()
 
-    // Open an in-memory database -- no config, no Docker, no network
+    // Open an in-memory database: no config, no Docker, no network
     db := client.MustOpen(client.Options{})
     defer db.Close()
 
@@ -118,7 +118,7 @@ The server exposes three ports:
 
 ## What's next?
 
-- [Concepts: Scoring](concepts/scoring) -- understand the retrieval scoring function
-- [Concepts: Namespaces](concepts/namespaces) -- choose the right mode for your use case
-- [Examples](examples) -- batteries-included recipes
-- [API Reference: Go SDK](api/go-sdk) -- full SDK documentation
+- [Concepts: Scoring](concepts/scoring): understand the retrieval scoring function
+- [Concepts: Namespaces](concepts/namespaces): choose the right mode for your use case
+- [Examples](examples): batteries-included recipes
+- [API Reference: Go SDK](api/go-sdk): full SDK documentation
