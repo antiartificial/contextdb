@@ -58,7 +58,7 @@ Without an LLM provider, the consolidator falls back to concatenating the episod
 
 ### Derived-from edges
 
-Each semantic node links back to its source episodic nodes via `derived_from` edges. This preserves provenance -- you can always trace a consolidated memory back to the original observations.
+Each semantic node links back to its source episodic nodes via `derived_from` edges. This preserves provenance. You can always trace a consolidated memory back to the original observations.
 
 ---
 

@@ -6,7 +6,7 @@ nav_order: 1
 
 # Go SDK
 
-The Go SDK in `pkg/client` is the primary interface to contextdb. It follows `database/sql` conventions -- open one `DB`, share it across your application.
+The Go SDK in `pkg/client` is the primary interface to contextdb. It follows `database/sql` conventions: open one `DB`, share it across your application.
 
 ## Installation
 
@@ -157,7 +157,7 @@ Ingests a single item. Runs through auto-embedding, the admission gate, and conf
 func (h *NamespaceHandle) WriteBatch(ctx context.Context, reqs []WriteRequest) ([]WriteResult, error)
 ```
 
-Writes multiple items. Partial failures are possible -- results are returned in request order. The first error is returned alongside partial results.
+Writes multiple items. Partial failures are possible. Results are returned in request order. The first error is returned alongside partial results.
 
 ### Retrieve
 

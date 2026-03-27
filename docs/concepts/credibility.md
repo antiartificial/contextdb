@@ -34,6 +34,25 @@ flowchart TD
     style M fill:#2ecc71,stroke:#333,color:#fff
 ```
 
+```mermaid
+graph LR
+    subgraph "Beta Distribution Evolution"
+        direction TB
+        A["New Source<br/>Beta(1,1)<br/>Credibility: 0.50"]
+        B["After 3 validated claims<br/>Beta(4,1)<br/>Credibility: 0.80"]
+        C["After 1 refuted claim<br/>Beta(4,2)<br/>Credibility: 0.67"]
+        D["After 5 more validated<br/>Beta(9,2)<br/>Credibility: 0.82"]
+    end
+    A -->|"3 validated"| B
+    B -->|"1 refuted"| C
+    C -->|"5 validated"| D
+
+    style A fill:#95a5a6,stroke:#333,color:#fff
+    style B fill:#2ecc71,stroke:#333,color:#fff
+    style C fill:#e67e22,stroke:#333,color:#fff
+    style D fill:#27ae60,stroke:#333,color:#fff
+```
+
 ## Sources
 
 Every piece of data has a source. Sources are automatically created on first write:
@@ -63,10 +82,10 @@ Source fields:
 Labels override the numeric score entirely:
 
 ```go
-// Full trust -- credibility always 1.0
+// Full trust: credibility always 1.0
 ns.LabelSource(ctx, "moderator:alice", []string{"moderator"})
 
-// Blocked -- credibility always 0.05, all writes rejected
+// Blocked: credibility always 0.05, all writes rejected
 ns.LabelSource(ctx, "user:spammer", []string{"troll"})
 ```
 
@@ -92,10 +111,38 @@ The combined score `credibility * novelty` must exceed the namespace's admission
 
 | Namespace | Threshold | Effect |
 |:----------|:----------|:-------|
-| belief_system | 0.15 | Low bar -- credibility gates retrieval instead |
+| belief_system | 0.15 | Low bar. Credibility gates retrieval instead |
 | general | 0.25 | Balanced |
 | agent_memory | 0.35 | Stricter -- avoid low-value episodes |
 | procedural | 0.40 | Only well-established procedures admitted |
+
+## Bayesian credibility learning
+
+Sources use a [Beta distribution](https://en.wikipedia.org/wiki/Beta_distribution) to model credibility:
+
+- **Alpha** = 1 + validated claims (evidence *for* trustworthiness)
+- **Beta** = 1 + refuted claims (evidence *against*)
+- **Credibility** = Alpha / (Alpha + Beta)
+
+New sources start at Beta(1,1) — a uniform prior meaning "we know nothing." Each validation or refutation shifts the distribution. The more observations, the more confident the estimate.
+
+This is mathematically principled: 1000 validated claims from a source that then gets one wrong doesn't crash its credibility to zero. The Beta distribution naturally handles this — it becomes a small dip in a well-established track record.
+
+{: .note }
+> **How this compares**: Most systems use static trust scores (0-100 set by an admin) or binary allow/deny lists. contextdb's Bayesian approach means credibility is *learned from evidence* — no manual tuning required. A new source starts neutral and earns or loses trust based on how its claims hold up over time.
+
+## Domain-scoped credibility
+
+A source can be credible in one domain and unreliable in another. `standup_notes` is highly credible for project status but less so for technical correctness.
+
+```go
+// Source credibility varies by domain
+cred := source.DomainCredibility("project-status")  // 0.92
+cred = source.DomainCredibility("security")          // 0.45
+cred = source.DomainCredibility("")                   // 0.68 (global fallback)
+```
+
+Domain credibility is tracked per (source, domain) pair. When no domain-specific data exists, the global credibility is used as a fallback.
 
 ## Confidence propagation
 

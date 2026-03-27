@@ -61,7 +61,7 @@ db := client.MustOpen(client.Options{
 ```
 
 Options:
-- `embedding.WithHTTPClient(c)` -- use a custom `*http.Client` for proxies or timeouts
+- `embedding.WithHTTPClient(c)`: use a custom `*http.Client` for proxies or timeouts
 
 ### Local
 

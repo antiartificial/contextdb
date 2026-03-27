@@ -152,7 +152,7 @@ Graph traversal supports: `contradicts`, `supports`, `derives_from`, `cites`
 
 ### Keywords
 
-All keywords are **case-insensitive**. Pipe syntax uses lowercase by convention; CQL uses uppercase by convention. Only double quotes are accepted for strings -- single quotes are a parse error.
+All keywords are **case-insensitive**. Pipe syntax uses lowercase by convention; CQL uses uppercase by convention. Only double quotes are accepted for strings. Single quotes are a parse error.
 
 ### Error Reporting
 

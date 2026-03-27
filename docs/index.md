@@ -16,47 +16,117 @@ contextdb stores claims, facts, memories, and beliefs as nodes in a graph. Every
 
 [Get started]: {% link quick-start.md %}
 
+<div class="stat-row">
+  <div class="stat-box">
+    <span class="stat-value">4</span>
+    <span class="stat-label">time dimensions</span>
+  </div>
+  <div class="stat-box">
+    <span class="stat-value">4</span>
+    <span class="stat-label">score components</span>
+  </div>
+  <div class="stat-box">
+    <span class="stat-value">4</span>
+    <span class="stat-label">namespace modes</span>
+  </div>
+  <div class="stat-box">
+    <span class="stat-value">4</span>
+    <span class="stat-label">deployment modes</span>
+  </div>
+</div>
+
 ---
 
 ## Why contextdb?
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need more:
 
-- **Facts expire.** contextdb tracks `valid_time` (when the fact was true in the world) and `transaction_time` (when the system learned it) independently. Point-in-time queries are first-class.
+<div class="feature-grid">
+<div class="feature-card" markdown="1">
+<span class="feature-icon">&#x23F0;</span>
+### Facts expire
+contextdb tracks `valid_time` (when the fact was true) and `transaction_time` (when the system learned it) independently. Point-in-time queries are first-class.
+</div>
 
-- **Sources lie.** contextdb tracks source credibility and uses it as an admission gate. Credibility is learned over time via Bayesian updates -- sources that produce validated information gain trust; those that contradict reliable facts lose it.
+<div class="feature-card" markdown="1">
+<span class="feature-icon">&#x1F6E1;</span>
+### Sources lie
+Source credibility is tracked via Bayesian updates and used as an admission gate. Sources that produce validated info gain trust; those that contradict reliable facts lose it.
+</div>
 
-- **Memory decays.** Different kinds of knowledge decay at different rates. Episodic memories fade in hours; procedural skills persist for months. Background workers consolidate episodic memories into durable semantic knowledge.
+<div class="feature-card" markdown="1">
+<span class="feature-icon">&#x1F4C9;</span>
+### Memory decays
+Different knowledge decays at different rates. Episodic memories fade in hours; procedural skills persist for months. Background workers consolidate episodic into durable semantic knowledge.
+</div>
 
-- **Context matters.** A chatbot, an autonomous agent, and a RAG pipeline need different retrieval strategies. contextdb ships four namespace modes with tuned defaults -- switch between them with a single parameter.
-
-- **Contradictions happen.** contextdb detects conflicting claims at write time, tracks them as `contradicts` edges in the graph, and lets retrieval strategies account for them.
+<div class="feature-card" markdown="1">
+<span class="feature-icon">&#x2696;</span>
+### Contradictions happen
+Conflicting claims are detected at write time, tracked as graph edges, and accounted for in retrieval scoring. The system knows what it disagrees about.
+</div>
+</div>
 
 ## Five lines to a working database
 
+Zero external dependencies. No Docker. No config files. One `go get` and you're running. Auto-embedding lets you skip the vector -- just send text.
+
+<div class="code-tabs">
+<div class="tab-buttons">
+  <button class="tab-btn active" data-tab="go">Go</button>
+  <button class="tab-btn" data-tab="python">Python</button>
+  <button class="tab-btn" data-tab="typescript">TypeScript</button>
+  <button class="tab-btn" data-tab="curl">curl</button>
+</div>
+<div class="tab-content active" data-lang="go" markdown="1">
 ```go
 db := client.MustOpen(client.Options{})
 defer db.Close()
 
 ns := db.Namespace("my-app", namespace.ModeGeneral)
-
-res, _ := ns.Write(ctx, client.WriteRequest{
+ns.Write(ctx, client.WriteRequest{
     Content:  "Go 1.22 added routing patterns to net/http",
-    SourceID: "docs-crawler",  // tracks credibility of this source over time
-    Vector:   embedding,       // or omit — auto-embedded when an Embedder is configured
+    SourceID: "docs-crawler",
 })
-
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
-    Vector: queryEmbedding,
-    TopK:   5, // return the 5 highest-scoring results (default: 10)
-    // TopK controls the result set size. Lower values (1–5) are faster and
-    // more focused — good for single-answer lookups. Higher values (20–50)
-    // give the retrieval pipeline more candidates to score, rerank, and
-    // diversify — better for RAG contexts where you need broad coverage.
+    Text: "What changed in Go 1.22?", TopK: 5,
 })
 ```
+</div>
+<div class="tab-content" data-lang="python" markdown="1">
+```python
+from contextdb import ContextDB
 
-Zero external dependencies. No Docker. No config files. One `go get` and you're running. Auto-embedding lets you skip the vector -- just send text.
+db = ContextDB("http://localhost:7701")
+ns = db.namespace("my-app", mode="general")
+ns.write(content="Go 1.22 added routing patterns", source_id="docs-crawler")
+results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)
+```
+</div>
+<div class="tab-content" data-lang="typescript" markdown="1">
+```typescript
+import { ContextDB } from "contextdb";
+
+const db = new ContextDB("http://localhost:7701");
+const ns = db.namespace("my-app", "general");
+await ns.write({ content: "Go 1.22 added routing patterns", sourceId: "docs-crawler" });
+const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });
+```
+</div>
+<div class="tab-content" data-lang="curl" markdown="1">
+```bash
+# Write
+curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Go 1.22 added routing patterns", "source_id": "docs-crawler"}'
+
+# Retrieve
+curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{"text": "What changed in Go 1.22?", "top_k": 5}'
+```
+</div>
+</div>
 
 ## Architecture at a glance
 

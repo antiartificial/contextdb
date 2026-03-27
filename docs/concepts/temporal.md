@@ -11,14 +11,26 @@ contextdb tracks two independent time dimensions for every node and edge.
 ## Two kinds of time
 
 ```mermaid
-timeline
-    title Bi-Temporal Example
-    section Real World (valid_time)
-        API limit set to 100 req/s : Jan 1
-        API limit raised to 500 req/s : Mar 15
-    section System Knowledge (transaction_time)
-        System learns about 100 limit : Jan 5
-        System learns about 500 limit : Mar 20
+graph TD
+    subgraph "Transaction Time (when system learned it)"
+        direction LR
+        T1["Jan 5<br/>System records:<br/>limit = 100"]
+        T2["Mar 20<br/>System records:<br/>limit = 500"]
+    end
+
+    subgraph "Valid Time (when it was true in the world)"
+        direction LR
+        V1["Jan 1<br/>Limit actually<br/>set to 100"]
+        V2["Mar 15<br/>Limit actually<br/>raised to 500"]
+    end
+
+    V1 -.->|"System learns 4 days later"| T1
+    V2 -.->|"System learns 5 days later"| T2
+
+    style T1 fill:#3498db,stroke:#333,color:#fff
+    style T2 fill:#3498db,stroke:#333,color:#fff
+    style V1 fill:#2ecc71,stroke:#333,color:#fff
+    style V2 fill:#2ecc71,stroke:#333,color:#fff
 ```
 
 | Dimension | Field | Meaning |
@@ -46,6 +58,34 @@ Now queries understand that:
 - Before March 15th: the limit was 100 req/s
 - After March 15th: the limit is 500 req/s
 - Before March 20th: the system didn't know about the change
+
+{: .note }
+> **How this compares**: Most vector databases have a single `created_at` timestamp or none at all. PostgreSQL supports bi-temporal queries but requires manual schema design and application-level enforcement. contextdb makes bi-temporal semantics automatic — every write gets both timestamps, every query respects them.
+
+## Temporal diff queries
+
+Use the Diff API to see what changed between two points in time:
+
+```go
+// What changed in the last 24 hours?
+diffs, _ := graph.Diff(ctx, "my-app", yesterday, now)
+for _, d := range diffs {
+    fmt.Printf("[%s] %s (v%d)\n", d.Change, core.NodeText(d.Node), d.Node.Version)
+}
+// [added] New team member joined (v1)
+// [modified] Sprint deadline updated (v3)
+// [removed] Old standup cancelled (v2)
+```
+
+## Time-travel queries
+
+Use `ValidAt` to reconstruct the full state of the system as of any past moment:
+
+```go
+// What did the system believe on June 1st?
+snapshot, _ := graph.ValidAt(ctx, "my-app", june1st, nil)
+fmt.Printf("System held %d beliefs on June 1st\n", len(snapshot))
+```
 
 ## Point-in-time queries
 

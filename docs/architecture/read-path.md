@@ -67,7 +67,7 @@ ANN (approximate nearest neighbour) search using the query embedding. Returns ca
 - **Postgres backend**: pgvector `<=>` operator with IVFFlat index
 - **Qdrant backend**: native ANN with label metadata filtering
 
-When `Labels` are specified in the request, vector search applies label push-down filtering -- only nodes with all specified labels are returned.
+When `Labels` are specified in the request, vector search applies label push-down filtering. Only nodes with all specified labels are returned.
 
 ### Graph walk
 

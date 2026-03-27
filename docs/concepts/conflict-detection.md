@@ -73,7 +73,7 @@ These edges are visible via graph walk and can be used by retrieval strategies t
 
 ## Write result
 
-The `WriteResult` includes `ConflictIDs` -- a list of node IDs that the new write contradicts. Callers can use this to:
+The `WriteResult` includes `ConflictIDs`, a list of node IDs that the new write contradicts. Callers can use this to:
 
 - Surface conflicts to end users
 - Trigger review workflows

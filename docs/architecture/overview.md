@@ -99,8 +99,8 @@ graph TB
 ## Layer responsibilities
 
 ### Client layer (`pkg/client`)
-- `DB` -- connection handle, analogous to `sql.DB`
-- `NamespaceHandle` -- scoped read/write operations
+- `DB`: connection handle, analogous to `sql.DB`
+- `NamespaceHandle`: scoped read/write operations
 - Four modes: embedded (in-process), standard (Postgres), remote (gRPC), scaled (Qdrant + Redis)
 
 ### Server layer (`internal/server`)
@@ -130,19 +130,19 @@ graph TB
 - Label filtering: push-down filter on node labels
 
 ### Background workers (`internal/compact`)
-- **RAPTOR compaction** -- hierarchical summarisation
-- **Memory consolidation** -- episodic → semantic promotion via LLM
-- **Active recall** -- spaced-repetition utility boosting
+- **RAPTOR compaction**: hierarchical summarisation
+- **Memory consolidation**: episodic → semantic promotion via LLM
+- **Active recall**: spaced-repetition utility boosting
 
 ### Snapshot/restore (`internal/snapshot`)
 - NDJSON export and import per namespace
 - Supports full namespace dump or seed-based BFS subgraph export
 
 ### Store interfaces (`internal/store`)
-- `GraphStore` -- node/edge CRUD, versioning, walk
-- `VectorIndex` -- ANN search, index, delete
-- `KVStore` -- key-value with TTL (caching, sessions)
-- `EventLog` -- append-only temporal event stream
+- `GraphStore`: node/edge CRUD, versioning, walk
+- `VectorIndex`: ANN search, index, delete
+- `KVStore`: key-value with TTL (caching, sessions)
+- `EventLog`: append-only temporal event stream
 
 ### Backends
 - **Memory** -- in-process maps and slices, zero dependencies

@@ -106,3 +106,26 @@ for _, r := range results {
     )
 }
 ```
+
+## Provenance attenuation
+
+Claims derived through a chain of sources lose confidence at each hop. If "Alice told Bob who told the system," each hop attenuates by a configurable factor (default 0.9):
+
+```
+confidence_effective = confidence * 0.9^provenance_depth
+```
+
+A direct claim (depth 0) keeps full confidence. A claim derived through 3 hops retains ~73% of its original confidence.
+
+## Expiry-aware scoring
+
+Nodes with a `ValidUntil` deadline get a confidence penalty as expiry approaches. This prevents soon-to-expire facts from ranking alongside evergreen knowledge:
+
+```
+penalty = 1 - exp(-0.02 * hours_until_expiry)
+```
+
+48 hours before expiry, confidence is reduced by ~60%. This is applied automatically — no configuration needed.
+
+{: .note }
+> **How this compares**: Most vector databases rank purely by embedding similarity. contextdb's four-dimensional scoring means a highly relevant but low-credibility result ranks below a moderately relevant but well-established one. This is the difference between "closest match" and "best answer."
