@@ -1,4 +1,6 @@
 # contextdb
+**[Documentation](docs/) | [Architecture](docs/architecture/) | [API](docs/api/) | [Quick Start](docs/quick-start.md)**
+**[Documentation](docs/) | [Architecture](docs/architecture/) | [API](docs/api/) | [Quick Start](docs/quick-start.md)**
 
 **A temporal graph-vector database for AI systems that need memory.**
 
@@ -6,6 +8,31 @@ Most vector databases treat embeddings as the whole story. But AI systems that i
 
 [**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**API Reference**](https://antiartificial.github.io/contextdb/api/go-sdk) | [**Python SDK**](https://antiartificial.github.io/contextdb/api/python-sdk) | [**TypeScript SDK**](https://antiartificial.github.io/contextdb/api/typescript-sdk)
 
+
+## What & Why
+
+**Problem**: AI apps forget context across sessions. Each chat starts fresh. RAG is static. Knowledge graphs don't track trust.
+
+**Solution**: ContextDB is a temporal graph-vector database that remembers, evolves, and validates AI memory.
+
+**30-second demo**:
+```bash
+# Store a fact with source credibility
+curl -X POST http://localhost:8080/v1/sources \
+  -d '{"name": "standup_notes", "alpha": 8, "beta": 2}'
+
+# Search with semantic + credibility ranking
+curl "http://localhost:8080/v1/search?q=project+status"
+```
+
+**Why you need it**:
+| Without ContextDB | With ContextDB |
+|-------------------|----------------|
+| "I don't know" | "Based on yesterday's standup (high credibility)..." |
+| Static RAG dumps | Temporal versioning - facts evolve |
+| All sources equal | Bayesian credibility propagation |
+
+See [docs/concepts/credibility.md](docs/concepts/credibility.md) and [docs/concepts/sm2.md](docs/concepts/sm2.md).
 ## Architecture
 
 ```mermaid
