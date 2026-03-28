@@ -34,6 +34,7 @@ export default withMermaid(
             text: 'Concepts',
             collapsed: false,
             items: [
+              { text: 'Data Modeling', link: '/concepts/data-modeling' },
               { text: 'Scoring Function', link: '/concepts/scoring' },
               { text: 'Bi-Temporal Model', link: '/concepts/temporal' },
               { text: 'Source Credibility', link: '/concepts/credibility' },
