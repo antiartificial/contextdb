@@ -1,7 +1,7 @@
 // Package advanced re-exports internal contextdb types and constructors
 // for use by companion applications that embed contextdb as a library.
 //
-// This is a thin facade — it adds no logic, just makes internal types
+// This is a thin facade -- it adds no logic, just makes internal types
 // accessible outside the module boundary.
 package advanced
 
@@ -21,14 +21,14 @@ import (
 	"github.com/antiartificial/contextdb/pkg/client"
 )
 
-// ── Store interfaces ────────────────────────────────────────────────
+// -- Store interfaces ---------------------------------------------------------
 
 type GraphStore = store.GraphStore
 type VectorIndex = store.VectorIndex
 type KVStore = store.KVStore
 type EventLog = store.EventLog
 
-// ── Core types ──────────────────────────────────────────────────────
+// -- Core types ---------------------------------------------------------------
 
 type Node = core.Node
 type Edge = core.Edge
@@ -54,30 +54,32 @@ const (
 )
 
 const (
-	EdgeRelatesTo    = core.EdgeRelatesTo
-	EdgeContradicts  = core.EdgeContradicts
-	EdgeSupersedes   = core.EdgeSupersedes
-	EdgeEndorsedBy   = core.EdgeEndorsedBy
-	EdgeDerivedFrom  = core.EdgeDerivedFrom
-	EdgeSupports     = core.EdgeSupports
-	EdgeCites        = core.EdgeCites
-	EdgeRefines      = core.EdgeRefines
-	EdgeGeneralizes  = core.EdgeGeneralizes
-	EdgeIsExampleOf  = core.EdgeIsExampleOf
-	EdgeRetracted    = core.EdgeRetracted
+	EdgeRelatesTo   = core.EdgeRelatesTo
+	EdgeContradicts = core.EdgeContradicts
+	EdgeSupersedes  = core.EdgeSupersedes
+	EdgeEndorsedBy  = core.EdgeEndorsedBy
+	EdgeDerivedFrom = core.EdgeDerivedFrom
+	EdgeSupports    = core.EdgeSupports
+	EdgeCites       = core.EdgeCites
+	EdgeRefines     = core.EdgeRefines
+	EdgeGeneralizes = core.EdgeGeneralizes
+	EdgeIsExampleOf = core.EdgeIsExampleOf
+	EdgeRetracted   = core.EdgeRetracted
 )
 
-func NodeText(n Node) string                   { return core.NodeText(n) }
-func CosineSimilarity(a, b []float32) float64   { return core.CosineSimilarity(a, b) }
-func DecayAlpha(t MemoryType) float64           { return core.DecayAlpha(t) }
-func DefaultDecayConfig() DecayConfig           { return core.DefaultDecayConfig() }
-func DefaultSource(ns, extID string) Source      { return core.DefaultSource(ns, extID) }
-func BeliefSystemParams() ScoreParams           { return core.BeliefSystemParams() }
-func AgentMemoryParams() ScoreParams            { return core.AgentMemoryParams() }
-func GeneralParams() ScoreParams                { return core.GeneralParams() }
-func ProceduralParams() ScoreParams             { return core.ProceduralParams() }
+var (
+	NodeText           = core.NodeText
+	CosineSimilarity   = core.CosineSimilarity
+	DecayAlpha         = core.DecayAlpha
+	DefaultDecayConfig = core.DefaultDecayConfig
+	DefaultSource      = core.DefaultSource
+	BeliefSystemParams = core.BeliefSystemParams
+	AgentMemoryParams  = core.AgentMemoryParams
+	GeneralParams      = core.GeneralParams
+	ProceduralParams   = core.ProceduralParams
+)
 
-// ── Namespace modes ���────────────────────────────────────────────────
+// -- Namespace modes ----------------------------------------------------------
 
 type NamespaceMode = namespace.Mode
 
@@ -88,7 +90,7 @@ const (
 	ModeProcedural   = namespace.ModeProcedural
 )
 
-// ── Belief diff ──────────────────────────────────��──────────────────
+// -- Belief diff --------------------------------------------------------------
 
 type BeliefDiff = retrieval.BeliefDiff
 type BeliefConflict = retrieval.BeliefConflict
@@ -98,7 +100,7 @@ func ComputeBeliefDiff(ctx context.Context, graph GraphStore, ns string, nodeIDs
 	return retrieval.ComputeBeliefDiff(ctx, graph, ns, nodeIDs)
 }
 
-// ── Narrative ───────────────────────────────────────────────────────
+// -- Narrative -----------------------------------------------------------------
 
 type NarrativeFormatter = retrieval.NarrativeFormatter
 type NarrativeReport = retrieval.NarrativeReport
@@ -109,7 +111,7 @@ func NewNarrativeFormatter(graph GraphStore, vecs VectorIndex) *NarrativeFormatt
 	return retrieval.NewNarrativeFormatter(graph, vecs)
 }
 
-// ── Knowledge gaps ──────────────────────────────────────────────────
+// -- Knowledge gaps -----------------------------------------------------------
 
 type GapDetector = retrieval.GapDetector
 type KnowledgeGap = retrieval.KnowledgeGap
@@ -124,7 +126,7 @@ func BuildGapReport(ns string, gaps []KnowledgeGap, totalNodes int) *GapReport {
 	return retrieval.BuildGapReport(ns, gaps, totalNodes)
 }
 
-// ── Active learning ─────────────────────────────────────────────────
+// -- Active learning ----------------------------------------------------------
 
 type ActiveLearner = retrieval.ActiveLearner
 type AcquisitionSuggestion = retrieval.AcquisitionSuggestion
@@ -141,7 +143,7 @@ func NewActiveLearner(graph GraphStore) *ActiveLearner {
 	return retrieval.NewActiveLearner(graph)
 }
 
-// ── Conflict clusters ─────���─────────────────────────────────────────
+// -- Conflict clusters --------------------------------------------------------
 
 type ConflictCluster = retrieval.ConflictCluster
 
@@ -149,7 +151,7 @@ func FindConflictClusters(ctx context.Context, graph GraphStore, ns string, node
 	return retrieval.FindConflictClusters(ctx, graph, ns, nodeIDs)
 }
 
-// ── Inference chain ─────────────────────────────���───────────────────
+// -- Inference chain ----------------------------------------------------------
 
 type InferenceChain = retrieval.InferenceChain
 type InferenceLink = retrieval.InferenceLink
@@ -158,17 +160,17 @@ func TraceInferenceChain(ctx context.Context, graph GraphStore, ns string, nodeI
 	return retrieval.TraceInferenceChain(ctx, graph, ns, nodeID, maxDepth)
 }
 
-// ── DSL ───────────────────────��─────────────────────────────────────
+// -- DSL ----------------------------------------------------------------------
 
 type Query = dsl.Query
 type Predicate = dsl.Predicate
 type ScoreWeights = dsl.ScoreWeights
 
-func ParsePipe(input string) (*Query, error)             { return dsl.ParsePipe(input) }
-func ParseCQL(input string) (*Query, error)               { return dsl.ParseCQL(input) }
-func ToRetrieveRequest(q *Query) client.RetrieveRequest   { return dsl.ToRetrieveRequest(q) }
+func ParsePipe(input string) (*Query, error)           { return dsl.ParsePipe(input) }
+func ParseCQL(input string) (*Query, error)             { return dsl.ParseCQL(input) }
+func ToRetrieveRequest(q *Query) client.RetrieveRequest { return dsl.ToRetrieveRequest(q) }
 
-// ── Retraction ────────��───────────────────────────��─────────────────
+// -- Retraction ---------------------------------------------------------------
 
 type BulkRetractor = compact.BulkRetractor
 type RetractResult = compact.RetractResult
@@ -177,7 +179,7 @@ func NewBulkRetractor(graph GraphStore) *BulkRetractor {
 	return compact.NewBulkRetractor(graph)
 }
 
-// ── GDPR ────���───────────────────────────────���───────────────────────
+// -- GDPR ---------------------------------------------------------------------
 
 type GDPRProcessor = compact.GDPRProcessor
 type ErasureRequest = compact.ErasureRequest
@@ -187,28 +189,17 @@ func NewGDPRProcessor(graph GraphStore, vecs VectorIndex, kv KVStore, log EventL
 	return compact.NewGDPRProcessor(graph, vecs, kv, log)
 }
 
-// ── Conflict detection (ingest) ���────────────────────────────────────
+// -- Conflict detection -------------------------------------------------------
 
 type ConflictDetector = ingest.ConflictDetector
 type DetectResult = ingest.DetectResult
 
-// NewConflictDetector creates a conflict detector. Pass nil for llm
-// to use heuristic-only detection.
-func NewConflictDetector(graph GraphStore, llm interface {
-	Chat(ctx context.Context, req interface{}) (interface{}, error)
-	Embed(ctx context.Context, texts []string, model string) ([][]float32, error)
-}) *ConflictDetector {
-	// The llm parameter uses interface{} wrappers to avoid exposing extract.Provider.
-	// For the playground, pass nil for heuristic-only conflict detection.
-	return nil // use NewConflictDetectorHeuristic instead
-}
-
-// NewConflictDetectorHeuristic creates a conflict detector without LLM support.
-func NewConflictDetectorHeuristic(graph GraphStore) *ConflictDetector {
+// NewConflictDetector creates a heuristic-only conflict detector.
+func NewConflictDetector(graph GraphStore) *ConflictDetector {
 	return ingest.NewConflictDetector(graph, nil)
 }
 
-// ── Calibration ─────────────────────────────────────────────────────
+// -- Calibration --------------------------------------------------------------
 
 type PredictionOutcome = observe.PredictionOutcome
 type PlattScaler = observe.PlattScaler
@@ -226,7 +217,12 @@ func MaxCalibrationError(predictions []PredictionOutcome, bins int) float64 {
 	return observe.MaxCalibrationError(predictions, bins)
 }
 
-// ── Credibility helpers ─────────────────────────────────────────────
+// -- Credibility helpers ------------------------------------------------------
 
-func MeanCredibility(alpha, beta float64) float64    { return ingest.MeanCredibility(alpha, beta) }
-func CredibilityVariance(alpha, beta float64) float64 { return ingest.CredibilityVariance(alpha, beta) }
+func MeanCredibility(alpha, beta float64) float64 {
+	return ingest.MeanCredibility(alpha, beta)
+}
+
+func CredibilityVariance(alpha, beta float64) float64 {
+	return ingest.CredibilityVariance(alpha, beta)
+}

@@ -29,7 +29,7 @@ func (g *GraphStore) UpsertNode(ctx context.Context, n core.Node) error {
 		n.ID = uuid.New()
 	}
 	if n.Labels == nil {
-		n.Labels = []string{}
+		n.Labels = []string{} // pgx encodes nil slice as SQL NULL, violating NOT NULL
 	}
 	if n.TxTime.IsZero() {
 		n.TxTime = time.Now()
@@ -308,7 +308,7 @@ func (g *GraphStore) UpsertSource(ctx context.Context, s core.Source) error {
 		s.ID = uuid.New()
 	}
 	if s.Labels == nil {
-		s.Labels = []string{}
+		s.Labels = []string{} // pgx encodes nil slice as SQL NULL, violating NOT NULL
 	}
 	s.UpdatedAt = time.Now()
 
@@ -349,12 +349,15 @@ func (g *GraphStore) GetSourceByExternalID(ctx context.Context, ns, externalID s
 }
 
 func (g *GraphStore) UpdateCredibility(ctx context.Context, ns string, id uuid.UUID, delta float64) error {
-	tag, err := g.pool.Exec(ctx, `
-		UPDATE sources
-		SET credibility_score = GREATEST(0, LEAST(1, credibility_score + $1)),
-			updated_at = now()
-		WHERE namespace = $2 AND id = $3
-	`, delta, ns, id)
+	// Positive delta increments alpha (validation), negative increments beta (refutation).
+	var q string
+	if delta >= 0 {
+		q = `UPDATE sources SET alpha = alpha + $1, updated_at = now() WHERE namespace = $2 AND id = $3`
+	} else {
+		q = `UPDATE sources SET beta = beta + $1, updated_at = now() WHERE namespace = $2 AND id = $3`
+		delta = -delta
+	}
+	tag, err := g.pool.Exec(ctx, q, delta, ns, id)
 	if err != nil {
 		return err
 	}
