@@ -28,6 +28,9 @@ func (g *GraphStore) UpsertNode(ctx context.Context, n core.Node) error {
 	if n.ID == uuid.Nil {
 		n.ID = uuid.New()
 	}
+	if n.Labels == nil {
+		n.Labels = []string{}
+	}
 	if n.TxTime.IsZero() {
 		n.TxTime = time.Now()
 	}
@@ -304,15 +307,19 @@ func (g *GraphStore) UpsertSource(ctx context.Context, s core.Source) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
 	}
+	if s.Labels == nil {
+		s.Labels = []string{}
+	}
 	s.UpdatedAt = time.Now()
 
 	_, err := g.pool.Exec(ctx, `
-		INSERT INTO sources (id, namespace, external_id, labels, credibility_score,
+		INSERT INTO sources (id, namespace, external_id, labels, alpha, beta,
 			claims_asserted, claims_validated, claims_refuted, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (namespace, external_id) DO UPDATE SET
 			labels = EXCLUDED.labels,
-			credibility_score = EXCLUDED.credibility_score,
+			alpha = EXCLUDED.alpha,
+			beta = EXCLUDED.beta,
 			claims_asserted = EXCLUDED.claims_asserted,
 			claims_validated = EXCLUDED.claims_validated,
 			claims_refuted = EXCLUDED.claims_refuted,
@@ -324,7 +331,7 @@ func (g *GraphStore) UpsertSource(ctx context.Context, s core.Source) error {
 
 func (g *GraphStore) GetSourceByExternalID(ctx context.Context, ns, externalID string) (*core.Source, error) {
 	row := g.pool.QueryRow(ctx, `
-		SELECT id, namespace, external_id, labels, credibility_score,
+		SELECT id, namespace, external_id, labels, alpha, beta,
 			claims_asserted, claims_validated, claims_refuted, created_at, updated_at
 		FROM sources WHERE namespace = $1 AND external_id = $2
 	`, ns, externalID)
