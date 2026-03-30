@@ -2,12 +2,12 @@
   "status": "success",
   "system": "contextdb",
   "knowledge_items": 8,
-  "timestamp": "2026-03-26T01:31:09.893698",
+  "timestamp": "2026-03-29T13:13:04.407806",
   "tests_completed": 6,
   "performance": {
-    "similarity": "75.10ms",
-    "confidence": "17.79ms",
-    "recency": "53.94ms",
-    "utility": "15.61ms"
+    "similarity": "1.82ms",
+    "confidence": "6.77ms",
+    "recency": "7.84ms",
+    "utility": "34.99ms"
   }
 }
