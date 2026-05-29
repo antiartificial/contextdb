@@ -19,8 +19,8 @@ import (
 // GraphStore is a thread-safe in-memory implementation of store.GraphStore.
 type GraphStore struct {
 	mu      sync.RWMutex
-	nodes   map[string][]core.Node   // key: ns+id, value: versions oldest→newest
-	edges   map[uuid.UUID]core.Edge  // key: edge ID
+	nodes   map[string][]core.Node  // key: ns+id, value: versions oldest→newest
+	edges   map[uuid.UUID]core.Edge // key: edge ID
 	sources map[string]core.Source  // key: ns+externalID
 }
 
@@ -72,6 +72,45 @@ func (g *GraphStore) GetNode(_ context.Context, ns string, id uuid.UUID) (*core.
 	}
 	n := versions[len(versions)-1]
 	return &n, nil
+}
+
+func (g *GraphStore) GetNodeByFingerprint(_ context.Context, ns, fingerprint string) (*core.Node, error) {
+	if fingerprint == "" {
+		return nil, nil
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	now := time.Now()
+	for _, versions := range g.nodes {
+		if len(versions) == 0 {
+			continue
+		}
+		n := versions[len(versions)-1]
+		if n.Namespace == ns && n.Fingerprint == fingerprint && n.IsValidAt(now) {
+			return &n, nil
+		}
+	}
+	return nil, nil
+}
+
+func (g *GraphStore) TouchNode(_ context.Context, ns string, id uuid.UUID, at time.Time) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	key := nodeKey(ns, id)
+	versions := g.nodes[key]
+	if len(versions) == 0 {
+		return fmt.Errorf("node %s not found in namespace %s", id, ns)
+	}
+	n := versions[len(versions)-1]
+	if at.IsZero() {
+		at = time.Now()
+	}
+	n.TxTime = at
+	n.Version = uint64(len(versions) + 1)
+	g.nodes[key] = append(versions, n)
+	return nil
 }
 
 func (g *GraphStore) AsOf(_ context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error) {

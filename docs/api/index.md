@@ -4,11 +4,12 @@ title: API Reference
 
 # API Reference
 
-contextdb exposes five interfaces:
+contextdb exposes seven interfaces:
 
 - [**Go SDK**](go-sdk): the primary embedded client (`pkg/client`)
 - [**gRPC API**](grpc): JSON-over-gRPC on port 7700
 - [**REST API**](rest): HTTP/JSON on port 7701
+- [**GraphQL API**](graphql): graph-shaped search and inspection on `/graphql`
 - [**Python SDK**](python-sdk): REST client for Python applications
 - [**TypeScript SDK**](typescript-sdk): REST client for TypeScript/Node.js applications
 - [**Query DSL**](dsl): Pipe syntax and CQL query languages

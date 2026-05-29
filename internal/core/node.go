@@ -16,12 +16,13 @@ const (
 // Labels and Properties mean. The database enforces temporal correctness
 // and namespace isolation; it does not interpret content.
 type Node struct {
-	ID         uuid.UUID
-	Namespace  string
-	Labels     []string
-	Properties map[string]any
-	Vector     []float32 // nil if not yet embedded
-	ModelID    string    // which embedding model produced Vector
+	ID          uuid.UUID
+	Namespace   string
+	Labels      []string
+	Properties  map[string]any
+	Vector      []float32 // nil if not yet embedded
+	ModelID     string    // which embedding model produced Vector
+	Fingerprint string    // normalized content hash used for write deduplication
 
 	// bi-temporal
 	ValidFrom  time.Time

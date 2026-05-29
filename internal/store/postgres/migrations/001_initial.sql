@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     properties  JSONB       NOT NULL DEFAULT '{}',
     vector      BYTEA,          -- stored as raw float32 bytes; pgvector used in vector_entries
     model_id    TEXT        NOT NULL DEFAULT '',
+    fingerprint TEXT        NOT NULL DEFAULT '',
     valid_from  TIMESTAMPTZ NOT NULL,
     valid_until TIMESTAMPTZ,
     tx_time     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 
 CREATE INDEX IF NOT EXISTS idx_nodes_ns_id      ON nodes (namespace, id);
 CREATE INDEX IF NOT EXISTS idx_nodes_ns_valid    ON nodes (namespace, valid_from, valid_until);
+CREATE INDEX IF NOT EXISTS idx_nodes_ns_fingerprint ON nodes (namespace, fingerprint) WHERE fingerprint <> '';
 
 CREATE TABLE IF NOT EXISTS edges (
     id              UUID        PRIMARY KEY,
@@ -45,6 +47,8 @@ CREATE TABLE IF NOT EXISTS sources (
     external_id         TEXT        NOT NULL,
     labels              TEXT[]      NOT NULL DEFAULT '{}',
     credibility_score   DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+    alpha               DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    beta                DOUBLE PRECISION NOT NULL DEFAULT 1.0,
     claims_asserted     BIGINT      NOT NULL DEFAULT 0,
     claims_validated    BIGINT      NOT NULL DEFAULT 0,
     claims_refuted      BIGINT      NOT NULL DEFAULT 0,

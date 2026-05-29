@@ -40,6 +40,33 @@ func (g *GraphStore) GetNode(ctx context.Context, ns string, id uuid.UUID) (*cor
 	return resp.Node, nil
 }
 
+func (g *GraphStore) GetNodeByFingerprint(ctx context.Context, ns, fingerprint string) (*core.Node, error) {
+	var resp struct {
+		Node  *core.Node `json:"node"`
+		Found bool       `json:"found"`
+	}
+	err := invoke(ctx, g.conn, "GetNodeByFingerprint", &struct {
+		Namespace   string `json:"namespace"`
+		Fingerprint string `json:"fingerprint"`
+	}{Namespace: ns, Fingerprint: fingerprint}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.Found {
+		return nil, nil
+	}
+	return resp.Node, nil
+}
+
+func (g *GraphStore) TouchNode(ctx context.Context, ns string, id uuid.UUID, at time.Time) error {
+	var resp struct{}
+	return invoke(ctx, g.conn, "TouchNode", &struct {
+		Namespace string    `json:"namespace"`
+		ID        string    `json:"id"`
+		At        time.Time `json:"at"`
+	}{Namespace: ns, ID: id.String(), At: at}, &resp)
+}
+
 func (g *GraphStore) AsOf(ctx context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error) {
 	// AsOf not exposed via gRPC yet — fetch history and filter client-side
 	nodes, err := g.History(ctx, ns, id)
@@ -185,7 +212,7 @@ func (g *GraphStore) UpsertSource(ctx context.Context, s core.Source) error {
 	}
 	return invoke(ctx, g.conn, "ManageSource", &struct {
 		Action string      `json:"action"`
-		Source core.Source  `json:"source"`
+		Source core.Source `json:"source"`
 	}{Action: "upsert", Source: s}, &resp)
 }
 
@@ -217,9 +244,9 @@ func (g *GraphStore) UpdateCredibility(ctx context.Context, ns string, id uuid.U
 		Source *core.Source `json:"source"`
 	}
 	return invoke(ctx, g.conn, "ManageSource", &struct {
-		Action   string  `json:"action"`
-		Namespace string `json:"namespace"`
-		SourceID string  `json:"source_id"`
-		Delta    float64 `json:"delta"`
+		Action    string  `json:"action"`
+		Namespace string  `json:"namespace"`
+		SourceID  string  `json:"source_id"`
+		Delta     float64 `json:"delta"`
 	}{Action: "update_credibility", Namespace: ns, SourceID: id.String(), Delta: delta}, &resp)
 }

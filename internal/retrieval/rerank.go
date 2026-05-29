@@ -80,6 +80,7 @@ func (r *LLMReranker) Rerank(ctx context.Context, query string, candidates []cor
 			Node:            candidates[idx],
 			Score:           score,
 			SimilarityScore: score,
+			Breakdown:       core.ScoreBreakdown{Similarity: score},
 			RetrievalSource: "reranked",
 		})
 	}
@@ -92,10 +93,12 @@ func fallbackRerank(candidates []core.Node, topK int) []core.ScoredNode {
 		if i >= topK {
 			break
 		}
+		score := 1.0 - float64(i)/float64(len(candidates))
 		results = append(results, core.ScoredNode{
 			Node:            c,
-			Score:           1.0 - float64(i)/float64(len(candidates)),
-			SimilarityScore: 1.0 - float64(i)/float64(len(candidates)),
+			Score:           score,
+			SimilarityScore: score,
+			Breakdown:       core.ScoreBreakdown{Similarity: score},
 			RetrievalSource: "reranked",
 		})
 	}

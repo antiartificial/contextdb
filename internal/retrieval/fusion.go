@@ -14,13 +14,13 @@ import (
 
 // Query describes a hybrid retrieval request.
 type Query struct {
-	Namespace   string
-	Vector      []float32
-	Vectors     [][]float32 // multi-vector queries: fan-out and merge
-	QueryText   string      // original text for reranking
-	SeedIDs        []uuid.UUID
-	SessionNodeIDs []uuid.UUID // IDs of recently-retrieved nodes from the current session
-	TopK           int
+	Namespace        string
+	Vector           []float32
+	Vectors          [][]float32 // multi-vector queries: fan-out and merge
+	QueryText        string      // original text for reranking
+	SeedIDs          []uuid.UUID
+	SessionNodeIDs   []uuid.UUID // IDs of recently-retrieved nodes from the current session
+	TopK             int
 	Labels           []string
 	ExcludeSourceIDs []string // source IDs to exclude from results (counterfactual queries)
 	Strategy         HybridStrategy
@@ -29,11 +29,11 @@ type Query struct {
 
 // HybridStrategy controls the relative contribution of each retrieval path.
 type HybridStrategy struct {
-	VectorWeight   float64
-	GraphWeight    float64
-	SessionWeight  float64
-	Traversal      store.TraversalStrategy
-	MaxDepth       int
+	VectorWeight    float64
+	GraphWeight     float64
+	SessionWeight   float64
+	Traversal       store.TraversalStrategy
+	MaxDepth        int
 	DiversityLambda float64 // MMR lambda: 0 = disabled, 0.7 = typical diversity
 }
 
@@ -197,7 +197,7 @@ func (e *Engine) fuse(
 			}
 			return
 		}
-		seen[n.ID] = &candidate{node: n, similarity: sim, utility: 1.0, source: source}
+		seen[n.ID] = &candidate{node: n, similarity: sim, utility: nodeUtility(n), source: source}
 	}
 
 	for _, r := range vectorResults {
@@ -267,6 +267,34 @@ func (e *Engine) fuse(
 		result = result[:q.TopK]
 	}
 	return result
+}
+
+func nodeUtility(n core.Node) float64 {
+	if n.Properties == nil {
+		return 1.0
+	}
+	switch v := n.Properties["utility"].(type) {
+	case float64:
+		return clamp01(v)
+	case float32:
+		return clamp01(float64(v))
+	case int:
+		return clamp01(float64(v))
+	case int64:
+		return clamp01(float64(v))
+	default:
+		return 1.0
+	}
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 // mmrRerank applies Maximal Marginal Relevance to reorder results,

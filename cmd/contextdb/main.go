@@ -35,10 +35,11 @@ func main() {
 
 	// Open client DB
 	opts := client.Options{
-		Mode:    client.Mode(getenv("CONTEXTDB_MODE", "embedded")),
-		DataDir: os.Getenv("CONTEXTDB_DATA_DIR"),
-		DSN:     os.Getenv("CONTEXTDB_DSN"),
-		Logger:  logger,
+		Mode:        client.Mode(getenv("CONTEXTDB_MODE", "embedded")),
+		DataDir:     os.Getenv("CONTEXTDB_DATA_DIR"),
+		DSN:         os.Getenv("CONTEXTDB_DSN"),
+		DedupWrites: os.Getenv("CONTEXTDB_DEDUP_WRITES") == "true",
+		Logger:      logger,
 	}
 
 	db, err := client.Open(opts)

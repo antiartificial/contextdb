@@ -64,6 +64,7 @@ export default withMermaid(
               { text: 'Go SDK', link: '/api/go-sdk' },
               { text: 'gRPC API', link: '/api/grpc' },
               { text: 'REST API', link: '/api/rest' },
+              { text: 'GraphQL API', link: '/api/graphql' },
               { text: 'Python SDK', link: '/api/python-sdk' },
               { text: 'TypeScript SDK', link: '/api/typescript-sdk' },
               { text: 'Query DSL', link: '/api/dsl' },
@@ -75,6 +76,7 @@ export default withMermaid(
             items: [
               { text: 'Embedded Mode', link: '/deployment/embedded' },
               { text: 'Docker', link: '/deployment/docker' },
+              { text: 'Mini/Norn', link: '/deployment/norn' },
               { text: 'Kubernetes', link: '/deployment/kubernetes' },
               { text: 'Scaled Deployment', link: '/deployment/scaled' },
             ]
@@ -82,6 +84,10 @@ export default withMermaid(
           {
             text: 'Benchmarks',
             link: '/benchmarks',
+          },
+          {
+            text: 'Feature Matrix',
+            link: '/feature-matrix',
           },
         ],
       },

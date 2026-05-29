@@ -59,6 +59,7 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	var writeResp map[string]any
 	is.NoErr(json.Unmarshal(w.Body.Bytes(), &writeResp))
 	is.Equal(writeResp["admitted"], true)
+	nodeID := writeResp["node_id"].(string)
 
 	// Retrieve
 	retrieveBody, _ := json.Marshal(map[string]any{
@@ -75,6 +76,156 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.NoErr(json.Unmarshal(w2.Body.Bytes(), &retrieveResp))
 	results := retrieveResp["results"].([]any)
 	is.True(len(results) > 0)
+	first := results[0].(map[string]any)
+	breakdown := first["score_breakdown"].(map[string]any)
+	is.True(breakdown["similarity"].(float64) > 0)
+
+	feedbackBody, _ := json.Marshal(map[string]any{"reason": "verified externally"})
+	req3 := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/validate", bytes.NewReader(feedbackBody))
+	req3.Header.Set("Content-Type", "application/json")
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, req3)
+
+	is.Equal(w3.Code, http.StatusOK)
+	var feedbackResp map[string]any
+	is.NoErr(json.Unmarshal(w3.Body.Bytes(), &feedbackResp))
+	is.Equal(feedbackResp["action"], "validated")
+	is.True(feedbackResp["source_credibility"].(float64) > 0.5)
+
+	req4 := httptest.NewRequest("GET", "/v1/namespaces/channel:general/nodes/"+nodeID+"/narrative", nil)
+	w4 := httptest.NewRecorder()
+	handler.ServeHTTP(w4, req4)
+
+	is.Equal(w4.Code, http.StatusOK)
+	var narrativeResp map[string]any
+	is.NoErr(json.Unmarshal(w4.Body.Bytes(), &narrativeResp))
+	is.True(narrativeResp["summary"].(string) != "")
+
+	gapBody, _ := json.Marshal(map[string]any{"max_gaps": 2})
+	req5 := httptest.NewRequest("POST", "/v1/namespaces/channel:general/gaps", bytes.NewReader(gapBody))
+	req5.Header.Set("Content-Type", "application/json")
+	w5 := httptest.NewRecorder()
+	handler.ServeHTTP(w5, req5)
+
+	is.Equal(w5.Code, http.StatusOK)
+	var gapResp map[string]any
+	is.NoErr(json.Unmarshal(w5.Body.Bytes(), &gapResp))
+	is.Equal(gapResp["total_nodes"], float64(1))
+}
+
+func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
+	is := is.New(t)
+
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	srv := server.NewRESTServer(db)
+	handler := srv.Handler()
+
+	writeBody, _ := json.Marshal(map[string]any{
+		"content":   "Go uses goroutines for concurrency",
+		"source_id": "docs",
+		"labels":    []string{"Fact"},
+	})
+	req := httptest.NewRequest("POST", "/v1/namespaces/graphql-test/write", bytes.NewReader(writeBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	var writeResp map[string]any
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &writeResp))
+	nodeID := writeResp["node_id"].(string)
+
+	queryBody, _ := json.Marshal(map[string]any{
+		"query": `{
+			search(namespace: "graphql-test", query: "goroutines", limit: 5) {
+				totalCount
+				nodes {
+					id
+					content
+					score
+					scoreBreakdown { similarity }
+					sources { name effectiveCredibility }
+				}
+			}
+		}`,
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(queryBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	var resp map[string]any
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql errors: %v", errs)
+	}
+	data := resp["data"].(map[string]any)
+	search := data["search"].(map[string]any)
+	is.Equal(search["totalCount"], float64(1))
+	nodes := search["nodes"].([]any)
+	node := nodes[0].(map[string]any)
+	is.Equal(node["content"], "Go uses goroutines for concurrency")
+	sources := node["sources"].([]any)
+	is.Equal(sources[0].(map[string]any)["name"], "docs")
+
+	mutationBody, _ := json.Marshal(map[string]any{
+		"query": `mutation($id: ID!) {
+			validateClaim(namespace: "graphql-test", nodeId: $id) {
+				nodeId
+				action
+				confidence
+				sourceCredibility
+			}
+		}`,
+		"variables": map[string]any{"id": nodeID},
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(mutationBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql mutation errors: %v", errs)
+	}
+	mutationData := resp["data"].(map[string]any)
+	feedback := mutationData["validateClaim"].(map[string]any)
+	is.Equal(feedback["action"], "validated")
+	is.True(feedback["sourceCredibility"].(float64) > 0.5)
+
+	queryBody, _ = json.Marshal(map[string]any{
+		"query": `query($id: ID!) {
+			narrative(namespace: "graphql-test", nodeId: $id) {
+				summary
+				claim { text }
+			}
+			knowledgeGaps(namespace: "graphql-test", maxGaps: 2) {
+				totalNodes
+				gapsDetected
+			}
+		}`,
+		"variables": map[string]any{"id": nodeID},
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(queryBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql narrative/gaps errors: %v", errs)
+	}
+	data = resp["data"].(map[string]any)
+	narrative := data["narrative"].(map[string]any)
+	is.Equal(narrative["claim"].(map[string]any)["text"], "Go uses goroutines for concurrency")
+	gaps := data["knowledgeGaps"].(map[string]any)
+	is.Equal(gaps["totalNodes"], float64(1))
 }
 
 func TestRESTServer_Stats(t *testing.T) {

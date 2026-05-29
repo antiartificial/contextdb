@@ -51,6 +51,40 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 		is.True(got == nil)
 	})
 
+	t.Run("FingerprintLookupAndTouch", func(t *testing.T) {
+		is := is.New(t)
+		g := factory(t)
+		ctx := context.Background()
+
+		id := uuid.New()
+		created := time.Now().Add(-time.Hour)
+		fp := core.ContentFingerprint("same claim")
+		n := core.Node{
+			ID:          id,
+			Namespace:   "test",
+			Labels:      []string{"Claim"},
+			Properties:  map[string]any{"text": "same claim"},
+			Fingerprint: fp,
+			Confidence:  0.9,
+			ValidFrom:   created,
+			TxTime:      created,
+		}
+		is.NoErr(g.UpsertNode(ctx, n))
+
+		got, err := g.GetNodeByFingerprint(ctx, "test", fp)
+		is.NoErr(err)
+		is.True(got != nil)
+		is.Equal(got.ID, id)
+
+		touchedAt := time.Now()
+		is.NoErr(g.TouchNode(ctx, "test", id, touchedAt))
+		touched, err := g.GetNode(ctx, "test", id)
+		is.NoErr(err)
+		is.True(touched != nil)
+		is.True(!touched.TxTime.Before(touchedAt))
+		is.Equal(touched.Fingerprint, fp)
+	})
+
 	t.Run("NodeVersioning", func(t *testing.T) {
 		is := is.New(t)
 		g := factory(t)

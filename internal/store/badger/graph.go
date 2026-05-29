@@ -15,12 +15,13 @@ import (
 
 // Key prefixes for graph data in BadgerDB.
 const (
-	prefixNode       = "n/"
-	prefixNodeLatest = "n-latest/"
-	prefixEdge       = "e/"
-	prefixEdgeSrc    = "ei-src/"
-	prefixEdgeDst    = "ei-dst/"
-	prefixSource     = "s/"
+	prefixNode        = "n/"
+	prefixNodeLatest  = "n-latest/"
+	prefixEdge        = "e/"
+	prefixEdgeSrc     = "ei-src/"
+	prefixEdgeDst     = "ei-dst/"
+	prefixSource      = "s/"
+	prefixFingerprint = "fp/"
 )
 
 // GraphStore implements store.GraphStore backed by BadgerDB.
@@ -69,6 +70,14 @@ func sourceKey(ns, externalID string) []byte {
 	return []byte(fmt.Sprintf("%s%s/%s", prefixSource, ns, externalID))
 }
 
+func fingerprintKey(ns, fingerprint string) []byte {
+	return []byte(fmt.Sprintf("%s%s/%s", prefixFingerprint, ns, fingerprint))
+}
+
+func nodeLatestPrefix(ns string) []byte {
+	return []byte(fmt.Sprintf("%s%s/", prefixNodeLatest, ns))
+}
+
 func (g *GraphStore) UpsertNode(_ context.Context, n core.Node) error {
 	if n.ID == uuid.Nil {
 		n.ID = uuid.New()
@@ -105,7 +114,13 @@ func (g *GraphStore) UpsertNode(_ context.Context, n core.Node) error {
 			return err
 		}
 		// write latest key
-		return txn.Set(latestKey, data)
+		if err := txn.Set(latestKey, data); err != nil {
+			return err
+		}
+		if n.Fingerprint != "" {
+			return txn.Set(fingerprintKey(n.Namespace, n.Fingerprint), []byte(n.ID.String()))
+		}
+		return nil
 	})
 }
 
@@ -130,6 +145,81 @@ func (g *GraphStore) GetNode(_ context.Context, ns string, id uuid.UUID) (*core.
 		return nil, nil
 	}
 	return &n, nil
+}
+
+func (g *GraphStore) GetNodeByFingerprint(_ context.Context, ns, fingerprint string) (*core.Node, error) {
+	if fingerprint == "" {
+		return nil, nil
+	}
+	var id uuid.UUID
+	err := g.db.View(func(txn *badgerdb.Txn) error {
+		item, err := txn.Get(fingerprintKey(ns, fingerprint))
+		if err == badgerdb.ErrKeyNotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			parsed, err := uuid.Parse(string(val))
+			if err != nil {
+				return err
+			}
+			id = parsed
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	if id != uuid.Nil {
+		n, err := g.GetNode(context.Background(), ns, id)
+		if err != nil || n == nil {
+			return n, err
+		}
+		if n.Fingerprint == fingerprint && n.IsValidAt(time.Now()) {
+			return n, nil
+		}
+	}
+
+	var found *core.Node
+	err = g.db.View(func(txn *badgerdb.Txn) error {
+		prefix := nodeLatestPrefix(ns)
+		opts := badgerdb.DefaultIteratorOptions
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		now := time.Now()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			var n core.Node
+			if err := it.Item().Value(func(val []byte) error {
+				return json.Unmarshal(val, &n)
+			}); err != nil {
+				return err
+			}
+			if n.Fingerprint == fingerprint && n.IsValidAt(now) {
+				found = &n
+				return nil
+			}
+		}
+		return nil
+	})
+	return found, err
+}
+
+func (g *GraphStore) TouchNode(ctx context.Context, ns string, id uuid.UUID, at time.Time) error {
+	n, err := g.GetNode(ctx, ns, id)
+	if err != nil {
+		return err
+	}
+	if n == nil {
+		return fmt.Errorf("node %s not found in namespace %s", id, ns)
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	n.TxTime = at
+	return g.UpsertNode(ctx, *n)
 }
 
 func (g *GraphStore) AsOf(_ context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error) {
@@ -452,19 +542,19 @@ func (g *GraphStore) UpdateCredibility(_ context.Context, ns string, id uuid.UUI
 			}
 			if s.ID == id && s.Namespace == ns {
 				// Update Beta distribution: shift mean toward positive/negative
-			// Positive delta increases Alpha, negative increases Beta
-			if delta > 0 {
-				s.Alpha += delta * 10
-			} else {
-				s.Beta += -delta * 10
-			}
-			// Ensure Alpha, Beta stay positive
-			if s.Alpha < 1 {
-				s.Alpha = 1
-			}
-			if s.Beta < 1 {
-				s.Beta = 1
-			}
+				// Positive delta increases Alpha, negative increases Beta
+				if delta > 0 {
+					s.Alpha += delta * 10
+				} else {
+					s.Beta += -delta * 10
+				}
+				// Ensure Alpha, Beta stay positive
+				if s.Alpha < 1 {
+					s.Alpha = 1
+				}
+				if s.Beta < 1 {
+					s.Beta = 1
+				}
 				s.UpdatedAt = time.Now()
 				data, err := json.Marshal(s)
 				if err != nil {

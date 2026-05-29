@@ -19,6 +19,14 @@ type GraphStore interface {
 	// GetNode returns the current (highest-version) node by ID.
 	GetNode(ctx context.Context, ns string, id uuid.UUID) (*core.Node, error)
 
+	// GetNodeByFingerprint returns the current valid node matching a content
+	// fingerprint in a namespace. Returns nil, nil when no match exists.
+	GetNodeByFingerprint(ctx context.Context, ns, fingerprint string) (*core.Node, error)
+
+	// TouchNode records that an existing node was observed again by updating its
+	// transaction time without changing its semantic content.
+	TouchNode(ctx context.Context, ns string, id uuid.UUID, at time.Time) error
+
 	// AsOf returns the node as it existed at the given valid-time anchor.
 	// Returns nil, nil if no version was valid at that time.
 	AsOf(ctx context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error)

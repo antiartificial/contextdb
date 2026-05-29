@@ -121,6 +121,12 @@ rpc Retrieve(GRPCRetrieveRequest) returns (GRPCRetrieveResponse)
       "confidence_score": 0.9,
       "recency_score": 0.72,
       "utility_score": 0.5,
+      "score_breakdown": {
+        "similarity": 0.38,
+        "confidence": 0.27,
+        "recency": 0.14,
+        "utility": 0.05
+      },
       "retrieval_source": "vector"
     }
   ]
@@ -173,6 +179,36 @@ rpc LabelSource(GRPCLabelSourceRequest) returns (Empty)
   "namespace_mode": "general",
   "external_id": "user:spammer",
   "labels": ["troll"]
+}
+```
+
+### Feedback
+
+```
+rpc ValidateClaim(GRPCFeedbackRequest) returns (GRPCFeedbackResponse)
+rpc RefuteClaim(GRPCFeedbackRequest) returns (GRPCFeedbackResponse)
+rpc MarkUseful(GRPCFeedbackRequest) returns (GRPCFeedbackResponse)
+rpc MarkStale(GRPCFeedbackRequest) returns (GRPCFeedbackResponse)
+```
+
+```json
+// Request
+{
+  "namespace": "my-app",
+  "namespace_mode": "general",
+  "node_id": "550e8400-e29b-41d4-a716-446655440000",
+  "reason": "verified externally",
+  "quality": 5
+}
+
+// Response
+{
+  "node_id": "550e8400-e29b-41d4-a716-446655440000",
+  "action": "validated",
+  "confidence": 1,
+  "utility": 1,
+  "source_id": "docs-crawler",
+  "source_credibility": 0.67
 }
 ```
 

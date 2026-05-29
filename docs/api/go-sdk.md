@@ -245,6 +245,32 @@ Runs text through the LLM extraction pipeline to automatically produce nodes and
 func (h *NamespaceHandle) LabelSource(ctx context.Context, externalID string, labels []string) error
 ```
 
+## Feedback
+
+Feedback methods update node versions in place without deleting history:
+
+```go
+validated, err := ns.ValidateClaim(ctx, nodeID)
+refuted, err := ns.RefuteClaim(ctx, nodeID, "incorrect source")
+useful, err := ns.MarkUseful(ctx, nodeID, 5)
+stale, err := ns.MarkStale(ctx, nodeID, "superseded")
+```
+
+Validation/refutation also update the asserting source when the node has a `source_id`.
+
+## Narrative And Gaps
+
+```go
+report, err := ns.Explain(ctx, nodeID)
+gaps, err := ns.KnowledgeGaps(ctx, client.GapRequest{
+    TopK:       20,
+    MinGapSize: 0.5,
+    MaxGaps:    10,
+})
+```
+
+`Explain` returns a structured narrative report with evidence, contradictions, provenance, and confidence explanation. `KnowledgeGaps` returns sparse semantic regions that suggest where the namespace needs more information.
+
 Sets labels on a source. Use "moderator"/"admin" for full trust, "troll"/"flagged" for floor.
 
 ## Export / Import

@@ -49,7 +49,7 @@ func contentFingerprint(s string) string {
 - Content that differs only in whitespace/punctuation → same fingerprint (intended)
 - Same content, different source → dedup (fingerprint is content-only, source tracked separately)
 - Same content, different confidence → dedup, keep higher confidence? Or keep existing? Design decision.
-- Opt-out: `WriteRequest.SkipDedup bool` for cases where re-embedding is intentional (e.g., model changed)
+- Non-breaking opt-in: `WriteRequest.Dedup` or `Options.DedupWrites` enables deduplication; `WriteRequest.SkipDedup` bypasses it when the default is enabled.
 
 ---
 

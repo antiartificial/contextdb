@@ -124,6 +124,11 @@ type Options struct {
 	// Stored on nodes for provenance tracking.
 	EmbedModel string
 
+	// DedupWrites enables content fingerprint deduplication for all writes.
+	// Default false preserves the historic behavior that each admitted Write
+	// creates a node unless the individual WriteRequest opts in.
+	DedupWrites bool
+
 	// QdrantAddr is the Qdrant gRPC address for ModeScaled.
 	// Example: "localhost:6334"
 	QdrantAddr string
@@ -369,15 +374,15 @@ func (db *DB) Close() error {
 func (db *DB) Stats() DBStats {
 	snap := db.metrics.RetrievalLatency.Snapshot()
 	return DBStats{
-		Mode:             db.opts.Mode,
-		RetrievalTotal:   db.metrics.RetrievalTotal.Value(),
-		RetrievalErrors:  db.metrics.RetrievalErrors.Value(),
-		IngestTotal:      db.metrics.IngestTotal.Value(),
-		IngestAdmitted:   db.metrics.IngestAdmitted.Value(),
-		IngestRejected:   db.metrics.IngestRejected.Value(),
-		LatencyP50Us:     snap.P(50),
-		LatencyP95Us:     snap.P(95),
-		LatencyMeanUs:    snap.Mean(),
+		Mode:            db.opts.Mode,
+		RetrievalTotal:  db.metrics.RetrievalTotal.Value(),
+		RetrievalErrors: db.metrics.RetrievalErrors.Value(),
+		IngestTotal:     db.metrics.IngestTotal.Value(),
+		IngestAdmitted:  db.metrics.IngestAdmitted.Value(),
+		IngestRejected:  db.metrics.IngestRejected.Value(),
+		LatencyP50Us:    snap.P(50),
+		LatencyP95Us:    snap.P(95),
+		LatencyMeanUs:   snap.Mean(),
 	}
 }
 
@@ -468,6 +473,14 @@ type WriteRequest struct {
 	// match a "node_id" property on another request in the same batch.
 	// Dependencies on IDs outside the batch are silently ignored.
 	DependsOn []uuid.UUID
+
+	// SkipDedup bypasses content fingerprint deduplication. Use this when
+	// intentionally re-ingesting the same text as a distinct claim.
+	SkipDedup bool
+
+	// Dedup opts this write into content fingerprint deduplication even when
+	// Options.DedupWrites is false.
+	Dedup bool
 }
 
 // WriteResult describes the outcome of a write operation.
@@ -487,12 +500,58 @@ type WriteResult struct {
 	ConflictIDs []uuid.UUID
 }
 
+// FeedbackResult describes the result of a claim or memory feedback operation.
+type FeedbackResult struct {
+	NodeID            uuid.UUID
+	Action            string
+	Confidence        float64
+	Utility           float64
+	SourceID          string
+	SourceCredibility float64
+	Reason            string
+}
+
+// GapRequest configures knowledge-gap detection for a namespace.
+type GapRequest struct {
+	TopK       int
+	MinGapSize float64
+	MaxGaps    int
+}
+
 // Write ingests a new claim, memory, or fact into the namespace.
 // It runs through the admission gate (credibility floor, near-duplicate
 // check, novelty threshold) before writing.
 func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteResult, error) {
 	start := time.Now()
 	h.db.metrics.IngestTotal.Inc()
+
+	fingerprint := ""
+	if (h.db.opts.DedupWrites || req.Dedup) && !req.SkipDedup && req.Content != "" {
+		fingerprint = core.ContentFingerprint(req.Content)
+		if fingerprint != "" {
+			existing, err := h.db.graph.GetNodeByFingerprint(ctx, h.cfg.ID, fingerprint)
+			if err != nil {
+				return WriteResult{}, fmt.Errorf("write: fingerprint lookup: %w", err)
+			}
+			if existing != nil {
+				if err := h.db.graph.TouchNode(ctx, h.cfg.ID, existing.ID, time.Now()); err != nil {
+					return WriteResult{}, fmt.Errorf("write: touch deduplicated node: %w", err)
+				}
+				h.db.metrics.AdmissionDuplicateSkipped.Inc()
+				h.db.metrics.IngestAdmitted.Inc()
+				h.db.metrics.IngestLatency.ObserveDuration(time.Since(start))
+				h.db.logger.Debug("write deduplicated",
+					"namespace", h.cfg.ID,
+					"node_id", existing.ID,
+					"source", req.SourceID)
+				return WriteResult{
+					NodeID:   existing.ID,
+					Admitted: true,
+					Reason:   "deduplicated",
+				}, nil
+			}
+		}
+	}
 
 	// Auto-embed if no vector provided and embedder is configured
 	if len(req.Vector) == 0 && req.Content != "" && h.db.opts.Embedder != nil {
@@ -534,17 +593,21 @@ func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteRes
 	if req.Content != "" {
 		props["text"] = req.Content
 	}
+	if req.SourceID != "" {
+		props["source_id"] = req.SourceID
+	}
 
 	candidate := core.Node{
-		ID:         uuid.New(),
-		Namespace:  h.cfg.ID,
-		Labels:     req.Labels,
-		Properties: props,
-		Vector:     req.Vector,
-		ModelID:    req.ModelID,
-		Confidence: confidence,
-		ValidFrom:  validFrom,
-		TxTime:     time.Now(),
+		ID:          uuid.New(),
+		Namespace:   h.cfg.ID,
+		Labels:      req.Labels,
+		Properties:  props,
+		Vector:      req.Vector,
+		ModelID:     req.ModelID,
+		Fingerprint: fingerprint,
+		Confidence:  confidence,
+		ValidFrom:   validFrom,
+		TxTime:      time.Now(),
 	}
 
 	// Quick ANN scan for near-duplicate detection
@@ -726,6 +789,7 @@ type Result struct {
 	ConfidenceScore float64
 	RecencyScore    float64
 	UtilityScore    float64
+	Breakdown       core.ScoreBreakdown
 
 	// RetrievalSource indicates which path(s) found this node.
 	RetrievalSource string
@@ -807,6 +871,7 @@ func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]
 			ConfidenceScore: sn.ConfidenceScore,
 			RecencyScore:    sn.RecencyScore,
 			UtilityScore:    sn.UtilityScore,
+			Breakdown:       sn.Breakdown,
 			RetrievalSource: sn.RetrievalSource,
 		}
 		switch sn.RetrievalSource {
@@ -865,6 +930,76 @@ func (h *NamespaceHandle) Consensus(ctx context.Context, claimID uuid.UUID) (*in
 		return nil, fmt.Errorf("consensus: %w", err)
 	}
 	return &est, nil
+}
+
+// ValidateClaim records that a claim has been externally validated.
+func (h *NamespaceHandle) ValidateClaim(ctx context.Context, nodeID uuid.UUID) (FeedbackResult, error) {
+	return h.applyFeedback(ctx, nodeID, feedbackUpdate{
+		action:          "validated",
+		confidenceDelta: 0.15,
+		utilityDelta:    0.05,
+		sourceValidated: ptrBool(true),
+		quality:         5,
+	})
+}
+
+// RefuteClaim records that a claim has been externally refuted.
+func (h *NamespaceHandle) RefuteClaim(ctx context.Context, nodeID uuid.UUID, reason string) (FeedbackResult, error) {
+	return h.applyFeedback(ctx, nodeID, feedbackUpdate{
+		action:          "refuted",
+		confidenceSet:   ptrFloat64(0.05),
+		utilityDelta:    -0.2,
+		sourceValidated: ptrBool(false),
+		quality:         1,
+		reason:          reason,
+	})
+}
+
+// MarkUseful records positive task-outcome feedback for an agent memory.
+func (h *NamespaceHandle) MarkUseful(ctx context.Context, nodeID uuid.UUID, quality int) (FeedbackResult, error) {
+	if quality == 0 {
+		quality = 5
+	}
+	return h.applyFeedback(ctx, nodeID, feedbackUpdate{
+		action:       "useful",
+		utilityDelta: 0.15,
+		quality:      quality,
+	})
+}
+
+// MarkStale records that a node is no longer useful as current context.
+func (h *NamespaceHandle) MarkStale(ctx context.Context, nodeID uuid.UUID, reason string) (FeedbackResult, error) {
+	return h.applyFeedback(ctx, nodeID, feedbackUpdate{
+		action:          "stale",
+		confidenceDelta: -0.1,
+		utilityDelta:    -0.25,
+		quality:         1,
+		reason:          reason,
+	})
+}
+
+// Explain returns a narrative report explaining what is known about a node.
+func (h *NamespaceHandle) Explain(ctx context.Context, nodeID uuid.UUID) (*retrieval.NarrativeReport, error) {
+	formatter := retrieval.NewNarrativeFormatter(h.db.graph, h.db.vecs)
+	return formatter.Explain(ctx, h.cfg.ID, nodeID)
+}
+
+// KnowledgeGaps detects sparse semantic regions in this namespace.
+func (h *NamespaceHandle) KnowledgeGaps(ctx context.Context, req GapRequest) (*retrieval.GapReport, error) {
+	detector := retrieval.NewGapDetector(h.db.graph, h.db.vecs)
+	gaps, err := detector.DetectGaps(ctx, h.cfg.ID, retrieval.GapQuery{
+		TopK:       req.TopK,
+		MinGapSize: req.MinGapSize,
+		MaxGaps:    req.MaxGaps,
+	})
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := h.db.graph.ValidAt(ctx, h.cfg.ID, time.Now(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return retrieval.BuildGapReport(h.cfg.ID, gaps, len(nodes)), nil
 }
 
 // ── Enhanced SDK (Phase 6) ────────────────────────────────────────────────
@@ -1032,6 +1167,120 @@ func (h *NamespaceHandle) History(ctx context.Context, nodeID uuid.UUID) ([]core
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+type feedbackUpdate struct {
+	action          string
+	confidenceDelta float64
+	confidenceSet   *float64
+	utilityDelta    float64
+	sourceValidated *bool
+	quality         int
+	reason          string
+}
+
+func (h *NamespaceHandle) applyFeedback(ctx context.Context, nodeID uuid.UUID, update feedbackUpdate) (FeedbackResult, error) {
+	node, err := h.db.graph.GetNode(ctx, h.cfg.ID, nodeID)
+	if err != nil {
+		return FeedbackResult{}, fmt.Errorf("%s: get node: %w", update.action, err)
+	}
+	if node == nil {
+		return FeedbackResult{}, fmt.Errorf("%s: node %s not found", update.action, nodeID)
+	}
+	if node.Properties == nil {
+		node.Properties = make(map[string]any)
+	}
+
+	now := time.Now()
+	baseConf := node.Confidence
+	if baseConf == 0 {
+		baseConf = 0.5
+	}
+	if update.confidenceSet != nil {
+		node.Confidence = clampFeedback(*update.confidenceSet)
+	} else if update.confidenceDelta != 0 {
+		node.Confidence = clampFeedback(baseConf + update.confidenceDelta)
+	}
+
+	utility := propertyFloat(node.Properties, "utility", 1.0)
+	if update.utilityDelta != 0 {
+		utility = clampFeedback(utility + update.utilityDelta)
+		node.Properties["utility"] = utility
+	}
+	if update.quality != 0 {
+		sm2 := core.Sm2FromProperties(node.Properties)
+		node.Properties = sm2.Update(update.quality).ToProperties(node.Properties)
+	}
+
+	countKey := update.action + "_count"
+	node.Properties[countKey] = propertyFloat(node.Properties, countKey, 0) + 1
+	node.Properties[update.action+"_at"] = now.Format(time.RFC3339)
+	if update.reason != "" {
+		node.Properties[update.action+"_reason"] = update.reason
+	}
+	node.TxTime = now
+
+	result := FeedbackResult{
+		NodeID:     nodeID,
+		Action:     update.action,
+		Confidence: node.Confidence,
+		Utility:    utility,
+		Reason:     update.reason,
+	}
+
+	sourceID, _ := node.Properties["source_id"].(string)
+	result.SourceID = sourceID
+	if sourceID != "" && update.sourceValidated != nil {
+		src, err := h.db.graph.GetSourceByExternalID(ctx, h.cfg.ID, sourceID)
+		if err != nil {
+			return FeedbackResult{}, fmt.Errorf("%s: get source: %w", update.action, err)
+		}
+		if src != nil {
+			src.BayesianUpdate(*update.sourceValidated)
+			if err := h.db.graph.UpsertSource(ctx, *src); err != nil {
+				return FeedbackResult{}, fmt.Errorf("%s: update source: %w", update.action, err)
+			}
+			result.SourceCredibility = src.EffectiveCredibility()
+		}
+	}
+
+	if err := h.db.graph.UpsertNode(ctx, *node); err != nil {
+		return FeedbackResult{}, fmt.Errorf("%s: upsert node: %w", update.action, err)
+	}
+	return result, nil
+}
+
+func propertyFloat(props map[string]any, key string, fallback float64) float64 {
+	switch v := props[key].(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	default:
+		return fallback
+	}
+}
+
+func clampFeedback(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func ptrBool(v bool) *bool {
+	return &v
+}
+
+func ptrFloat64(v float64) *float64 {
+	return &v
+}
 
 func containsStr(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr ||

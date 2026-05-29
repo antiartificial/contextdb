@@ -110,6 +110,7 @@ graph LR
     subgraph Server
         GRPC[gRPC :7700]
         REST[REST :7701]
+        GQL[GraphQL /graphql]
         OBS[Observe :7702]
         ADMIN[Admin UI]
     end
@@ -132,8 +133,10 @@ graph LR
     GO --> GRPC
     PY --> REST
     TS --> REST
+    REST --> GQL
     GRPC --> EMB
     REST --> EMB
+    GQL --> RET
     EMB --> ING
     EMB --> RET
     ING --> MEM & BAD & PG & QD & RD
@@ -142,6 +145,7 @@ graph LR
 
     style GRPC fill:#4a9eff,stroke:#333,color:#fff
     style REST fill:#4a9eff,stroke:#333,color:#fff
+    style GQL fill:#4a9eff,stroke:#333,color:#fff
     style MEM fill:#2ecc71,stroke:#333,color:#fff
     style BAD fill:#27ae60,stroke:#333,color:#fff
     style PG fill:#16a085,stroke:#333,color:#fff
@@ -188,7 +192,10 @@ All weights are normalised at query time. You supply `alpha` (decay rate) and th
 | [Conflict detection](concepts/conflict-detection) | Near-duplicate scan, contradiction tracking, `contradicts` edges |
 | [Credibility learning](concepts/credibility) | Bayesian source trust updates based on validation/refutation |
 | [Reranking](architecture/read-path) | Optional LLM cross-encoder reranking after fusion |
+| [Score breakdown](api/rest#retrieve) | Weighted similarity, confidence, recency, and utility contributions per result |
+| [GraphQL API](api/graphql) | Graph-shaped search, filters, edges, sources, feedback mutations, narratives, and gaps |
 | [Label filtering](api/go-sdk) | Filter retrieval by node labels |
+| [Feedback APIs](api/rest#feedback) | Validate, refute, mark useful, and mark stale across SDK, REST, gRPC, and GraphQL |
 | [Background workers](architecture/background-workers) | Memory consolidation and active recall |
 | [RBAC](concepts/rbac) | Token-based read/write/admin permissions per tenant |
 | [Snapshot/restore](api/go-sdk#export--import) | NDJSON namespace export and import |
@@ -197,6 +204,7 @@ All weights are normalised at query time. You supply `alpha` (decay rate) and th
 | [Scaled deployment](deployment/scaled) | Qdrant + Redis + Postgres for high throughput |
 | [Benchmarks](benchmarks) | MTEB, adversarial, LongMemEval, fitness suite |
 | [Admin UI](deployment/scaled) | Built-in dashboard on observe port |
+| [Mini/Norn deployment](deployment/norn) | Internal live deployment discovery and health checks via Norn |
 
 ## Epistemics layer
 

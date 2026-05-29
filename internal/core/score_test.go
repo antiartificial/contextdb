@@ -135,6 +135,25 @@ func TestScoreNode_WeightNormalisationIsIdempotent(t *testing.T) {
 	is.True(diff < 1e-9)
 }
 
+func TestScoreNode_BreakdownSumsToScore(t *testing.T) {
+	is := is.New(t)
+	asOf := time.Now()
+	n := freshNode(asOf, 0.8)
+	sn := core.ScoreNode(n, 0.75, 0.5, core.ScoreParams{
+		SimilarityWeight: 4,
+		ConfidenceWeight: 3,
+		RecencyWeight:    2,
+		UtilityWeight:    1,
+		AsOf:             asOf,
+	})
+
+	sum := sn.Breakdown.Similarity + sn.Breakdown.Confidence + sn.Breakdown.Recency + sn.Breakdown.Utility
+	is.True(abs64(sum-sn.Score) < 1e-9)
+	is.True(abs64(sn.Breakdown.Similarity-0.3) < 1e-9)
+	is.True(abs64(sn.Breakdown.Confidence-0.24) < 1e-9)
+	is.True(abs64(sn.Breakdown.Utility-0.05) < 1e-9)
+}
+
 func TestCosineSimilarity(t *testing.T) {
 	is := is.New(t)
 

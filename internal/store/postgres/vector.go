@@ -67,7 +67,7 @@ func (v *VectorIndex) Search(ctx context.Context, q store.VectorQuery) ([]core.S
 	// For production, use pgvector's <=> operator with a vector column.
 	rows, err := v.pool.Query(ctx, `
 		SELECT ve.id, ve.namespace, ve.node_id, ve.vector, ve.text, ve.model_id, ve.created_at,
-		       n.id, n.namespace, n.labels, n.properties, n.model_id, n.valid_from, n.valid_until, n.tx_time, n.confidence, n.version
+		       n.id, n.namespace, n.labels, n.properties, n.model_id, n.fingerprint, n.valid_from, n.valid_until, n.tx_time, n.confidence, n.version
 		FROM vector_entries ve
 		LEFT JOIN LATERAL (
 			SELECT * FROM nodes
@@ -93,24 +93,25 @@ func (v *VectorIndex) Search(ctx context.Context, q store.VectorQuery) ([]core.S
 	for rows.Next() {
 		var (
 			veID, veNS, veText, veModel string
-			veNodeID                     *uuid.UUID
-			vecBytes                     []byte
-			veCreatedAt                  time.Time
-			nID                          *uuid.UUID
-			nNS                          *string
-			nLabels                      []string
-			nProps                       []byte
-			nModelID                     *string
-			nValidFrom                   *time.Time
-			nValidUntil                  *time.Time
-			nTxTime                      *time.Time
-			nConfidence                  *float64
-			nVersion                     *uint64
+			veNodeID                    *uuid.UUID
+			vecBytes                    []byte
+			veCreatedAt                 time.Time
+			nID                         *uuid.UUID
+			nNS                         *string
+			nLabels                     []string
+			nProps                      []byte
+			nModelID                    *string
+			nFingerprint                *string
+			nValidFrom                  *time.Time
+			nValidUntil                 *time.Time
+			nTxTime                     *time.Time
+			nConfidence                 *float64
+			nVersion                    *uint64
 		)
 
 		err := rows.Scan(
 			&veID, &veNS, &veNodeID, &vecBytes, &veText, &veModel, &veCreatedAt,
-			&nID, &nNS, &nLabels, &nProps, &nModelID, &nValidFrom, &nValidUntil, &nTxTime, &nConfidence, &nVersion,
+			&nID, &nNS, &nLabels, &nProps, &nModelID, &nFingerprint, &nValidFrom, &nValidUntil, &nTxTime, &nConfidence, &nVersion,
 		)
 		if err != nil {
 			return nil, err
@@ -138,6 +139,9 @@ func (v *VectorIndex) Search(ctx context.Context, q store.VectorQuery) ([]core.S
 			}
 			if nModelID != nil {
 				node.ModelID = *nModelID
+			}
+			if nFingerprint != nil {
+				node.Fingerprint = *nFingerprint
 			}
 			if nValidFrom != nil {
 				node.ValidFrom = *nValidFrom

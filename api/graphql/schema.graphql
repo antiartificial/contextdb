@@ -1,5 +1,65 @@
 type Query {
-  search(query: String!, filter: FilterInput, limit: Int = 10): SearchResult!
+  search(namespace: String = "default", mode: String = "general", query: String!, filter: FilterInput, limit: Int = 10): SearchResult!
+  narrative(namespace: String = "default", mode: String = "general", nodeId: ID!): NarrativeReport
+  knowledgeGaps(namespace: String = "default", mode: String = "general", topK: Int, minGapSize: Float, maxGaps: Int): GapReport!
+}
+
+type Mutation {
+  validateClaim(namespace: String = "default", mode: String = "general", nodeId: ID!, reason: String, quality: Int): FeedbackResult!
+  refuteClaim(namespace: String = "default", mode: String = "general", nodeId: ID!, reason: String, quality: Int): FeedbackResult!
+  markUseful(namespace: String = "default", mode: String = "general", nodeId: ID!, reason: String, quality: Int): FeedbackResult!
+  markStale(namespace: String = "default", mode: String = "general", nodeId: ID!, reason: String, quality: Int): FeedbackResult!
+}
+
+type FeedbackResult {
+  nodeId: ID!
+  action: String!
+  confidence: Float!
+  utility: Float!
+  sourceId: String
+  sourceCredibility: Float
+  reason: String
+}
+
+type NarrativeReport {
+  nodeId: ID!
+  namespace: String!
+  generatedAt: Timestamp
+  summary: String
+  claim: CitedClaim
+  evidence: [CitedClaim!]
+  contradictions: [CitedClaim!]
+  provenance: [CitedClaim!]
+  confidenceExplanation: String
+}
+
+type CitedClaim {
+  nodeId: ID!
+  sourceId: String
+  text: String
+  confidence: Float
+  epistemicType: String
+  validFrom: Timestamp
+  validUntil: Timestamp
+  provenanceDepth: Int
+  relation: String
+}
+
+type GapReport {
+  namespace: String!
+  gaps: [KnowledgeGap!]
+  coverageScore: Float
+  totalNodes: Int
+  gapsDetected: Int
+}
+
+type KnowledgeGap {
+  id: ID!
+  nearestTopics: [String!]
+  centroidVector: [Float!]
+  densityScore: Float
+  confidenceGap: Float
+  temporalGapSeconds: Float
 }
 
 input FilterInput {
@@ -30,8 +90,22 @@ type Node {
   credibility: Float!
   validFrom: Timestamp
   validTo: Timestamp
+  score: Float
+  similarityScore: Float
+  confidenceScore: Float
+  recencyScore: Float
+  utilityScore: Float
+  scoreBreakdown: ScoreBreakdown
+  retrievalSource: String
   edges: [Edge!]!
   sources: [Source!]!
+}
+
+type ScoreBreakdown {
+  similarity: Float
+  confidence: Float
+  recency: Float
+  utility: Float
 }
 
 type Edge {

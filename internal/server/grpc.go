@@ -49,9 +49,15 @@ func (s *GRPCService) Register(srv *grpc.Server) {
 			{MethodName: "Retrieve", Handler: s.handleRetrieve},
 			{MethodName: "IngestText", Handler: s.handleIngestText},
 			{MethodName: "LabelSource", Handler: s.handleLabelSource},
+			{MethodName: "ValidateClaim", Handler: s.handleValidateClaim},
+			{MethodName: "RefuteClaim", Handler: s.handleRefuteClaim},
+			{MethodName: "MarkUseful", Handler: s.handleMarkUseful},
+			{MethodName: "MarkStale", Handler: s.handleMarkStale},
 			{MethodName: "Ping", Handler: s.handlePing},
 			// Low-level store methods for ModeRemote
 			{MethodName: "GetNode", Handler: s.handleGetNode},
+			{MethodName: "GetNodeByFingerprint", Handler: s.handleGetNodeByFingerprint},
+			{MethodName: "TouchNode", Handler: s.handleTouchNode},
 			{MethodName: "UpsertNode", Handler: s.handleUpsertNode},
 			{MethodName: "NodeHistory", Handler: s.handleNodeHistory},
 			{MethodName: "UpsertEdge", Handler: s.handleUpsertEdge},
@@ -70,8 +76,8 @@ func (s *GRPCService) Register(srv *grpc.Server) {
 			{
 				StreamName:    "StreamRetrieve",
 				Handler:       s.handleStreamRetrieve,
-				ServerStreams:  true,
-				ClientStreams:  false,
+				ServerStreams: true,
+				ClientStreams: false,
 			},
 		},
 	}
@@ -92,6 +98,8 @@ type GRPCWriteRequest struct {
 	ModelID       string            `json:"model_id"`
 	Confidence    float64           `json:"confidence"`
 	ValidFrom     *time.Time        `json:"valid_from,omitempty"`
+	Dedup         bool              `json:"dedup,omitempty"`
+	SkipDedup     bool              `json:"skip_dedup,omitempty"`
 }
 
 // GRPCWriteResponse is the gRPC write response.
@@ -142,6 +150,24 @@ type GRPCLabelSourceRequest struct {
 	Labels        []string `json:"labels"`
 }
 
+type GRPCFeedbackRequest struct {
+	Namespace     string `json:"namespace"`
+	NamespaceMode string `json:"namespace_mode"`
+	NodeID        string `json:"node_id"`
+	Reason        string `json:"reason,omitempty"`
+	Quality       int    `json:"quality,omitempty"`
+}
+
+type GRPCFeedbackResponse struct {
+	NodeID            string  `json:"node_id"`
+	Action            string  `json:"action"`
+	Confidence        float64 `json:"confidence"`
+	Utility           float64 `json:"utility"`
+	SourceID          string  `json:"source_id,omitempty"`
+	SourceCredibility float64 `json:"source_credibility,omitempty"`
+	Reason            string  `json:"reason,omitempty"`
+}
+
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 func (s *GRPCService) handleWrite(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -178,6 +204,8 @@ func (s *GRPCService) handleWrite(srv interface{}, ctx context.Context, dec func
 		ModelID:    req.ModelID,
 		Confidence: req.Confidence,
 		ValidFrom:  validFrom,
+		Dedup:      req.Dedup,
+		SkipDedup:  req.SkipDedup,
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -250,18 +278,7 @@ func (s *GRPCService) handleRetrieve(srv interface{}, ctx context.Context, dec f
 
 	resp := &GRPCRetrieveResponse{Results: make([]scoredNodeResponse, len(results))}
 	for i, r := range results {
-		resp.Results[i] = scoredNodeResponse{
-			ID:              r.Node.ID.String(),
-			Namespace:       r.Node.Namespace,
-			Labels:          r.Node.Labels,
-			Properties:      r.Node.Properties,
-			Score:           r.Score,
-			SimilarityScore: r.SimilarityScore,
-			ConfidenceScore: r.ConfidenceScore,
-			RecencyScore:    r.RecencyScore,
-			UtilityScore:    r.UtilityScore,
-			RetrievalSource: r.RetrievalSource,
-		}
+		resp.Results[i] = newScoredNodeResponse(r)
 	}
 
 	return resp, nil
@@ -314,6 +331,68 @@ func (s *GRPCService) handleLabelSource(srv interface{}, ctx context.Context, de
 	}
 
 	return &struct{}{}, nil
+}
+
+func (s *GRPCService) handleValidateClaim(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	return s.handleFeedback(ctx, dec, "validate")
+}
+
+func (s *GRPCService) handleRefuteClaim(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	return s.handleFeedback(ctx, dec, "refute")
+}
+
+func (s *GRPCService) handleMarkUseful(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	return s.handleFeedback(ctx, dec, "useful")
+}
+
+func (s *GRPCService) handleMarkStale(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	return s.handleFeedback(ctx, dec, "stale")
+}
+
+func (s *GRPCService) handleFeedback(ctx context.Context, dec func(interface{}) error, action string) (interface{}, error) {
+	var req GRPCFeedbackRequest
+	if err := dec(&req); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	tenant := TenantFromContext(ctx)
+	ns := req.Namespace
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	nodeID, err := uuid.Parse(req.NodeID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid node_id: "+err.Error())
+	}
+
+	h := s.db.Namespace(ns, resolveMode(req.NamespaceMode))
+	var result client.FeedbackResult
+	switch action {
+	case "validate":
+		result, err = h.ValidateClaim(ctx, nodeID)
+	case "refute":
+		result, err = h.RefuteClaim(ctx, nodeID, req.Reason)
+	case "useful":
+		result, err = h.MarkUseful(ctx, nodeID, req.Quality)
+	case "stale":
+		result, err = h.MarkStale(ctx, nodeID, req.Reason)
+	default:
+		err = fmt.Errorf("unknown feedback action %q", action)
+	}
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	resp := newFeedbackResponse(result)
+	return &GRPCFeedbackResponse{
+		NodeID:            resp.NodeID,
+		Action:            resp.Action,
+		Confidence:        resp.Confidence,
+		Utility:           resp.Utility,
+		SourceID:          resp.SourceID,
+		SourceCredibility: resp.SourceCredibility,
+		Reason:            resp.Reason,
+	}, nil
 }
 
 func (s *GRPCService) handlePing(_ interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -386,18 +465,7 @@ func (s *GRPCService) handleStreamRetrieve(srv interface{}, stream grpc.ServerSt
 
 	// Stream each result individually
 	for _, r := range results {
-		resp := scoredNodeResponse{
-			ID:              r.Node.ID.String(),
-			Namespace:       r.Node.Namespace,
-			Labels:          r.Node.Labels,
-			Properties:      r.Node.Properties,
-			Score:           r.Score,
-			SimilarityScore: r.SimilarityScore,
-			ConfidenceScore: r.ConfidenceScore,
-			RecencyScore:    r.RecencyScore,
-			UtilityScore:    r.UtilityScore,
-			RetrievalSource: r.RetrievalSource,
-		}
+		resp := newScoredNodeResponse(r)
 		if err := stream.SendMsg(&resp); err != nil {
 			return err
 		}
@@ -410,6 +478,17 @@ func (s *GRPCService) handleStreamRetrieve(srv interface{}, stream grpc.ServerSt
 type grpcGetNodeReq struct {
 	Namespace string `json:"namespace"`
 	ID        string `json:"id"`
+}
+
+type grpcGetNodeByFingerprintReq struct {
+	Namespace   string `json:"namespace"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+type grpcTouchNodeReq struct {
+	Namespace string    `json:"namespace"`
+	ID        string    `json:"id"`
+	At        time.Time `json:"at"`
 }
 
 type grpcNodeResp struct {
@@ -536,6 +615,33 @@ func (s *GRPCService) handleGetNode(srv interface{}, ctx context.Context, dec fu
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &grpcNodeResp{Node: node, Found: node != nil}, nil
+}
+
+func (s *GRPCService) handleGetNodeByFingerprint(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	var req grpcGetNodeByFingerprintReq
+	if err := dec(&req); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	node, err := s.graph.GetNodeByFingerprint(ctx, req.Namespace, req.Fingerprint)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &grpcNodeResp{Node: node, Found: node != nil}, nil
+}
+
+func (s *GRPCService) handleTouchNode(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	var req grpcTouchNodeReq
+	if err := dec(&req); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	id, err := uuid.Parse(req.ID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid id: "+err.Error())
+	}
+	if err := s.graph.TouchNode(ctx, req.Namespace, id, req.At); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &struct{}{}, nil
 }
 
 func (s *GRPCService) handleUpsertNode(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {

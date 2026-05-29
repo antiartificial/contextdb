@@ -12,6 +12,10 @@ service ContextDB {
   rpc IngestText(IngestTextRequest) returns (IngestTextResponse);
   rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
   rpc LabelSource(LabelSourceRequest) returns (LabelSourceResponse);
+  rpc ValidateClaim(FeedbackRequest) returns (FeedbackResponse);
+  rpc RefuteClaim(FeedbackRequest) returns (FeedbackResponse);
+  rpc MarkUseful(FeedbackRequest) returns (FeedbackResponse);
+  rpc MarkStale(FeedbackRequest) returns (FeedbackResponse);
   rpc Ping(PingRequest) returns (PingResponse);
 }
 
@@ -26,6 +30,8 @@ message WriteRequest {
   string model_id = 8;
   double confidence = 9;
   google.protobuf.Timestamp valid_from = 10;
+  bool dedup = 11;
+  bool skip_dedup = 12;
 }
 
 message WriteResponse {
@@ -59,6 +65,14 @@ message ScoredNode {
   double recency_score = 8;
   double utility_score = 9;
   string retrieval_source = 10;
+  ScoreBreakdown score_breakdown = 11;
+}
+
+message ScoreBreakdown {
+  double similarity = 1;
+  double confidence = 2;
+  double recency = 3;
+  double utility = 4;
 }
 
 message ScoreParams {
@@ -99,6 +113,24 @@ message LabelSourceRequest {
 }
 
 message LabelSourceResponse {}
+
+message FeedbackRequest {
+  string namespace = 1;
+  string namespace_mode = 2;
+  string node_id = 3;
+  string reason = 4;
+  int32 quality = 5;
+}
+
+message FeedbackResponse {
+  string node_id = 1;
+  string action = 2;
+  double confidence = 3;
+  double utility = 4;
+  string source_id = 5;
+  double source_credibility = 6;
+  string reason = 7;
+}
 
 message PingRequest {}
 message PingResponse {

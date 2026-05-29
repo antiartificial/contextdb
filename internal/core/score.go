@@ -62,9 +62,19 @@ type ScoredNode struct {
 	ConfidenceScore float64
 	RecencyScore    float64
 	UtilityScore    float64
+	Breakdown       ScoreBreakdown
 
 	// Provenance
 	RetrievalSource string // "vector", "graph", "kv", "fused"
+}
+
+// ScoreBreakdown exposes the weighted contribution of each component to Score.
+// The four fields sum to ScoredNode.Score after score-weight normalization.
+type ScoreBreakdown struct {
+	Similarity float64 `json:"similarity"`
+	Confidence float64 `json:"confidence"`
+	Recency    float64 `json:"recency"`
+	Utility    float64 `json:"utility"`
 }
 
 // ScoreNode computes the composite retrieval score for a candidate node.
@@ -128,7 +138,13 @@ func ScoreNode(n Node, similarity, utility float64, p ScoreParams) ScoredNode {
 	rw := p.RecencyWeight / total
 	uw := p.UtilityWeight / total
 
-	score := sw*similarity + cw*conf + rw*recency + uw*utility
+	breakdown := ScoreBreakdown{
+		Similarity: sw * similarity,
+		Confidence: cw * conf,
+		Recency:    rw * recency,
+		Utility:    uw * utility,
+	}
+	score := breakdown.Similarity + breakdown.Confidence + breakdown.Recency + breakdown.Utility
 
 	return ScoredNode{
 		Node:            n,
@@ -137,6 +153,7 @@ func ScoreNode(n Node, similarity, utility float64, p ScoreParams) ScoredNode {
 		ConfidenceScore: conf,
 		RecencyScore:    recency,
 		UtilityScore:    utility,
+		Breakdown:       breakdown,
 	}
 }
 

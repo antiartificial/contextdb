@@ -5,7 +5,7 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**API Reference**](https://antiartificial.github.io/contextdb/api/go-sdk) | [**Python SDK**](https://antiartificial.github.io/contextdb/api/python-sdk) | [**TypeScript SDK**](https://antiartificial.github.io/contextdb/api/typescript-sdk)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**API Reference**](https://antiartificial.github.io/contextdb/api/) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
 
 ## What & Why
@@ -16,12 +16,20 @@ Most vector databases treat embeddings as the whole story. But AI systems that i
 
 **30-second demo**:
 ```bash
-# Store a fact with source credibility
-curl -X POST http://localhost:8080/v1/sources \
-  -d '{"name": "standup_notes", "alpha": 8, "beta": 2}'
+# Store a fact with source tracking
+curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Deploys use blue-green rollout", "source_id": "runbook"}'
 
-# Search with semantic + credibility ranking
-curl "http://localhost:8080/v1/search?q=project+status"
+# Search with semantic + credibility + recency + utility scoring
+curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
+  -H "Content-Type: application/json" \
+  -d '{"text": "How do deploys work?", "top_k": 5}'
+
+# Inspect the graph-shaped API
+curl -X POST http://localhost:7701/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ search(namespace:\"my-app\", query:\"deploy\", limit:5) { nodes { id content score scoreBreakdown { similarity confidence recency utility } } } }"}'
 ```
 
 **Why you need it**:
@@ -48,6 +56,7 @@ graph LR
     subgraph Server
         GRPC[gRPC :7700]
         REST[REST :7701]
+        GQL[GraphQL /graphql]
         OBS[Observe :7702]
         ADMIN[Admin UI]
     end
@@ -70,8 +79,10 @@ graph LR
     GO --> GRPC
     PY --> REST
     TS --> REST
+    REST --> GQL
     GRPC --> EMB
     REST --> EMB
+    GQL --> RET
     EMB --> ING
     EMB --> RET
     ING --> MEM & BAD & PG & QD & RD
@@ -80,6 +91,7 @@ graph LR
 
     style GRPC fill:#4a9eff,stroke:#333,color:#fff
     style REST fill:#4a9eff,stroke:#333,color:#fff
+    style GQL fill:#4a9eff,stroke:#333,color:#fff
     style MEM fill:#2ecc71,stroke:#333,color:#fff
     style BAD fill:#27ae60,stroke:#333,color:#fff
     style PG fill:#16a085,stroke:#333,color:#fff
@@ -159,6 +171,8 @@ ns.LabelSource(ctx, "user:spammer", []string{"troll"})
 
 **[Credibility learning](docs/concepts/credibility.md)** -- Sources that produce validated claims gain trust; those that contradict reliable facts lose it. Updates are Bayesian -- uncertainty decreases with more observations. [Example](docs/examples.md#belief-system-channel-fact-tracker). *Typical vector DBs: static trust scores.*
 
+**[Feedback APIs](docs/api/rest.md#feedback)** -- Go, REST, gRPC, and GraphQL clients can validate, refute, mark useful, or mark stale. Feedback updates node versions, utility, SM-2 recall metadata, and source credibility when available. *Typical vector DBs: external feedback tables.*
+
 **[Memory decay](docs/concepts/memory-types.md)** -- Different knowledge decays at different rates. Episodic memories (half-life ~9h) fade quickly; procedural skills (half-life ~29d) persist. Background workers consolidate episodic memories into durable semantic knowledge. [Example](docs/examples.md#agent-memory-task-aware-retrieval). *Typical vector DBs: no decay model.*
 
 ### Retrieval
@@ -177,7 +191,11 @@ results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
 })
 ```
 
+**[Score breakdown](docs/api/rest.md#retrieve)** -- Retrieval responses expose the weighted contribution of similarity, confidence, recency, and utility, so ranking is explainable without re-deriving the scoring function. *Typical vector DBs: opaque score.*
+
 **[Query DSL](docs/api/dsl.md)** -- Two syntax tiers. Pipe syntax for the REPL (`search "x" | where confidence > 0.7 | top 5`). CQL for apps (`FIND "x" WHERE ... WEIGHT ... LIMIT 5`). Both compile to the same AST. [Example](docs/examples.md#query-dsl-pipe-syntax-and-cql). *Typical vector DBs: API-only.*
+
+**[GraphQL API](docs/api/graphql.md)** -- `/graphql` exposes graph-shaped search, filters, sources, edges, score breakdowns, feedback mutations, narrative reports, and knowledge-gap queries. *Typical vector DBs: separate inspector tooling.*
 
 **[Label filtering](docs/api/go-sdk.md)** -- Restrict retrieval to nodes carrying specific labels. Push-down to backend when supported. *Typical vector DBs: no label support.*
 
@@ -237,6 +255,24 @@ All weights normalised at query time. Different namespace modes ship tuned defau
 | **Standard** | Postgres + pgvector | Production single-node |
 | **Remote** | gRPC to contextdb server | Microservices, multi-language clients |
 | **Scaled** | Qdrant + Redis + Postgres | High-throughput production |
+
+## Live deployment
+
+The internal live instance is hosted on Aaron's Mac mini and managed by Norn. The Norn manifest is the source of truth for the current route:
+
+```bash
+export NORN_MANIFEST_URL="https://aarons-mac-mini.tail113139.ts.net/api/services/manifest"
+curl -fsS "$NORN_MANIFEST_URL" | jq '.services[] | select(.app == "contextdb")'
+```
+
+Once the service route is advertised, set `CONTEXTDB_URL` to the HTTP endpoint and use the normal REST and GraphQL APIs:
+
+```bash
+curl "$CONTEXTDB_URL/v1/ping"
+curl -X POST "$CONTEXTDB_URL/graphql" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ search(namespace:\"my-app\", query:\"status\") { totalCount } }"}'
+```
 
 ## Quick start
 

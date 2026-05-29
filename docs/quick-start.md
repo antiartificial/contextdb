@@ -112,8 +112,26 @@ The server exposes three ports:
 | Port | Protocol | Purpose |
 |:-----|:---------|:--------|
 | 7700 | gRPC | Primary API (JSON codec) |
-| 7701 | HTTP | REST API |
+| 7701 | HTTP | REST API and GraphQL at `/graphql` |
 | 7702 | HTTP | Metrics, pprof, health |
+
+Health check:
+
+```bash
+curl http://localhost:7701/v1/ping
+```
+
+GraphQL check:
+
+```bash
+curl -X POST http://localhost:7701/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ search(namespace:\"my-app\", query:\"Go\") { totalCount } }"}'
+```
+
+## Live internal instance
+
+The internal live instance is hosted on Aaron's Mac mini and managed by Norn. See [Mini/Norn deployment](deployment/norn) for discovery and health checks.
 
 ## What's next?
 

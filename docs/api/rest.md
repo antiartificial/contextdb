@@ -15,6 +15,12 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/ingest` | Ingest text (LLM extraction) |
 | `GET` | `/v1/namespaces/{ns}/nodes/{id}` | Get a single node |
 | `POST` | `/v1/namespaces/{ns}/sources/label` | Label a source |
+| `POST` | `/v1/namespaces/{ns}/nodes/{id}/validate` | Validate a claim |
+| `POST` | `/v1/namespaces/{ns}/nodes/{id}/refute` | Refute a claim |
+| `POST` | `/v1/namespaces/{ns}/nodes/{id}/useful` | Mark a memory useful |
+| `POST` | `/v1/namespaces/{ns}/nodes/{id}/stale` | Mark a node stale |
+| `GET` | `/v1/namespaces/{ns}/nodes/{id}/narrative` | Explain a claim with evidence |
+| `POST` | `/v1/namespaces/{ns}/gaps` | Detect knowledge gaps |
 | `GET` | `/v1/stats` | Runtime statistics |
 | `GET` | `/v1/ping` | Health check |
 
@@ -86,6 +92,8 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/write \
 | `confidence` | float | No | Confidence [0, 1] |
 | `valid_from` | string | No | ISO 8601 timestamp |
 | `mem_type` | string | No | Memory type: `episodic`, `semantic`, `procedural`, `working` |
+| `dedup` | bool | No | Opt this write into content fingerprint deduplication |
+| `skip_dedup` | bool | No | Bypass content fingerprint deduplication when the server default is enabled |
 
 ## Retrieve
 
@@ -145,11 +153,19 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
       "confidence_score": 0.9,
       "recency_score": 0.72,
       "utility_score": 0.5,
+      "score_breakdown": {
+        "similarity": 0.38,
+        "confidence": 0.27,
+        "recency": 0.14,
+        "utility": 0.05
+      },
       "retrieval_source": "vector"
     }
   ]
 }
 ```
+
+Raw component fields (`similarity_score`, `confidence_score`, `recency_score`, `utility_score`) stay in the response for debugging. `score_breakdown` reports the weighted contribution of each component; the four values sum to `score`.
 
 ### Request fields
 
@@ -207,6 +223,59 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/sources/label \
 ```json
 {"status": "ok"}
 ```
+
+## Feedback
+
+Feedback APIs update node confidence/utility and source credibility without deleting history.
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/nodes/550e8400-e29b-41d4-a716-446655440000/validate \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "verified externally"}'
+```
+
+Available actions:
+
+| Path suffix | Effect |
+|:------------|:-------|
+| `/validate` | Increases claim confidence and validates the asserting source |
+| `/refute` | Sets claim confidence low and refutes the asserting source |
+| `/useful` | Increases utility and updates SM-2 recall metadata |
+| `/stale` | Decreases confidence and utility |
+
+`/useful` accepts `quality` from 0 to 5. `/refute` and `/stale` accept an optional `reason`.
+
+**Response:**
+
+```json
+{
+  "node_id": "550e8400-e29b-41d4-a716-446655440000",
+  "action": "validated",
+  "confidence": 1,
+  "utility": 1,
+  "source_id": "docs-crawler",
+  "source_credibility": 0.67,
+  "reason": "verified externally"
+}
+```
+
+## Narrative Retrieval
+
+```bash
+curl http://localhost:7701/v1/namespaces/my-app/nodes/550e8400-e29b-41d4-a716-446655440000/narrative
+```
+
+Returns a structured explanation containing the target claim, summary, supporting evidence, contradictions, provenance, and confidence explanation.
+
+## Knowledge Gaps
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/gaps \
+  -H "Content-Type: application/json" \
+  -d '{"top_k": 20, "min_gap_size": 0.5, "max_gaps": 10}'
+```
+
+Returns sparse semantic regions with nearest topics, centroid vectors, density, confidence, and temporal gap metadata.
 
 ## Stats
 

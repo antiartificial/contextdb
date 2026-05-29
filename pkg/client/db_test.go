@@ -25,6 +25,24 @@ func vec8(d int) []float32 {
 	return v
 }
 
+type countingEmbedder struct {
+	vec   []float32
+	calls int
+}
+
+func (e *countingEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+	e.calls++
+	out := make([][]float32, len(texts))
+	for i := range texts {
+		out[i] = e.vec
+	}
+	return out, nil
+}
+
+func (e *countingEmbedder) Dimensions() int {
+	return len(e.vec)
+}
+
 // ─── Open / close ─────────────────────────────────────────────────────────────
 
 func TestDB_OpenAndClose(t *testing.T) {
@@ -117,6 +135,149 @@ func TestNamespace_WriteWithoutVectorStillAdmitted(t *testing.T) {
 
 	is.NoErr(err)
 	is.True(result.Admitted)
+}
+
+func TestNamespace_WriteDeduplicatesBeforeEmbedding(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	embedder := &countingEmbedder{vec: vec8(0)}
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded, Embedder: embedder})
+	defer db.Close()
+
+	ns := db.Namespace("test:dedup", namespace.ModeGeneral)
+
+	first, err := ns.Write(ctx, client.WriteRequest{
+		Content:  "Go, uses   GC!",
+		SourceID: "docs",
+		Labels:   []string{"Fact"},
+		Dedup:    true,
+	})
+	is.NoErr(err)
+	is.True(first.Admitted)
+
+	second, err := ns.Write(ctx, client.WriteRequest{
+		Content:  "go uses gc",
+		SourceID: "docs",
+		Labels:   []string{"Fact"},
+		Dedup:    true,
+	})
+	is.NoErr(err)
+	is.True(second.Admitted)
+	is.Equal(second.NodeID, first.NodeID)
+	is.Equal(second.Reason, "deduplicated")
+	is.Equal(embedder.calls, 1)
+
+	node, err := ns.GetNode(ctx, first.NodeID)
+	is.NoErr(err)
+	is.True(node != nil)
+	is.True(node.Fingerprint != "")
+	is.Equal(node.Properties["source_id"], "docs")
+}
+
+func TestNamespace_WriteDedupIsOptIn(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	embedder := &countingEmbedder{vec: vec8(0)}
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded, Embedder: embedder})
+	defer db.Close()
+
+	ns := db.Namespace("test:dedup-opt-in", namespace.ModeGeneral)
+
+	first, err := ns.Write(ctx, client.WriteRequest{
+		Content:  "same text",
+		SourceID: "docs",
+		Labels:   []string{"Fact"},
+	})
+	is.NoErr(err)
+	is.True(first.Admitted)
+
+	second, err := ns.Write(ctx, client.WriteRequest{
+		Content:  "same text",
+		SourceID: "docs",
+		Labels:   []string{"Fact"},
+	})
+	is.NoErr(err)
+	is.True(!second.Admitted)
+	is.True(second.Reason != "deduplicated")
+	is.Equal(embedder.calls, 2)
+}
+
+func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:feedback", namespace.ModeGeneral)
+
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Validated fact",
+		SourceID:   "docs",
+		Labels:     []string{"Fact"},
+		Confidence: 0.5,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+	before, err := ns.GetNode(ctx, written.NodeID)
+	is.NoErr(err)
+	is.True(before != nil)
+
+	validated, err := ns.ValidateClaim(ctx, written.NodeID)
+	is.NoErr(err)
+	is.Equal(validated.Action, "validated")
+	is.True(validated.Confidence > before.Confidence)
+	is.True(validated.SourceCredibility > 0.5)
+
+	useful, err := ns.MarkUseful(ctx, written.NodeID, 4)
+	is.NoErr(err)
+	is.Equal(useful.Action, "useful")
+	is.True(useful.Utility > 0.9)
+
+	refuted, err := ns.RefuteClaim(ctx, written.NodeID, "bad source")
+	is.NoErr(err)
+	is.Equal(refuted.Action, "refuted")
+	is.Equal(refuted.Confidence, 0.05)
+
+	node, err := ns.GetNode(ctx, written.NodeID)
+	is.NoErr(err)
+	is.True(node != nil)
+	is.Equal(node.Properties["refuted_reason"], "bad source")
+	is.True(node.Version >= 4)
+}
+
+func TestNamespace_ExplainAndKnowledgeGaps(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:explain", namespace.ModeGeneral)
+
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "ContextDB tracks source credibility",
+		SourceID:   "docs",
+		Labels:     []string{"Fact"},
+		Vector:     vec8(0),
+		Confidence: 0.8,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+
+	report, err := ns.Explain(ctx, written.NodeID)
+	is.NoErr(err)
+	is.True(report != nil)
+	is.Equal(report.Claim.Text, "ContextDB tracks source credibility")
+	is.True(report.Summary != "")
+
+	gaps, err := ns.KnowledgeGaps(ctx, client.GapRequest{MaxGaps: 3})
+	is.NoErr(err)
+	is.True(gaps != nil)
+	is.Equal(gaps.Namespace, "test:explain")
+	is.Equal(gaps.TotalNodes, 1)
 }
 
 // ─── Retrieve ─────────────────────────────────────────────────────────────────

@@ -44,24 +44,53 @@ func (g *GraphStore) UpsertNode(ctx context.Context, n core.Node) error {
 	}
 
 	_, err = g.pool.Exec(ctx, `
-		INSERT INTO nodes (id, namespace, labels, properties, model_id, valid_from, valid_until, tx_time, confidence, version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+		INSERT INTO nodes (id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 			COALESCE((SELECT MAX(version) FROM nodes WHERE id = $1 AND namespace = $2), 0) + 1
 		)
-	`, n.ID, n.Namespace, n.Labels, props, n.ModelID, n.ValidFrom, n.ValidUntil, n.TxTime, n.Confidence)
+	`, n.ID, n.Namespace, n.Labels, props, n.ModelID, n.Fingerprint, n.ValidFrom, n.ValidUntil, n.TxTime, n.Confidence)
 	return err
 }
 
 func (g *GraphStore) GetNode(ctx context.Context, ns string, id uuid.UUID) (*core.Node, error) {
 	return g.scanNode(ctx, `
-		SELECT id, namespace, labels, properties, model_id, valid_from, valid_until, tx_time, confidence, version
+		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
 		FROM nodes WHERE namespace = $1 AND id = $2 ORDER BY version DESC LIMIT 1
 	`, ns, id)
 }
 
+func (g *GraphStore) GetNodeByFingerprint(ctx context.Context, ns, fingerprint string) (*core.Node, error) {
+	if fingerprint == "" {
+		return nil, nil
+	}
+	return g.scanNode(ctx, `
+		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
+		FROM nodes
+		WHERE namespace = $1 AND fingerprint = $2
+		  AND valid_from <= now()
+		  AND (valid_until IS NULL OR valid_until > now())
+		ORDER BY version DESC LIMIT 1
+	`, ns, fingerprint)
+}
+
+func (g *GraphStore) TouchNode(ctx context.Context, ns string, id uuid.UUID, at time.Time) error {
+	n, err := g.GetNode(ctx, ns, id)
+	if err != nil {
+		return err
+	}
+	if n == nil {
+		return fmt.Errorf("node %s not found in namespace %s", id, ns)
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	n.TxTime = at
+	return g.UpsertNode(ctx, *n)
+}
+
 func (g *GraphStore) AsOf(ctx context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error) {
 	return g.scanNode(ctx, `
-		SELECT id, namespace, labels, properties, model_id, valid_from, valid_until, tx_time, confidence, version
+		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
 		FROM nodes
 		WHERE namespace = $1 AND id = $2
 		  AND valid_from <= $3
@@ -73,7 +102,7 @@ func (g *GraphStore) AsOf(ctx context.Context, ns string, id uuid.UUID, t time.T
 
 func (g *GraphStore) History(ctx context.Context, ns string, id uuid.UUID) ([]core.Node, error) {
 	rows, err := g.pool.Query(ctx, `
-		SELECT id, namespace, labels, properties, model_id, valid_from, valid_until, tx_time, confidence, version
+		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
 		FROM nodes WHERE namespace = $1 AND id = $2 ORDER BY version ASC
 	`, ns, id)
 	if err != nil {
@@ -195,7 +224,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 
 	query := `
 		WITH RECURSIVE walk AS (
-			SELECT n.id, n.namespace, n.labels, n.properties, n.model_id,
+			SELECT n.id, n.namespace, n.labels, n.properties, n.model_id, n.fingerprint,
 				   n.valid_from, n.valid_until, n.tx_time, n.confidence, n.version,
 				   0 AS depth
 			FROM nodes n
@@ -207,7 +236,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 
 			UNION
 
-			SELECT n2.id, n2.namespace, n2.labels, n2.properties, n2.model_id,
+			SELECT n2.id, n2.namespace, n2.labels, n2.properties, n2.model_id, n2.fingerprint,
 				   n2.valid_from, n2.valid_until, n2.tx_time, n2.confidence, n2.version,
 				   w.depth + 1
 			FROM walk w
@@ -223,7 +252,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 				AND n2.version = (SELECT MAX(version) FROM nodes WHERE id = n2.id AND namespace = n2.namespace)
 			WHERE w.depth < $6
 		)
-		SELECT DISTINCT ON (id) id, namespace, labels, properties, model_id,
+		SELECT DISTINCT ON (id) id, namespace, labels, properties, model_id, fingerprint,
 			   valid_from, valid_until, tx_time, confidence, version
 		FROM walk ORDER BY id, depth
 	`
@@ -369,7 +398,7 @@ func (g *GraphStore) UpdateCredibility(ctx context.Context, ns string, id uuid.U
 
 func (g *GraphStore) Diff(ctx context.Context, ns string, t1, t2 time.Time) ([]store.NodeDiff, error) {
 	rows, err := g.pool.Query(ctx, `
-		SELECT id, namespace, labels, properties, model_id, valid_from, valid_until, tx_time, confidence, version
+		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
 		FROM nodes
 		WHERE namespace = $1 AND tx_time > $2 AND tx_time <= $3
 		ORDER BY tx_time
@@ -399,7 +428,7 @@ func (g *GraphStore) Diff(ctx context.Context, ns string, t1, t2 time.Time) ([]s
 
 func (g *GraphStore) ValidAt(ctx context.Context, ns string, t time.Time, labels []string) ([]core.Node, error) {
 	rows, err := g.pool.Query(ctx, `
-		SELECT DISTINCT ON (id) id, namespace, labels, properties, model_id,
+		SELECT DISTINCT ON (id) id, namespace, labels, properties, model_id, fingerprint,
 		       valid_from, valid_until, tx_time, confidence, version
 		FROM nodes
 		WHERE namespace = $1
@@ -452,7 +481,7 @@ func (g *GraphStore) scanNode(ctx context.Context, query string, args ...any) (*
 func scanSingleNodeRow(row pgx.Row) (core.Node, error) {
 	var n core.Node
 	var props []byte
-	err := row.Scan(&n.ID, &n.Namespace, &n.Labels, &props, &n.ModelID,
+	err := row.Scan(&n.ID, &n.Namespace, &n.Labels, &props, &n.ModelID, &n.Fingerprint,
 		&n.ValidFrom, &n.ValidUntil, &n.TxTime, &n.Confidence, &n.Version)
 	if err != nil {
 		return n, err
@@ -471,7 +500,7 @@ func scanSingleNodeRow(row pgx.Row) (core.Node, error) {
 func scanNodeRow(rows pgx.Rows) (core.Node, error) {
 	var n core.Node
 	var props []byte
-	err := rows.Scan(&n.ID, &n.Namespace, &n.Labels, &props, &n.ModelID,
+	err := rows.Scan(&n.ID, &n.Namespace, &n.Labels, &props, &n.ModelID, &n.Fingerprint,
 		&n.ValidFrom, &n.ValidUntil, &n.TxTime, &n.Confidence, &n.Version)
 	if err != nil {
 		return n, err

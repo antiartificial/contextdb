@@ -4,6 +4,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/ingest"
 	"github.com/antiartificial/contextdb/internal/namespace"
+	"github.com/antiartificial/contextdb/internal/retrieval"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
 
@@ -48,11 +50,24 @@ func (s *RESTServer) Handler() http.Handler {
 	// POST /v1/namespaces/{ns}/consensus/{claimID}
 	mux.HandleFunc("POST /v1/namespaces/{ns}/consensus/{claimID}", s.handleConsensus)
 
+	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/validate", s.handleValidateClaim)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/refute", s.handleRefuteClaim)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/useful", s.handleMarkUseful)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/stale", s.handleMarkStale)
+
+	mux.HandleFunc("GET /v1/namespaces/{ns}/nodes/{id}/narrative", s.handleNarrative)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/gaps", s.handleKnowledgeGaps)
+
 	// GET /v1/stats
 	mux.HandleFunc("GET /v1/stats", s.handleStats)
 
 	// GET /v1/ping
 	mux.HandleFunc("GET /v1/ping", s.handlePing)
+
+	if gql, err := NewGraphQLServer(s.db); err == nil {
+		mux.Handle("GET /graphql", gql)
+		mux.Handle("POST /graphql", gql)
+	}
 
 	return mux
 }
@@ -70,6 +85,8 @@ type writeRequest struct {
 	Confidence float64           `json:"confidence"`
 	ValidFrom  *time.Time        `json:"valid_from,omitempty"`
 	MemType    string            `json:"mem_type,omitempty"`
+	Dedup      bool              `json:"dedup,omitempty"`
+	SkipDedup  bool              `json:"skip_dedup,omitempty"`
 }
 
 type writeResponse struct {
@@ -103,16 +120,24 @@ type retrieveResponse struct {
 }
 
 type scoredNodeResponse struct {
-	ID              string            `json:"id"`
-	Namespace       string            `json:"namespace"`
-	Labels          []string          `json:"labels"`
-	Properties      map[string]any    `json:"properties"`
-	Score           float64           `json:"score"`
-	SimilarityScore float64           `json:"similarity_score"`
-	ConfidenceScore float64           `json:"confidence_score"`
-	RecencyScore    float64           `json:"recency_score"`
-	UtilityScore    float64           `json:"utility_score"`
-	RetrievalSource string            `json:"retrieval_source"`
+	ID              string         `json:"id"`
+	Namespace       string         `json:"namespace"`
+	Labels          []string       `json:"labels"`
+	Properties      map[string]any `json:"properties"`
+	Score           float64        `json:"score"`
+	SimilarityScore float64        `json:"similarity_score"`
+	ConfidenceScore float64        `json:"confidence_score"`
+	RecencyScore    float64        `json:"recency_score"`
+	UtilityScore    float64        `json:"utility_score"`
+	ScoreBreakdown  scoreBreakdown `json:"score_breakdown"`
+	RetrievalSource string         `json:"retrieval_source"`
+}
+
+type scoreBreakdown struct {
+	Similarity float64 `json:"similarity"`
+	Confidence float64 `json:"confidence"`
+	Recency    float64 `json:"recency"`
+	Utility    float64 `json:"utility"`
 }
 
 type ingestRequest struct {
@@ -139,6 +164,71 @@ type labelSourceRequest struct {
 	Mode       string   `json:"mode"`
 	ExternalID string   `json:"external_id"`
 	Labels     []string `json:"labels"`
+}
+
+type feedbackRequest struct {
+	Mode    string `json:"mode"`
+	Reason  string `json:"reason,omitempty"`
+	Quality int    `json:"quality,omitempty"`
+}
+
+type gapRequest struct {
+	Mode       string  `json:"mode"`
+	TopK       int     `json:"top_k,omitempty"`
+	MinGapSize float64 `json:"min_gap_size,omitempty"`
+	MaxGaps    int     `json:"max_gaps,omitempty"`
+}
+
+type feedbackResponse struct {
+	NodeID            string  `json:"node_id"`
+	Action            string  `json:"action"`
+	Confidence        float64 `json:"confidence"`
+	Utility           float64 `json:"utility"`
+	SourceID          string  `json:"source_id,omitempty"`
+	SourceCredibility float64 `json:"source_credibility,omitempty"`
+	Reason            string  `json:"reason,omitempty"`
+}
+
+type narrativeReportResponse struct {
+	NodeID                string                      `json:"node_id"`
+	Namespace             string                      `json:"namespace"`
+	GeneratedAt           time.Time                   `json:"generated_at"`
+	Summary               string                      `json:"summary"`
+	Claim                 citedClaimResponse          `json:"claim"`
+	Evidence              []citedClaimResponse        `json:"evidence"`
+	Contradictions        []citedClaimResponse        `json:"contradictions"`
+	Provenance            []citedClaimResponse        `json:"provenance"`
+	ConfidenceExplanation string                      `json:"confidence_explanation"`
+	Grounding             []retrieval.GroundingResult `json:"grounding,omitempty"`
+}
+
+type citedClaimResponse struct {
+	NodeID          string     `json:"node_id"`
+	SourceID        string     `json:"source_id,omitempty"`
+	Text            string     `json:"text"`
+	Confidence      float64    `json:"confidence"`
+	EpistemicType   string     `json:"epistemic_type,omitempty"`
+	ValidFrom       time.Time  `json:"valid_from"`
+	ValidUntil      *time.Time `json:"valid_until,omitempty"`
+	ProvenanceDepth int        `json:"provenance_depth,omitempty"`
+	Relation        string     `json:"relation,omitempty"`
+}
+
+type gapReportResponse struct {
+	Namespace     string                 `json:"namespace"`
+	Gaps          []knowledgeGapResponse `json:"gaps"`
+	CoverageScore float64                `json:"coverage_score"`
+	TotalNodes    int                    `json:"total_nodes"`
+	GapsDetected  int                    `json:"gaps_detected"`
+}
+
+type knowledgeGapResponse struct {
+	ID                 string    `json:"id"`
+	NearestTopics      []string  `json:"nearest_topics"`
+	CentroidVector     []float32 `json:"centroid_vector"`
+	DensityScore       float64   `json:"density_score"`
+	ConfidenceGap      float64   `json:"confidence_gap"`
+	TemporalGapSeconds float64   `json:"temporal_gap_seconds"`
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -179,6 +269,8 @@ func (s *RESTServer) handleWrite(w http.ResponseWriter, r *http.Request) {
 		Confidence: req.Confidence,
 		ValidFrom:  validFrom,
 		MemType:    core.MemoryType(req.MemType),
+		Dedup:      req.Dedup,
+		SkipDedup:  req.SkipDedup,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -255,18 +347,7 @@ func (s *RESTServer) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 
 	resp := retrieveResponse{Results: make([]scoredNodeResponse, len(results))}
 	for i, r := range results {
-		resp.Results[i] = scoredNodeResponse{
-			ID:              r.Node.ID.String(),
-			Namespace:       r.Node.Namespace,
-			Labels:          r.Node.Labels,
-			Properties:      r.Node.Properties,
-			Score:           r.Score,
-			SimilarityScore: r.SimilarityScore,
-			ConfidenceScore: r.ConfidenceScore,
-			RecencyScore:    r.RecencyScore,
-			UtilityScore:    r.UtilityScore,
-			RetrievalSource: r.RetrievalSource,
-		}
+		resp.Results[i] = newScoredNodeResponse(r)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -332,19 +413,7 @@ func (s *RESTServer) handleGetNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	node := results[0]
-	writeJSON(w, http.StatusOK, scoredNodeResponse{
-		ID:              node.Node.ID.String(),
-		Namespace:       node.Node.Namespace,
-		Labels:          node.Node.Labels,
-		Properties:      node.Node.Properties,
-		Score:           node.Score,
-		SimilarityScore: node.SimilarityScore,
-		ConfidenceScore: node.ConfidenceScore,
-		RecencyScore:    node.RecencyScore,
-		UtilityScore:    node.UtilityScore,
-		RetrievalSource: node.RetrievalSource,
-	})
+	writeJSON(w, http.StatusOK, newScoredNodeResponse(results[0]))
 }
 
 func (s *RESTServer) handleLabelSource(w http.ResponseWriter, r *http.Request) {
@@ -403,6 +472,112 @@ func (s *RESTServer) handleConsensus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *RESTServer) handleValidateClaim(w http.ResponseWriter, r *http.Request) {
+	s.handleFeedback(w, r, "validate")
+}
+
+func (s *RESTServer) handleRefuteClaim(w http.ResponseWriter, r *http.Request) {
+	s.handleFeedback(w, r, "refute")
+}
+
+func (s *RESTServer) handleMarkUseful(w http.ResponseWriter, r *http.Request) {
+	s.handleFeedback(w, r, "useful")
+}
+
+func (s *RESTServer) handleMarkStale(w http.ResponseWriter, r *http.Request) {
+	s.handleFeedback(w, r, "stale")
+}
+
+func (s *RESTServer) handleFeedback(w http.ResponseWriter, r *http.Request, action string) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	nodeID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid node id: %w", err))
+		return
+	}
+
+	var req feedbackRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	h := s.db.Namespace(ns, resolveMode(req.Mode))
+	var result client.FeedbackResult
+	switch action {
+	case "validate":
+		result, err = h.ValidateClaim(r.Context(), nodeID)
+	case "refute":
+		result, err = h.RefuteClaim(r.Context(), nodeID, req.Reason)
+	case "useful":
+		result, err = h.MarkUseful(r.Context(), nodeID, req.Quality)
+	case "stale":
+		result, err = h.MarkStale(r.Context(), nodeID, req.Reason)
+	default:
+		err = fmt.Errorf("unknown feedback action %q", action)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, newFeedbackResponse(result))
+}
+
+func (s *RESTServer) handleNarrative(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	nodeID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid node id: %w", err))
+		return
+	}
+
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	report, err := h.Explain(r.Context(), nodeID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if report == nil {
+		writeError(w, http.StatusNotFound, fmt.Errorf("node not found"))
+		return
+	}
+	writeJSON(w, http.StatusOK, newNarrativeReportResponse(report))
+}
+
+func (s *RESTServer) handleKnowledgeGaps(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var req gapRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	h := s.db.Namespace(ns, resolveMode(req.Mode))
+	report, err := h.KnowledgeGaps(r.Context(), client.GapRequest{
+		TopK:       req.TopK,
+		MinGapSize: req.MinGapSize,
+		MaxGaps:    req.MaxGaps,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, newGapReportResponse(report))
+}
+
 func (s *RESTServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := s.db.Stats()
 	writeJSON(w, http.StatusOK, stats)
@@ -441,4 +616,95 @@ func writeError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+}
+
+func newScoredNodeResponse(r client.Result) scoredNodeResponse {
+	return scoredNodeResponse{
+		ID:              r.Node.ID.String(),
+		Namespace:       r.Node.Namespace,
+		Labels:          r.Node.Labels,
+		Properties:      r.Node.Properties,
+		Score:           r.Score,
+		SimilarityScore: r.SimilarityScore,
+		ConfidenceScore: r.ConfidenceScore,
+		RecencyScore:    r.RecencyScore,
+		UtilityScore:    r.UtilityScore,
+		ScoreBreakdown: scoreBreakdown{
+			Similarity: r.Breakdown.Similarity,
+			Confidence: r.Breakdown.Confidence,
+			Recency:    r.Breakdown.Recency,
+			Utility:    r.Breakdown.Utility,
+		},
+		RetrievalSource: r.RetrievalSource,
+	}
+}
+
+func newFeedbackResponse(r client.FeedbackResult) feedbackResponse {
+	return feedbackResponse{
+		NodeID:            r.NodeID.String(),
+		Action:            r.Action,
+		Confidence:        r.Confidence,
+		Utility:           r.Utility,
+		SourceID:          r.SourceID,
+		SourceCredibility: r.SourceCredibility,
+		Reason:            r.Reason,
+	}
+}
+
+func newNarrativeReportResponse(r *retrieval.NarrativeReport) narrativeReportResponse {
+	return narrativeReportResponse{
+		NodeID:                r.NodeID.String(),
+		Namespace:             r.Namespace,
+		GeneratedAt:           r.GeneratedAt,
+		Summary:               r.Summary,
+		Claim:                 newCitedClaimResponse(r.Claim),
+		Evidence:              newCitedClaimResponses(r.Evidence),
+		Contradictions:        newCitedClaimResponses(r.Contradictions),
+		Provenance:            newCitedClaimResponses(r.Provenance),
+		ConfidenceExplanation: r.ConfidenceExplanation,
+		Grounding:             r.Grounding,
+	}
+}
+
+func newCitedClaimResponses(claims []retrieval.CitedClaim) []citedClaimResponse {
+	out := make([]citedClaimResponse, len(claims))
+	for i, claim := range claims {
+		out[i] = newCitedClaimResponse(claim)
+	}
+	return out
+}
+
+func newCitedClaimResponse(c retrieval.CitedClaim) citedClaimResponse {
+	return citedClaimResponse{
+		NodeID:          c.NodeID.String(),
+		SourceID:        c.SourceID,
+		Text:            c.Text,
+		Confidence:      c.Confidence,
+		EpistemicType:   c.EpistemicType,
+		ValidFrom:       c.ValidFrom,
+		ValidUntil:      c.ValidUntil,
+		ProvenanceDepth: c.ProvenanceDepth,
+		Relation:        c.Relation,
+	}
+}
+
+func newGapReportResponse(r *retrieval.GapReport) gapReportResponse {
+	out := gapReportResponse{
+		Namespace:     r.Namespace,
+		CoverageScore: r.CoverageScore,
+		TotalNodes:    r.TotalNodes,
+		GapsDetected:  r.GapsDetected,
+		Gaps:          make([]knowledgeGapResponse, len(r.Gaps)),
+	}
+	for i, gap := range r.Gaps {
+		out.Gaps[i] = knowledgeGapResponse{
+			ID:                 gap.ID.String(),
+			NearestTopics:      gap.NearestTopics,
+			CentroidVector:     gap.CentroidVector,
+			DensityScore:       gap.DensityScore,
+			ConfidenceGap:      gap.ConfidenceGap,
+			TemporalGapSeconds: gap.TemporalGap.Seconds(),
+		}
+	}
+	return out
 }
