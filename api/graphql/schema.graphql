@@ -1,0 +1,55 @@
+type Query {
+  search(query: String!, filter: FilterInput, limit: Int = 10): SearchResult!
+}
+
+input FilterInput {
+  and: [FilterInput]
+  or: [FilterInput]
+  not: FilterInput
+  contentContains: String
+  similarityMin: Float
+  hasEdgeTo: [ID]
+  edgeTypes: [String]
+  edgeWeightMin: Float
+  sourceCredibilityMin: Float
+  sourceCredibilityMax: Float
+  validAt: Timestamp
+  validFromBefore: Timestamp
+  validToAfter: Timestamp
+}
+
+type SearchResult {
+  nodes: [Node!]!
+  totalCount: Int!
+}
+
+type Node {
+  id: ID!
+  content: String!
+  vector: [Float!]
+  credibility: Float!
+  validFrom: Timestamp
+  validTo: Timestamp
+  edges: [Edge!]!
+  sources: [Source!]!
+}
+
+type Edge {
+  id: ID!
+  type: String!
+  from: Node!
+  to: Node!
+  weight: Float!
+  credibility: Float!
+}
+
+type Source {
+  id: ID!
+  name: String!
+  alpha: Float!
+  beta: Float!
+  effectiveCredibility: Float!
+}
+
+scalar Timestamp
+scalar ID
