@@ -262,6 +262,15 @@ func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is.Equal(events[1].Quality, 4)
 	is.Equal(events[2].Action, "refuted")
 	is.Equal(events[2].Reason, "bad source")
+
+	timeline, err := ns.SourceTrustTimeline(ctx, "docs", start)
+	is.NoErr(err)
+	is.Equal(len(timeline), 2)
+	is.Equal(timeline[0].Action, "validated")
+	is.Equal(timeline[0].NodeID, written.NodeID)
+	is.True(timeline[0].SourceCredibility > 0.5)
+	is.Equal(timeline[1].Action, "refuted")
+	is.Equal(timeline[1].Reason, "bad source")
 }
 
 func TestNamespace_ExplainAndKnowledgeGaps(t *testing.T) {

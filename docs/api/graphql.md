@@ -141,3 +141,18 @@ query {
 ```
 
 Feedback events are durable audit records emitted by `validateClaim`, `refuteClaim`, `markUseful`, and `markStale`.
+
+## Source Trust Timeline
+
+```graphql
+query {
+  sourceTrustTimeline(namespace: "my-app", sourceId: "docs-crawler") {
+    nodeId
+    action
+    sourceCredibility
+    txTime
+  }
+}
+```
+
+The timeline is derived from feedback events that changed the source's effective credibility.

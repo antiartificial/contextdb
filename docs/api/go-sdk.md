@@ -267,6 +267,15 @@ for _, event := range events {
 }
 ```
 
+Source trust timelines are derived from feedback events that update source credibility:
+
+```go
+points, err := ns.SourceTrustTimeline(ctx, "docs-crawler", time.Time{})
+for _, point := range points {
+    fmt.Printf("%s %.2f\n", point.Action, point.SourceCredibility)
+}
+```
+
 ## Narrative And Gaps
 
 ```go

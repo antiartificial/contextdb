@@ -15,6 +15,7 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/ingest` | Ingest text (LLM extraction) |
 | `GET` | `/v1/namespaces/{ns}/nodes/{id}` | Get a single node |
 | `POST` | `/v1/namespaces/{ns}/sources/label` | Label a source |
+| `GET` | `/v1/namespaces/{ns}/sources/{sourceID}/trust` | Source credibility timeline |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/validate` | Validate a claim |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/refute` | Refute a claim |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/useful` | Mark a memory useful |
@@ -194,9 +195,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "api_version": "v1",
-  "docs_version": "0.5.0",
+  "docs_version": "0.6.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -217,6 +218,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.5.0",
       "description": "Durable feedback audit events exposed through the Go SDK, REST, and GraphQL."
+    },
+    {
+      "name": "source-trust-timeline",
+      "status": "stable",
+      "since": "v0.6.0",
+      "description": "Source credibility timeline points derived from durable feedback events."
     }
   ],
   "migrations": [
@@ -224,7 +231,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.5.0"
+  "release_notes_path": "/contextdb/releases/v0.6.0"
 }
 ```
 
@@ -334,6 +341,31 @@ curl "http://localhost:7701/v1/namespaces/my-app/feedback/events?after=2026-05-3
       "source_credibility": 0.67,
       "reason": "verified externally",
       "quality": 5,
+      "tx_time": "2026-05-30T16:45:00Z"
+    }
+  ]
+}
+```
+
+## Source Trust Timeline
+
+Source trust timelines are derived from feedback events that changed source credibility:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/sources/docs-crawler/trust?after=2026-05-30T00:00:00Z"
+```
+
+**Response:**
+
+```json
+{
+  "source_id": "docs-crawler",
+  "points": [
+    {
+      "source_id": "docs-crawler",
+      "node_id": "550e8400-e29b-41d4-a716-446655440000",
+      "action": "validated",
+      "source_credibility": 0.67,
       "tx_time": "2026-05-30T16:45:00Z"
     }
   ]

@@ -528,6 +528,16 @@ type FeedbackEvent struct {
 	TxTime            time.Time `json:"tx_time"`
 }
 
+// SourceTrustPoint records one observed source credibility value over time.
+type SourceTrustPoint struct {
+	SourceID          string    `json:"source_id"`
+	NodeID            uuid.UUID `json:"node_id"`
+	Action            string    `json:"action"`
+	SourceCredibility float64   `json:"source_credibility"`
+	Reason            string    `json:"reason,omitempty"`
+	TxTime            time.Time `json:"tx_time"`
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -1018,6 +1028,29 @@ func (h *NamespaceHandle) FeedbackEvents(ctx context.Context, after time.Time) (
 			feedback.TxTime = event.TxTime
 		}
 		out = append(out, feedback)
+	}
+	return out, nil
+}
+
+// SourceTrustTimeline returns credibility observations for one source after the given time.
+func (h *NamespaceHandle) SourceTrustTimeline(ctx context.Context, sourceID string, after time.Time) ([]SourceTrustPoint, error) {
+	events, err := h.FeedbackEvents(ctx, after)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SourceTrustPoint, 0, len(events))
+	for _, event := range events {
+		if event.SourceID != sourceID || event.SourceCredibility == 0 {
+			continue
+		}
+		out = append(out, SourceTrustPoint{
+			SourceID:          event.SourceID,
+			NodeID:            event.NodeID,
+			Action:            event.Action,
+			SourceCredibility: event.SourceCredibility,
+			Reason:            event.Reason,
+			TxTime:            event.TxTime,
+		})
 	}
 	return out, nil
 }

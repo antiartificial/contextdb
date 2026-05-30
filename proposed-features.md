@@ -24,6 +24,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Feedback event log | Implemented | Feedback operations append durable events; Go SDK, REST, and GraphQL expose feedback event history |
 
+## Completed In v0.6.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Source trust timeline | Implemented | Go SDK, REST, and GraphQL expose source credibility points derived from feedback events |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -40,7 +46,7 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:---------------|:------|
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Feed from conflict detection, active learning, and expiry signals |
-| Source trust timeline | Shows how source credibility changed over time | Useful for moderation, incident reviews, and agent trust tuning |
+| Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; next step is richer timeline visualization in the debugger UI |
 | Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Natural next step after gap detection |
 
 ## Durability And Operations
@@ -75,6 +81,6 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, score breakdowns, sources, edges, and narrative reports |
 | Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks would make it more operationally complete | Check snapshot/export availability and warn when persistent embedded data has no recent backup marker |
-| Source trust timeline | Builds naturally on feedback event logging | API endpoint and GraphQL field for source credibility changes over time |
 | Claim review queue | Feedback events now make review/audit history available; queues can close the loop on contradictions and stale claims | Queue low-confidence, refuted, stale, or contradictory nodes with suggested actions |
+| Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |
 | Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |

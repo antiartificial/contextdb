@@ -48,6 +48,7 @@ func (s *RESTServer) Handler() http.Handler {
 
 	// POST /v1/namespaces/{ns}/sources/label
 	mux.HandleFunc("POST /v1/namespaces/{ns}/sources/label", s.handleLabelSource)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/sources/{sourceID}/trust", s.handleSourceTrustTimeline)
 
 	// POST /v1/namespaces/{ns}/consensus/{claimID}
 	mux.HandleFunc("POST /v1/namespaces/{ns}/consensus/{claimID}", s.handleConsensus)
@@ -558,6 +559,40 @@ func (s *RESTServer) handleFeedbackEvents(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": events})
+}
+
+func (s *RESTServer) handleSourceTrustTimeline(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	sourceID := r.PathValue("sourceID")
+	if sourceID == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("missing source id"))
+		return
+	}
+
+	var after time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
+			return
+		}
+		after = t
+	}
+
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	points, err := h.SourceTrustTimeline(r.Context(), sourceID, after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"source_id": sourceID,
+		"points":    points,
+	})
 }
 
 func (s *RESTServer) handleNarrative(w http.ResponseWriter, r *http.Request) {

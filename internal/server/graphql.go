@@ -292,6 +292,36 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	sourceTrustPointType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "SourceTrustPoint",
+		Fields: graphql.Fields{
+			"sourceId": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				point, _ := p.Source.(client.SourceTrustPoint)
+				return point.SourceID, nil
+			}},
+			"nodeId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				point, _ := p.Source.(client.SourceTrustPoint)
+				return point.NodeID.String(), nil
+			}},
+			"action": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				point, _ := p.Source.(client.SourceTrustPoint)
+				return point.Action, nil
+			}},
+			"sourceCredibility": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				point, _ := p.Source.(client.SourceTrustPoint)
+				return point.SourceCredibility, nil
+			}},
+			"reason": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				point, _ := p.Source.(client.SourceTrustPoint)
+				return point.Reason, nil
+			}},
+			"txTime": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				point, _ := p.Source.(client.SourceTrustPoint)
+				return point.TxTime, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -646,6 +676,16 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveFeedbackEvents,
 			},
+			"sourceTrustTimeline": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(sourceTrustPointType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"sourceId":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveSourceTrustTimeline,
+			},
 		},
 	})
 
@@ -791,6 +831,18 @@ func (s *GraphQLServer) resolveFeedbackEvents(p graphql.ResolveParams) (interfac
 	after, _ := p.Args["after"].(time.Time)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.FeedbackEvents(p.Context, after)
+}
+
+func (s *GraphQLServer) resolveSourceTrustTimeline(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	sourceID, _ := p.Args["sourceId"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.SourceTrustTimeline(p.Context, sourceID, after)
 }
 
 func (s *GraphQLServer) resolveFeedbackMutation(action string) graphql.FieldResolveFn {

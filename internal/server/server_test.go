@@ -165,6 +165,20 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(event["action"], "validated")
 	is.Equal(event["source_id"], "moderator:alice")
 
+	reqTrust := httptest.NewRequest("GET", "/v1/namespaces/channel:general/sources/moderator:alice/trust", nil)
+	wTrust := httptest.NewRecorder()
+	handler.ServeHTTP(wTrust, reqTrust)
+
+	is.Equal(wTrust.Code, http.StatusOK)
+	var trustResp map[string]any
+	is.NoErr(json.Unmarshal(wTrust.Body.Bytes(), &trustResp))
+	is.Equal(trustResp["source_id"], "moderator:alice")
+	points := trustResp["points"].([]any)
+	is.Equal(len(points), 1)
+	point := points[0].(map[string]any)
+	is.Equal(point["action"], "validated")
+	is.True(point["source_credibility"].(float64) > 0.5)
+
 	req4 := httptest.NewRequest("GET", "/v1/namespaces/channel:general/nodes/"+nodeID+"/narrative", nil)
 	w4 := httptest.NewRecorder()
 	handler.ServeHTTP(w4, req4)
@@ -359,6 +373,11 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				sourceId
 				sourceCredibility
 			}
+			sourceTrustTimeline(namespace: "graphql-test", sourceId: "docs") {
+				nodeId
+				action
+				sourceCredibility
+			}
 		}`,
 		"variables": map[string]any{"id": nodeID},
 	})
@@ -384,6 +403,12 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(event["nodeId"], nodeID)
 	is.Equal(event["action"], "validated")
 	is.Equal(event["sourceId"], "docs")
+	points := data["sourceTrustTimeline"].([]any)
+	is.Equal(len(points), 1)
+	point := points[0].(map[string]any)
+	is.Equal(point["nodeId"], nodeID)
+	is.Equal(point["action"], "validated")
+	is.True(point["sourceCredibility"].(float64) > 0.5)
 }
 
 func TestGraphQLServer_Introspection(t *testing.T) {
