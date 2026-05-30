@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/matryer/is"
 
+	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
@@ -271,6 +272,57 @@ func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is.True(timeline[0].SourceCredibility > 0.5)
 	is.Equal(timeline[1].Action, "refuted")
 	is.Equal(timeline[1].Reason, "bad source")
+
+	queue, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{After: start})
+	is.NoErr(err)
+	types := map[string]bool{}
+	for _, item := range queue {
+		types[item.Type] = true
+	}
+	is.True(types["refuted"])
+	is.True(types["low_confidence"])
+}
+
+func TestNamespace_ReviewQueueIncludesContradictions(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+	ns := db.Namespace("test:review-conflicts", namespace.ModeGeneral)
+
+	a, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "The feature is enabled",
+		SourceID:   "alpha",
+		Labels:     []string{"Claim"},
+		Confidence: 0.9,
+	})
+	is.NoErr(err)
+	b, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "The feature is disabled",
+		SourceID:   "beta",
+		Labels:     []string{"Claim"},
+		Confidence: 0.4,
+	})
+	is.NoErr(err)
+
+	graph, _, _, _ := db.Stores()
+	is.NoErr(graph.UpsertEdge(ctx, core.Edge{
+		ID:        uuid.New(),
+		Namespace: "test:review-conflicts",
+		Type:      core.EdgeContradicts,
+		Src:       a.NodeID,
+		Dst:       b.NodeID,
+		Weight:    0.9,
+		ValidFrom: time.Now(),
+		TxTime:    time.Now(),
+	}))
+
+	queue, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{LowConfidenceThreshold: 0.1})
+	is.NoErr(err)
+	is.True(len(queue) > 0)
+	is.Equal(queue[0].Type, "conflict")
+	is.Equal(len(queue[0].NodeIDs), 2)
 }
 
 func TestNamespace_ExplainAndKnowledgeGaps(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,7 @@ func (s *RESTServer) Handler() http.Handler {
 	// POST /v1/namespaces/{ns}/sources/label
 	mux.HandleFunc("POST /v1/namespaces/{ns}/sources/label", s.handleLabelSource)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/sources/{sourceID}/trust", s.handleSourceTrustTimeline)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/review/queue", s.handleReviewQueue)
 
 	// POST /v1/namespaces/{ns}/consensus/{claimID}
 	mux.HandleFunc("POST /v1/namespaces/{ns}/consensus/{claimID}", s.handleConsensus)
@@ -185,6 +187,10 @@ type gapRequest struct {
 	TopK       int     `json:"top_k,omitempty"`
 	MinGapSize float64 `json:"min_gap_size,omitempty"`
 	MaxGaps    int     `json:"max_gaps,omitempty"`
+}
+
+type reviewQueueResponse struct {
+	Items []client.ReviewItem `json:"items"`
 }
 
 type feedbackResponse struct {
@@ -593,6 +599,54 @@ func (s *RESTServer) handleSourceTrustTimeline(w http.ResponseWriter, r *http.Re
 		"source_id": sourceID,
 		"points":    points,
 	})
+}
+
+func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var after time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
+			return
+		}
+		after = t
+	}
+	threshold := 0.0
+	if raw := strings.TrimSpace(r.URL.Query().Get("low_confidence_threshold")); raw != "" {
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid low_confidence_threshold: %w", err))
+			return
+		}
+		threshold = parsed
+	}
+	limit := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid limit: %w", err))
+			return
+		}
+		limit = parsed
+	}
+
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	items, err := h.ReviewQueue(r.Context(), client.ReviewQueueRequest{
+		After:                  after,
+		LowConfidenceThreshold: threshold,
+		Limit:                  limit,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewQueueResponse{Items: items})
 }
 
 func (s *RESTServer) handleNarrative(w http.ResponseWriter, r *http.Request) {

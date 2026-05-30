@@ -156,3 +156,26 @@ query {
 ```
 
 The timeline is derived from feedback events that changed the source's effective credibility.
+
+## Claim Review Queue
+
+```graphql
+query {
+  reviewQueue(namespace: "my-app", lowConfidenceThreshold: 0.35, limit: 20) {
+    id
+    type
+    priority
+    reason
+    nodeId
+    nodeIds
+    sourceId
+    action
+    text
+    createdAt
+    suggestedAction
+    confidence
+  }
+}
+```
+
+The queue derives review tasks from refuted and stale feedback, low-confidence active claims, and contradiction clusters.

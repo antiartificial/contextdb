@@ -30,6 +30,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Source trust timeline | Implemented | Go SDK, REST, and GraphQL expose source credibility points derived from feedback events |
 
+## Completed In v0.7.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Claim review queue | Implemented | Go SDK, REST, and GraphQL expose ranked tasks for refuted, stale, low-confidence, and contradictory claims |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -45,9 +51,10 @@ This is the working backlog for features that would make contextdb more useful, 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
-| Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Feed from conflict detection, active learning, and expiry signals |
+| Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; next step is persistence for status, assignment, and resolution notes |
 | Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; next step is richer timeline visualization in the debugger UI |
 | Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Natural next step after gap detection |
+| Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Builds on the derived queue without making queue generation stateful |
 
 ## Durability And Operations
 
@@ -81,6 +88,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, score breakdowns, sources, edges, and narrative reports |
 | Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks would make it more operationally complete | Check snapshot/export availability and warn when persistent embedded data has no recent backup marker |
-| Claim review queue | Feedback events now make review/audit history available; queues can close the loop on contradictions and stale claims | Queue low-confidence, refuted, stale, or contradictory nodes with suggested actions |
+| Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Add assigned/resolved/snoozed metadata and an append-only review decision log |
 | Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |
+| Knowledge acquisition planner | Gap detection now identifies missing semantic regions; planner turns gaps into concrete research tasks | Convert gap reports into crawl/search prompts with source constraints and expected evidence shape |
 | Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |

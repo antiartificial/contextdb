@@ -27,7 +27,7 @@ features:
 ---
 
 ::: tip Current release
-contextdb is currently `v0.6.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+contextdb is currently `v0.7.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 :::
 
 <div class="stat-row">
@@ -200,6 +200,7 @@ All weights are normalised at query time. You supply `alpha` (decay rate) and th
 | [GraphQL API](api/graphql) | Graph-shaped search, filters, edges, sources, feedback mutations, narratives, and gaps |
 | [Label filtering](api/go-sdk) | Filter retrieval by node labels |
 | [Feedback APIs](api/rest#feedback) | Validate, refute, mark useful, and mark stale across SDK, REST, gRPC, and GraphQL |
+| [Claim review queue](api/rest#claim-review-queue) | Ranked operator tasks for refuted, stale, low-confidence, and contradictory claims |
 | [Background workers](architecture/background-workers) | Memory consolidation and active recall |
 | [RBAC](concepts/rbac) | Token-based read/write/admin permissions per tenant |
 | [Snapshot/restore](api/go-sdk#export--import) | NDJSON namespace export and import |

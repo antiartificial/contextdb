@@ -322,6 +322,67 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	reviewItemType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewItem",
+		Fields: graphql.Fields{
+			"id": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.ID, nil
+			}},
+			"type": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Type, nil
+			}},
+			"priority": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Priority, nil
+			}},
+			"reason": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Reason, nil
+			}},
+			"nodeId": &graphql.Field{Type: graphql.ID, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				if item.NodeID == uuid.Nil {
+					return nil, nil
+				}
+				return item.NodeID.String(), nil
+			}},
+			"nodeIds": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.ID))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				out := make([]string, len(item.NodeIDs))
+				for i, id := range item.NodeIDs {
+					out[i] = id.String()
+				}
+				return out, nil
+			}},
+			"sourceId": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.SourceID, nil
+			}},
+			"action": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Action, nil
+			}},
+			"text": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Text, nil
+			}},
+			"createdAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.CreatedAt, nil
+			}},
+			"suggestedAction": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Suggested, nil
+			}},
+			"confidence": &graphql.Field{Type: graphql.Float, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Confidence, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -686,6 +747,17 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveSourceTrustTimeline,
 			},
+			"reviewQueue": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewItemType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace":              &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":                   &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":                  &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"lowConfidenceThreshold": &graphql.ArgumentConfig{Type: graphql.Float},
+					"limit":                  &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveReviewQueue,
+			},
 		},
 	})
 
@@ -843,6 +915,23 @@ func (s *GraphQLServer) resolveSourceTrustTimeline(p graphql.ResolveParams) (int
 	after, _ := p.Args["after"].(time.Time)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.SourceTrustTimeline(p.Context, sourceID, after)
+}
+
+func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	threshold, _ := p.Args["lowConfidenceThreshold"].(float64)
+	limit, _ := p.Args["limit"].(int)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewQueue(p.Context, client.ReviewQueueRequest{
+		After:                  after,
+		LowConfidenceThreshold: threshold,
+		Limit:                  limit,
+	})
 }
 
 func (s *GraphQLServer) resolveFeedbackMutation(action string) graphql.FieldResolveFn {

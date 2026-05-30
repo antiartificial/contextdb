@@ -276,6 +276,19 @@ for _, point := range points {
 }
 ```
 
+Review queues derive operator tasks from feedback, low-confidence claims, and contradictions:
+
+```go
+items, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
+    After:                  time.Now().Add(-24 * time.Hour),
+    LowConfidenceThreshold: 0.35,
+    Limit:                  20,
+})
+for _, item := range items {
+    fmt.Printf("%s %.2f %s\n", item.Type, item.Priority, item.Suggested)
+}
+```
+
 ## Narrative And Gaps
 
 ```go

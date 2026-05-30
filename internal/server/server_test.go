@@ -179,6 +179,18 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(point["action"], "validated")
 	is.True(point["source_credibility"].(float64) > 0.5)
 
+	reqQueue := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/queue?low_confidence_threshold=0.99", nil)
+	wQueue := httptest.NewRecorder()
+	handler.ServeHTTP(wQueue, reqQueue)
+
+	is.Equal(wQueue.Code, http.StatusOK)
+	var queueResp map[string]any
+	is.NoErr(json.Unmarshal(wQueue.Body.Bytes(), &queueResp))
+	items := queueResp["items"].([]any)
+	is.True(len(items) > 0)
+	queueItem := items[0].(map[string]any)
+	is.True(queueItem["type"] != "")
+
 	req4 := httptest.NewRequest("GET", "/v1/namespaces/channel:general/nodes/"+nodeID+"/narrative", nil)
 	w4 := httptest.NewRecorder()
 	handler.ServeHTTP(w4, req4)
@@ -378,6 +390,11 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				action
 				sourceCredibility
 			}
+			reviewQueue(namespace: "graphql-test", lowConfidenceThreshold: 0.99) {
+				type
+				nodeId
+				suggestedAction
+			}
 		}`,
 		"variables": map[string]any{"id": nodeID},
 	})
@@ -409,6 +426,10 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(point["nodeId"], nodeID)
 	is.Equal(point["action"], "validated")
 	is.True(point["sourceCredibility"].(float64) > 0.5)
+	queue := data["reviewQueue"].([]any)
+	is.True(len(queue) > 0)
+	queueItem := queue[0].(map[string]any)
+	is.True(queueItem["type"] != "")
 }
 
 func TestGraphQLServer_Introspection(t *testing.T) {

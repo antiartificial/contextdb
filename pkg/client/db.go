@@ -35,6 +35,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -536,6 +538,29 @@ type SourceTrustPoint struct {
 	SourceCredibility float64   `json:"source_credibility"`
 	Reason            string    `json:"reason,omitempty"`
 	TxTime            time.Time `json:"tx_time"`
+}
+
+// ReviewQueueRequest configures claim review queue generation.
+type ReviewQueueRequest struct {
+	After                  time.Time
+	LowConfidenceThreshold float64
+	Limit                  int
+}
+
+// ReviewItem is a derived operator task for claims that need attention.
+type ReviewItem struct {
+	ID         string      `json:"id"`
+	Type       string      `json:"type"`
+	Priority   float64     `json:"priority"`
+	Reason     string      `json:"reason"`
+	NodeID     uuid.UUID   `json:"node_id,omitempty"`
+	NodeIDs    []uuid.UUID `json:"node_ids,omitempty"`
+	SourceID   string      `json:"source_id,omitempty"`
+	Action     string      `json:"action,omitempty"`
+	Text       string      `json:"text,omitempty"`
+	CreatedAt  time.Time   `json:"created_at"`
+	Suggested  string      `json:"suggested_action"`
+	Confidence float64     `json:"confidence,omitempty"`
 }
 
 // GapRequest configures knowledge-gap detection for a namespace.
@@ -1055,6 +1080,94 @@ func (h *NamespaceHandle) SourceTrustTimeline(ctx context.Context, sourceID stri
 	return out, nil
 }
 
+// ReviewQueue derives operator review tasks from feedback, low-confidence claims, and contradictions.
+func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueRequest) ([]ReviewItem, error) {
+	threshold := req.LowConfidenceThreshold
+	if threshold == 0 {
+		threshold = 0.35
+	}
+	now := time.Now()
+	items := make([]ReviewItem, 0)
+
+	events, err := h.FeedbackEvents(ctx, req.After)
+	if err != nil {
+		return nil, err
+	}
+	for _, event := range events {
+		switch event.Action {
+		case "refuted", "stale":
+			items = append(items, ReviewItem{
+				ID:         fmt.Sprintf("feedback:%s", event.EventID),
+				Type:       event.Action,
+				Priority:   reviewFeedbackPriority(event),
+				Reason:     event.Reason,
+				NodeID:     event.NodeID,
+				SourceID:   event.SourceID,
+				Action:     event.Action,
+				CreatedAt:  event.TxTime,
+				Suggested:  reviewSuggestion(event.Action),
+				Confidence: event.Confidence,
+			})
+		}
+	}
+
+	nodes, err := h.db.graph.ValidAt(ctx, h.cfg.ID, now, nil)
+	if err != nil {
+		return nil, fmt.Errorf("review queue: scan nodes: %w", err)
+	}
+	for _, node := range nodes {
+		confidence := node.Confidence
+		if confidence == 0 {
+			confidence = 0.5
+		}
+		if confidence <= threshold {
+			items = append(items, ReviewItem{
+				ID:         "low_confidence:" + node.ID.String(),
+				Type:       "low_confidence",
+				Priority:   threshold - confidence + 0.2,
+				Reason:     fmt.Sprintf("confidence %.2f is below %.2f", confidence, threshold),
+				NodeID:     node.ID,
+				SourceID:   nodeSourceID(node),
+				Text:       core.NodeText(node),
+				CreatedAt:  node.TxTime,
+				Suggested:  "validate, refute, or attach stronger evidence",
+				Confidence: confidence,
+			})
+		}
+	}
+
+	clusters, err := retrieval.FindConflictClusters(ctx, h.db.graph, h.cfg.ID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("review queue: conflicts: %w", err)
+	}
+	for _, cluster := range clusters {
+		nodeIDs := make([]uuid.UUID, 0, len(cluster.Nodes))
+		for _, node := range cluster.Nodes {
+			nodeIDs = append(nodeIDs, node.ID)
+		}
+		items = append(items, ReviewItem{
+			ID:        "conflict:" + reviewIDsKey(nodeIDs),
+			Type:      "conflict",
+			Priority:  0.7 + cluster.CredibilityGap,
+			Reason:    fmt.Sprintf("%d claims are connected by contradiction edges", len(cluster.Nodes)),
+			NodeIDs:   nodeIDs,
+			CreatedAt: now,
+			Suggested: "compare evidence and resolve the contradiction",
+		})
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Priority == items[j].Priority {
+			return items[i].CreatedAt.After(items[j].CreatedAt)
+		}
+		return items[i].Priority > items[j].Priority
+	})
+	if req.Limit > 0 && len(items) > req.Limit {
+		items = items[:req.Limit]
+	}
+	return items, nil
+}
+
 // Explain returns a narrative report explaining what is known about a node.
 func (h *NamespaceHandle) Explain(ctx context.Context, nodeID uuid.UUID) (*retrieval.NarrativeReport, error) {
 	formatter := retrieval.NewNarrativeFormatter(h.db.graph, h.db.vecs)
@@ -1359,6 +1472,42 @@ func (h *NamespaceHandle) appendFeedbackEvent(ctx context.Context, node *core.No
 		return fmt.Errorf("%s: append feedback event: %w", update.action, err)
 	}
 	return nil
+}
+
+func reviewFeedbackPriority(event FeedbackEvent) float64 {
+	switch event.Action {
+	case "refuted":
+		return 1.0
+	case "stale":
+		return 0.75
+	default:
+		return 0.5
+	}
+}
+
+func reviewSuggestion(action string) string {
+	switch action {
+	case "refuted":
+		return "verify the refutation and retract or replace the claim"
+	case "stale":
+		return "refresh the claim or mark its replacement"
+	default:
+		return "review the claim"
+	}
+}
+
+func nodeSourceID(node core.Node) string {
+	sourceID, _ := node.Properties["source_id"].(string)
+	return sourceID
+}
+
+func reviewIDsKey(ids []uuid.UUID) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = id.String()
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
 }
 
 func propertyFloat(props map[string]any, key string, fallback float64) float64 {

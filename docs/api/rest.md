@@ -16,6 +16,7 @@ contextdb exposes a REST API on port **7701**.
 | `GET` | `/v1/namespaces/{ns}/nodes/{id}` | Get a single node |
 | `POST` | `/v1/namespaces/{ns}/sources/label` | Label a source |
 | `GET` | `/v1/namespaces/{ns}/sources/{sourceID}/trust` | Source credibility timeline |
+| `GET` | `/v1/namespaces/{ns}/review/queue` | Claim review queue |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/validate` | Validate a claim |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/refute` | Refute a claim |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/useful` | Mark a memory useful |
@@ -195,9 +196,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.6.0",
+  "version": "0.7.0",
   "api_version": "v1",
-  "docs_version": "0.6.0",
+  "docs_version": "0.7.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -224,6 +225,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.6.0",
       "description": "Source credibility timeline points derived from durable feedback events."
+    },
+    {
+      "name": "claim-review-queue",
+      "status": "stable",
+      "since": "v0.7.0",
+      "description": "Derived review tasks for refuted, stale, low-confidence, and contradictory claims."
     }
   ],
   "migrations": [
@@ -231,7 +238,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.6.0"
+  "release_notes_path": "/contextdb/releases/v0.7.0"
 }
 ```
 
@@ -367,6 +374,44 @@ curl "http://localhost:7701/v1/namespaces/my-app/sources/docs-crawler/trust?afte
       "action": "validated",
       "source_credibility": 0.67,
       "tx_time": "2026-05-30T16:45:00Z"
+    }
+  ]
+}
+```
+
+## Claim Review Queue
+
+The review queue derives ranked operator tasks from feedback events, low-confidence claims, and contradiction edges:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/queue?after=2026-05-30T00:00:00Z&low_confidence_threshold=0.35&limit=20"
+```
+
+Query parameters:
+
+| Parameter | Description |
+|:----------|:------------|
+| `after` | Optional RFC3339 timestamp for feedback-derived review items |
+| `low_confidence_threshold` | Optional threshold for low-confidence claim tasks; defaults to `0.35` |
+| `limit` | Optional maximum number of ranked tasks |
+| `mode` | Optional namespace mode when opening the namespace |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "id": "feedback:7ce69c7e-7f5b-4d23-86aa-a1b70f2fa111",
+      "type": "refuted",
+      "priority": 0.95,
+      "reason": "operator disputed source",
+      "node_id": "550e8400-e29b-41d4-a716-446655440000",
+      "source_id": "docs-crawler",
+      "action": "refuted",
+      "created_at": "2026-05-30T16:45:00Z",
+      "suggested_action": "review claim and decide whether to retract, supersede, or add counter-evidence",
+      "confidence": 0.05
     }
   ]
 }
