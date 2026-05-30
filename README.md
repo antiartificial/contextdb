@@ -5,9 +5,9 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.9.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.9.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.10.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.10.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
-**Current release:** `v0.9.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+**Current release:** `v0.10.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
 
 ## What & Why
@@ -241,7 +241,7 @@ diff, _ := retrieval.ComputeBeliefDiff(ctx, graph, "ops", nil)
 
 **[Snapshot/restore](docs/api/go-sdk.md#export--import)** -- NDJSON export and import per namespace, including full version history. *Typical vector DBs: no portability.*
 
-**[Doctor](docs/deployment/operations.md#doctor)** -- `contextdb doctor` checks live REST health, version, feature, and migration metadata, with an opt-in sample write/retrieve probe. *Typical vector DBs: health endpoints rarely expose API compatibility.*
+**[Doctor](docs/deployment/operations.md#doctor)** -- `contextdb doctor` checks live REST health, version, feature, migration, backup marker, and optional sample write/retrieve readiness. *Typical vector DBs: health endpoints rarely expose API compatibility.*
 
 **[Feedback events](docs/api/rest.md#feedback-events)** -- Feedback operations append durable audit events retrievable through Go, REST, and GraphQL. *Typical vector DBs: feedback auditing is an external table you build yourself.*
 

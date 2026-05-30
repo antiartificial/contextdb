@@ -48,6 +48,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Knowledge acquisition planner | Implemented | Go SDK, REST, and GraphQL convert knowledge gaps and weak claims into prioritized acquisition tasks |
 
+## Completed In v0.10.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Doctor backup readiness | Implemented | `contextdb doctor --backup-marker PATH --max-backup-age 24h` adds a `backup_readiness` check |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -100,7 +106,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, explain-rank comparisons, sources, edges, and narrative reports |
 | Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
 | Explain-rank graph evidence | The first explain-rank slice covers score deltas; graph-aware evidence would make explanations deeper | Include shortest supporting/contradicting paths and source trust context in the explanation payload |
-| Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks would make it more operationally complete | Check snapshot/export availability and warn when persistent embedded data has no recent backup marker |
+| Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks make it more operationally complete | Completed in v0.10.0; deeper store/index consistency checks remain |
 | Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Add assigned/resolved/snoozed metadata and an append-only review decision log |
 | Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |
 | Acquisition execution connectors | Planner tasks now exist; the next step is executing them through configured crawlers/search tools | Add connector hooks and dry-run previews for source-constrained acquisition tasks |

@@ -25,6 +25,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/antiartificial/contextdb/internal/doctor"
 	"github.com/antiartificial/contextdb/internal/federation"
@@ -98,12 +99,16 @@ func runDoctor(args []string) {
 	baseURL := fs.String("url", getenv("CONTEXTDB_REST_URL", "http://127.0.0.1:7701"), "contextdb REST base URL")
 	sampleWrite := fs.Bool("sample-write", false, "write and retrieve a sample probe node")
 	sampleNamespace := fs.String("sample-namespace", "_doctor", "namespace to use with --sample-write")
+	backupMarker := fs.String("backup-marker", "", "path to a backup marker file to check for recency")
+	maxBackupAge := fs.Duration("max-backup-age", 24*time.Hour, "maximum acceptable age for --backup-marker")
 	_ = fs.Parse(args)
 
 	report, err := doctor.Run(context.Background(), doctor.Options{
 		BaseURL:         *baseURL,
 		SampleWrite:     *sampleWrite,
 		SampleNamespace: *sampleNamespace,
+		BackupMarker:    *backupMarker,
+		MaxBackupAge:    *maxBackupAge,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb doctor: %v\n", err)

@@ -49,4 +49,12 @@ The probe writes a deduplicated `DoctorProbe` node and retrieves it by vector. I
 contextdb doctor --sample-write --sample-namespace ops-checks
 ```
 
-Future doctor slices should add backup readiness checks and deeper store/index consistency checks.
+For backup readiness, point doctor at a marker file written by your backup job. The check is opt-in and fails when the marker is missing, is a directory, or is older than `--max-backup-age`:
+
+```bash
+contextdb doctor --backup-marker /var/lib/contextdb/.last-backup --max-backup-age 24h
+```
+
+The JSON report includes a `backup_readiness` check with the observed marker age.
+
+Future doctor slices should add deeper store/index consistency checks.

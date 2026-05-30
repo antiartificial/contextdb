@@ -6,7 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/matryer/is"
 
@@ -142,6 +145,48 @@ func TestRun_SampleWriteFailsWhenRetrieveMissesNode(t *testing.T) {
 	is.True(!report.Checks[len(report.Checks)-1].OK)
 }
 
+func TestRun_BackupReadinessMarker(t *testing.T) {
+	is := is.New(t)
+	marker := filepath.Join(t.TempDir(), "contextdb.backup")
+	is.NoErr(os.WriteFile(marker, []byte("ok"), 0o644))
+
+	srv := newDoctorMetadataServer(t)
+	defer srv.Close()
+
+	report, err := doctor.Run(context.Background(), doctor.Options{
+		BaseURL:      srv.URL,
+		BackupMarker: marker,
+		MaxBackupAge: time.Hour,
+	})
+	is.NoErr(err)
+	is.True(report.OK)
+	last := report.Checks[len(report.Checks)-1]
+	is.Equal(last.Name, "backup_readiness")
+	is.True(last.OK)
+}
+
+func TestRun_BackupReadinessFailsForStaleMarker(t *testing.T) {
+	is := is.New(t)
+	marker := filepath.Join(t.TempDir(), "contextdb.backup")
+	is.NoErr(os.WriteFile(marker, []byte("old"), 0o644))
+	old := time.Now().Add(-2 * time.Hour)
+	is.NoErr(os.Chtimes(marker, old, old))
+
+	srv := newDoctorMetadataServer(t)
+	defer srv.Close()
+
+	report, err := doctor.Run(context.Background(), doctor.Options{
+		BaseURL:      srv.URL,
+		BackupMarker: marker,
+		MaxBackupAge: time.Hour,
+	})
+	is.NoErr(err)
+	is.True(!report.OK)
+	last := report.Checks[len(report.Checks)-1]
+	is.Equal(last.Name, "backup_readiness")
+	is.True(!last.OK)
+}
+
 func TestRun_ReportsFailedChecks(t *testing.T) {
 	is := is.New(t)
 
@@ -172,6 +217,24 @@ func TestRun_ReportsFailedChecks(t *testing.T) {
 		}
 	}
 	is.Equal(failures, 2)
+}
+
+func newDoctorMetadataServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/ping":
+			writeJSON(t, w, map[string]string{"status": "ok"})
+		case "/v1/version":
+			writeVersion(t, w)
+		case "/v1/features":
+			writeFeatures(t, w)
+		case "/v1/migrations":
+			writeMigrations(t, w)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
 }
 
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {

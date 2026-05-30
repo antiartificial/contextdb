@@ -198,9 +198,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.9.0",
+  "version": "0.10.0",
   "api_version": "v1",
-  "docs_version": "0.9.0",
+  "docs_version": "0.10.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -245,6 +245,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.9.0",
       "description": "Convert knowledge gaps and weak claims into prioritized source-backed acquisition tasks."
+    },
+    {
+      "name": "doctor-backup-readiness",
+      "status": "stable",
+      "since": "v0.10.0",
+      "description": "Opt-in doctor check for recent backup marker evidence."
     }
   ],
   "migrations": [
@@ -252,7 +258,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.9.0"
+  "release_notes_path": "/contextdb/releases/v0.10.0"
 }
 ```
 

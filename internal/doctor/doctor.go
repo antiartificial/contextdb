@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -16,6 +17,8 @@ type Options struct {
 	Client          *http.Client
 	SampleWrite     bool
 	SampleNamespace string
+	BackupMarker    string
+	MaxBackupAge    time.Duration
 }
 
 type Report struct {
@@ -124,6 +127,9 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 		nodeID, check := runner.checkSampleWrite(ctx, namespace)
 		report.Checks = append(report.Checks, check)
 		report.SampleNodeID = nodeID
+	}
+	if strings.TrimSpace(opts.BackupMarker) != "" {
+		report.Checks = append(report.Checks, checkBackupMarker(opts.BackupMarker, opts.MaxBackupAge))
 	}
 
 	report.OK = true
@@ -234,6 +240,27 @@ func (r *runner) checkSampleWrite(ctx context.Context, namespace string) (string
 		}
 	}
 	return writeResp.NodeID, CheckResult{Name: "sample_write", OK: false, Detail: "written node not found in retrieve results"}
+}
+
+func checkBackupMarker(path string, maxAge time.Duration) CheckResult {
+	info, err := os.Stat(path)
+	if err != nil {
+		return CheckResult{Name: "backup_readiness", OK: false, Detail: err.Error()}
+	}
+	if info.IsDir() {
+		return CheckResult{Name: "backup_readiness", OK: false, Detail: "backup marker is a directory"}
+	}
+	if maxAge <= 0 {
+		maxAge = 24 * time.Hour
+	}
+	age := time.Since(info.ModTime())
+	if age < 0 {
+		age = 0
+	}
+	if age > maxAge {
+		return CheckResult{Name: "backup_readiness", OK: false, Detail: fmt.Sprintf("marker age %s exceeds %s", age.Round(time.Second), maxAge)}
+	}
+	return CheckResult{Name: "backup_readiness", OK: true, Detail: fmt.Sprintf("marker age %s within %s", age.Round(time.Second), maxAge)}
 }
 
 func (r *runner) getJSON(ctx context.Context, path string, out any) error {
