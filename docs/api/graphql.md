@@ -28,6 +28,28 @@ curl -X POST http://localhost:7701/graphql \
 
 GraphQL uses normal retrieval when the server has embeddings available. In embedded/no-embedder setups it falls back to a content scan so the endpoint remains useful for local inspection.
 
+## Introspection
+
+```graphql
+{
+  version {
+    version
+    apiVersion
+    docsVersion
+    compatibility
+    latestMigration
+    releaseNotesPath
+    features { name status since }
+    migrations { version name }
+  }
+
+  features { name status since description }
+  migrations { version name }
+}
+```
+
+The `version` query returns the release summary for the live server. `features` and `migrations` are available as top-level queries when clients only need one list.
+
 ## Filters
 
 ```graphql

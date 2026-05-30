@@ -10,10 +10,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/graphql-go/graphql"
 
+	"github.com/antiartificial/contextdb/internal/buildinfo"
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/retrieval"
 	"github.com/antiartificial/contextdb/internal/store"
+	"github.com/antiartificial/contextdb/internal/store/postgres"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
 
@@ -136,6 +138,90 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				src, _ := p.Source.(core.Source)
 				return src.EffectiveCredibility(), nil
 			}},
+		},
+	})
+
+	featureInfoType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "FeatureInfo",
+		Fields: graphql.Fields{
+			"name": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(buildinfo.Feature)
+				return f.Name, nil
+			}},
+			"status": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(buildinfo.Feature)
+				return f.Status, nil
+			}},
+			"since": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(buildinfo.Feature)
+				return f.Since, nil
+			}},
+			"description": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(buildinfo.Feature)
+				return f.Description, nil
+			}},
+		},
+	})
+
+	migrationInfoType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "MigrationInfo",
+		Fields: graphql.Fields{
+			"version": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				m, _ := p.Source.(buildinfo.Migration)
+				return m.Version, nil
+			}},
+			"name": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				m, _ := p.Source.(buildinfo.Migration)
+				return m.Name, nil
+			}},
+		},
+	})
+
+	versionInfoType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "VersionInfo",
+		Fields: graphql.Fields{
+			"version": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				info, _ := p.Source.(buildinfo.Info)
+				return info.Version, nil
+			}},
+			"apiVersion": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				info, _ := p.Source.(buildinfo.Info)
+				return info.APIVersion, nil
+			}},
+			"docsVersion": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				info, _ := p.Source.(buildinfo.Info)
+				return info.DocsVersion, nil
+			}},
+			"compatibility": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				info, _ := p.Source.(buildinfo.Info)
+				return info.Compatibility, nil
+			}},
+			"latestMigration": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				info, _ := p.Source.(buildinfo.Info)
+				return info.LatestMigration, nil
+			}},
+			"recommendedDocs": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				info, _ := p.Source.(buildinfo.Info)
+				return info.RecommendedDocs, nil
+			}},
+			"releaseNotesPath": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				info, _ := p.Source.(buildinfo.Info)
+				return info.ReleaseNotesPath, nil
+			}},
+			"features": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(featureInfoType))),
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					info, _ := p.Source.(buildinfo.Info)
+					return info.Features, nil
+				},
+			},
+			"migrations": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(migrationInfoType))),
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					info, _ := p.Source.(buildinfo.Info)
+					return info.Migrations, nil
+				},
+			},
 		},
 	})
 
@@ -485,6 +571,18 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveKnowledgeGaps,
 			},
+			"version": &graphql.Field{
+				Type:    graphql.NewNonNull(versionInfoType),
+				Resolve: s.resolveVersionInfo,
+			},
+			"features": &graphql.Field{
+				Type:    graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(featureInfoType))),
+				Resolve: s.resolveFeatures,
+			},
+			"migrations": &graphql.Field{
+				Type:    graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(migrationInfoType))),
+				Resolve: s.resolveMigrations,
+			},
 		},
 	})
 
@@ -607,6 +705,18 @@ func (s *GraphQLServer) resolveKnowledgeGaps(p graphql.ResolveParams) (interface
 		MinGapSize: minGapSize,
 		MaxGaps:    maxGaps,
 	})
+}
+
+func (s *GraphQLServer) resolveVersionInfo(p graphql.ResolveParams) (interface{}, error) {
+	return buildinfo.Current(postgres.AvailableMigrations()), nil
+}
+
+func (s *GraphQLServer) resolveFeatures(p graphql.ResolveParams) (interface{}, error) {
+	return buildinfo.Features(), nil
+}
+
+func (s *GraphQLServer) resolveMigrations(p graphql.ResolveParams) (interface{}, error) {
+	return postgres.AvailableMigrations(), nil
 }
 
 func (s *GraphQLServer) resolveFeedbackMutation(action string) graphql.FieldResolveFn {

@@ -57,6 +57,39 @@ func TestRESTServer_Ping(t *testing.T) {
 	is.Equal(resp["status"], "ok")
 }
 
+func TestRESTServer_Introspection(t *testing.T) {
+	is := is.New(t)
+
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	srv := server.NewRESTServer(db)
+	handler := srv.Handler()
+
+	for _, path := range []string{"/v1/version", "/v1/features", "/v1/migrations"} {
+		req := httptest.NewRequest("GET", path, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		is.Equal(w.Code, http.StatusOK)
+		var resp map[string]any
+		is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+		is.Equal(resp["version"], "0.4.0")
+	}
+
+	req := httptest.NewRequest("GET", "/v1/version", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	var versionResp map[string]any
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &versionResp))
+	is.Equal(versionResp["api_version"], "v1")
+	is.Equal(versionResp["latest_migration"], float64(2))
+	features := versionResp["features"].([]any)
+	is.True(len(features) > 0)
+	migrations := versionResp["migrations"].([]any)
+	is.Equal(len(migrations), 2)
+}
+
 func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is := is.New(t)
 
@@ -324,6 +357,50 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(narrative["claim"].(map[string]any)["text"], "Go uses goroutines for concurrency")
 	gaps := data["knowledgeGaps"].(map[string]any)
 	is.Equal(gaps["totalNodes"], float64(1))
+}
+
+func TestGraphQLServer_Introspection(t *testing.T) {
+	is := is.New(t)
+
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	srv := server.NewRESTServer(db)
+	handler := srv.Handler()
+
+	queryBody, _ := json.Marshal(map[string]any{
+		"query": `{
+			version {
+				version
+				apiVersion
+				latestMigration
+				features { name since status }
+				migrations { version name }
+			}
+			features { name }
+			migrations { version }
+		}`,
+	})
+	req := httptest.NewRequest("POST", "/graphql", bytes.NewReader(queryBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	var resp map[string]any
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql introspection errors: %v", errs)
+	}
+	data := resp["data"].(map[string]any)
+	version := data["version"].(map[string]any)
+	is.Equal(version["version"], "0.4.0")
+	is.Equal(version["apiVersion"], "v1")
+	is.Equal(version["latestMigration"], float64(2))
+	is.True(len(version["features"].([]any)) > 0)
+	is.Equal(len(version["migrations"].([]any)), 2)
+	is.True(len(data["features"].([]any)) > 0)
+	is.Equal(len(data["migrations"].([]any)), 2)
 }
 
 func TestRESTServer_Stats(t *testing.T) {

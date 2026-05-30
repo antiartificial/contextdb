@@ -23,6 +23,9 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/gaps` | Detect knowledge gaps |
 | `GET` | `/v1/stats` | Runtime statistics |
 | `GET` | `/v1/ping` | Health check |
+| `GET` | `/v1/version` | Release, API, feature, and migration summary |
+| `GET` | `/v1/features` | Supported feature list |
+| `GET` | `/v1/migrations` | Embedded Postgres migration list |
 
 ## Authentication
 
@@ -179,6 +182,40 @@ Raw component fields (`similarity_score`, `confidence_score`, `recency_score`, `
 | `labels` | string[] | No | Filter to nodes with all specified labels |
 | `score_params` | object | No | Override scoring weights |
 | `as_of` | string | No | ISO 8601 timestamp for point-in-time query |
+
+## Introspection
+
+Use the introspection endpoints to confirm what a live server supports:
+
+```bash
+curl http://localhost:7701/v1/version
+```
+
+```json
+{
+  "version": "0.4.0",
+  "api_version": "v1",
+  "docs_version": "0.4.0",
+  "compatibility": "non-breaking pre-1.0 minor release",
+  "latest_migration": 2,
+  "features": [
+    {
+      "name": "feature-introspection",
+      "status": "stable",
+      "since": "v0.4.0",
+      "description": "REST and GraphQL version, feature, and migration discovery endpoints."
+    }
+  ],
+  "migrations": [
+    { "version": 1, "name": "initial" },
+    { "version": 2, "name": "node_fingerprints" }
+  ],
+  "recommended_docs": "/contextdb/",
+  "release_notes_path": "/contextdb/releases/v0.4.0"
+}
+```
+
+`/v1/features` returns only the feature list plus the server version. `/v1/migrations` returns the embedded migration list and latest migration version.
 
 ## Ingest Text
 

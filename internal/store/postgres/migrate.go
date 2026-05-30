@@ -5,9 +5,12 @@ import (
 	"embed"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/antiartificial/contextdb/internal/buildinfo"
 )
 
 //go:embed migrations/*.sql
@@ -21,6 +24,30 @@ type Migrator struct {
 // NewMigrator returns a migrator for the given pool.
 func NewMigrator(pool *pgxpool.Pool) *Migrator {
 	return &Migrator{pool: pool}
+}
+
+// AvailableMigrations returns the embedded Postgres schema migrations.
+func AvailableMigrations() []buildinfo.Migration {
+	entries, err := migrations.ReadDir("migrations")
+	if err != nil {
+		return nil
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	out := make([]buildinfo.Migration, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		version, label, ok := parseMigrationName(name)
+		if !ok {
+			continue
+		}
+		out = append(out, buildinfo.Migration{Version: version, Name: label})
+	}
+	return out
 }
 
 // Up applies all pending migrations.
@@ -58,9 +85,8 @@ func (m *Migrator) Up(ctx context.Context) error {
 			continue
 		}
 
-		// parse version from filename: "001_initial.sql" → 1
-		var version int
-		if _, err := fmt.Sscanf(name, "%03d_", &version); err != nil {
+		version, _, ok := parseMigrationName(name)
+		if !ok {
 			continue
 		}
 		if version <= current {
@@ -90,6 +116,18 @@ func (m *Migrator) Up(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func parseMigrationName(name string) (int, string, bool) {
+	if len(name) < len("001_.sql") || !strings.HasSuffix(name, ".sql") {
+		return 0, "", false
+	}
+	version, err := strconv.Atoi(name[:3])
+	if err != nil || name[3] != '_' {
+		return 0, "", false
+	}
+	label := strings.TrimSuffix(name[4:], ".sql")
+	return version, label, true
 }
 
 // Version returns the highest applied migration version.

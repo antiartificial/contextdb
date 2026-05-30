@@ -2,6 +2,15 @@
 
 This is the working backlog for features that would make contextdb more useful, inspectable, and durable as a live system.
 
+## Completed In v0.4.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Feature/version introspection | Implemented | REST `/v1/version`, `/v1/features`, `/v1/migrations`; GraphQL `version`, `features`, `migrations` |
+| Restart durability test | Implemented | Badger-backed embedded restart test covers nodes, vectors, history, feedback, and dedup |
+| Ranking golden tests | Implemented | Belief-system and agent-memory score ordering fixtures |
+| API contract test | Implemented | gRPC write/retrieve/feedback contract and REST invalid-node-ID failure path |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -9,7 +18,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Back it with the existing GraphQL surface |
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Useful before changing score weights or fusion logic |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Combine score breakdown, source credibility, recency, utility, and graph path evidence |
-| Feature/version introspection | Lets clients ask which APIs and migrations are available | Add `/v1/version`, `/v1/features`, `/v1/migrations`, plus GraphQL equivalents |
+| Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
 | Local Norn registration helper | Reduces drift between live services and docs | Generate or validate a Norn manifest entry for contextdb |
 
 ## Feedback And Epistemics
@@ -35,13 +44,24 @@ This is the working backlog for features that would make contextdb more useful, 
 
 Priority additions:
 
-1. Restart durability suite for Badger-backed embedded mode.
+1. Restart durability suite for Badger-backed embedded mode. Implemented for the core write/feedback/dedup/retrieve restart path in v0.4.0.
 2. Docker-backed Postgres integration suite for migrations, fingerprint indexes, feedback, and vector retrieval.
-3. Ranking golden tests for namespace modes and representative corpora.
-4. API contract parity tests across Go SDK, REST, gRPC, and GraphQL.
+3. Ranking golden tests for namespace modes and representative corpora. Implemented for belief-system and agent-memory presets in v0.4.0; representative corpora are still next.
+4. API contract parity tests across Go SDK, REST, gRPC, and GraphQL. Expanded in v0.4.0 with gRPC public contract and REST failure-path coverage.
 5. Failure injection for unavailable vector stores, graph stores, embedders, and malformed API requests.
 6. Long-running race/soak tests for concurrent writes, reads, feedback, dedup, and compaction.
 
 ## Versioning Approach
 
 The current docs should stay latest-first, with release recap pages and feature tags. Full multi-version docs become worthwhile once there are multiple supported release lines with incompatible APIs.
+
+## Likely Next Features
+
+| Feature | Why it belongs next | First useful slice |
+|:--------|:--------------------|:-------------------|
+| `contextdb doctor` | The server can now report version/features/migrations, so a CLI checker can verify live deployments end to end | Check `/v1/version`, `/v1/ping`, sample write/retrieve, and migration expectations |
+| Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, score breakdowns, sources, edges, and narrative reports |
+| Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
+| Feedback event log | Feedback currently mutates node/source state; explicit event records would make audits and timelines stronger | Append durable events for validate/refute/useful/stale while preserving current node updates |
+| Source trust timeline | Builds naturally on feedback event logging | API endpoint and GraphQL field for source credibility changes over time |
+| Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |

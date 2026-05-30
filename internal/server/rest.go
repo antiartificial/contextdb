@@ -11,10 +11,12 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/antiartificial/contextdb/internal/buildinfo"
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/ingest"
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/retrieval"
+	"github.com/antiartificial/contextdb/internal/store/postgres"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
 
@@ -63,6 +65,10 @@ func (s *RESTServer) Handler() http.Handler {
 
 	// GET /v1/ping
 	mux.HandleFunc("GET /v1/ping", s.handlePing)
+
+	mux.HandleFunc("GET /v1/version", s.handleVersion)
+	mux.HandleFunc("GET /v1/features", s.handleFeatures)
+	mux.HandleFunc("GET /v1/migrations", s.handleMigrations)
 
 	if gql, err := NewGraphQLServer(s.db); err == nil {
 		mux.Handle("GET /graphql", gql)
@@ -589,6 +595,28 @@ func (s *RESTServer) handlePing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *RESTServer) handleVersion(w http.ResponseWriter, r *http.Request) {
+	info := buildinfo.Current(postgres.AvailableMigrations())
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *RESTServer) handleFeatures(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":  buildinfo.Version,
+		"features": buildinfo.Features(),
+	})
+}
+
+func (s *RESTServer) handleMigrations(w http.ResponseWriter, r *http.Request) {
+	migrations := postgres.AvailableMigrations()
+	info := buildinfo.Current(migrations)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":          buildinfo.Version,
+		"latest_migration": info.LatestMigration,
+		"migrations":       migrations,
+	})
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
