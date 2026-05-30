@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.14.0 | Passed | Passed | Corpus coverage present | Restart coverage present | CLI Norn helper tests added | Adds local Norn registration helper |
 | v0.13.0 | Passed | Passed | Corpus coverage present | Restart coverage present | REST and GraphQL source anomaly coverage added | Adds source trust anomaly review tasks |
 | v0.12.0 | Passed | Passed | Corpus coverage present | Restart coverage present | REST and GraphQL review decision coverage added | Adds durable review workflow decisions |
 | v0.11.2 | Passed | Passed | Corpus coverage present | Restart coverage present | Existing contract tests present | Adds this release health page and docs wiring |

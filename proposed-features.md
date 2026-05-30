@@ -85,6 +85,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Source trust anomaly alerts | Implemented | Review queues emit `source_trust_anomaly` tasks for configured source credibility drops, low trust thresholds, and repeated refutations through Go SDK, REST, and GraphQL |
 
+## Completed In v0.14.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Local Norn registration helper | Implemented | `contextdb norn manifest` generates a contextdb service entry and `contextdb norn validate` checks app, endpoint, service name, and REST port |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -93,7 +99,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Useful before changing score weights or fusion logic |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
-| Local Norn registration helper | Reduces drift between live services and docs | Generate or validate a Norn manifest entry for contextdb |
+| Local Norn registration helper | Reduces drift between live services and docs | Completed in v0.14.0; next step is optionally posting to Norn when an authenticated API is available |
 
 ## Feedback And Epistemics
 
@@ -182,4 +188,14 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Trust anomaly escalation rules | High-severity source drops should not wait in a generic queue forever | Add age/severity escalation metadata for source anomaly items |
 | Source quarantine workflow | Repeated refutations often imply the source should be temporarily excluded | Add source label suggestions or a dry-run quarantine action tied to review decisions |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+
+## Fresh Brainstorm After v0.14.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Norn manifest publish | Manifest generation exists, but registration may still be manual | Add a dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn live drift check | Validation catches local shape errors, not live manifest drift | Compare generated manifest with `$NORN_MANIFEST_URL` and report field-level differences |
+| Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Add queue filters for review type, source ID, status, and owner |
+| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation |
 | CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |

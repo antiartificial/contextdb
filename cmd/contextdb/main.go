@@ -20,13 +20,17 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/antiartificial/contextdb/internal/buildinfo"
 	"github.com/antiartificial/contextdb/internal/doctor"
 	"github.com/antiartificial/contextdb/internal/federation"
 	"github.com/antiartificial/contextdb/internal/server"
@@ -36,6 +40,10 @@ import (
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "doctor" {
 		runDoctor(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "norn" {
+		runNorn(os.Args[2:])
 		return
 	}
 
@@ -94,6 +102,202 @@ func main() {
 	srv.Stop()
 }
 
+type nornPorts struct {
+	GRPC    int `json:"grpc"`
+	REST    int `json:"rest"`
+	Observe int `json:"observe"`
+}
+
+type nornManifestEntry struct {
+	App         string    `json:"app"`
+	Name        string    `json:"name"`
+	Version     string    `json:"version"`
+	Endpoint    string    `json:"endpoint"`
+	HealthURL   string    `json:"health_url"`
+	GraphQLURL  string    `json:"graphql_url"`
+	FeaturesURL string    `json:"features_url"`
+	Ports       nornPorts `json:"ports"`
+	Tags        []string  `json:"tags,omitempty"`
+}
+
+func runNorn(args []string) {
+	if len(args) == 0 || args[0] == "manifest" {
+		runNornManifest(dropSubcommand(args, "manifest"))
+		return
+	}
+	if args[0] == "validate" {
+		runNornValidate(args[1:])
+		return
+	}
+	fmt.Fprintf(os.Stderr, "contextdb norn: unknown subcommand %q\n", args[0])
+	os.Exit(2)
+}
+
+func runNornManifest(args []string) {
+	fs := flag.NewFlagSet("contextdb norn manifest", flag.ExitOnError)
+	app := fs.String("app", "contextdb", "Norn app id")
+	name := fs.String("name", "contextdb", "Norn service name")
+	endpoint := fs.String("endpoint", defaultNornEndpoint(), "public REST endpoint advertised through Norn")
+	grpcAddr := fs.String("grpc-addr", getenv("CONTEXTDB_GRPC_ADDR", ":7700"), "gRPC listen address")
+	restAddr := fs.String("rest-addr", getenv("CONTEXTDB_REST_ADDR", ":7701"), "REST listen address")
+	observeAddr := fs.String("observe-addr", getenv("CONTEXTDB_OBS_ADDR", ":7702"), "observe listen address")
+	tags := fs.String("tags", "contextdb,rest,graphql", "comma-separated service tags")
+	_ = fs.Parse(args)
+
+	entry, err := buildNornManifestEntry(nornManifestOptions{
+		App:         *app,
+		Name:        *name,
+		Endpoint:    *endpoint,
+		GRPCAddr:    *grpcAddr,
+		RESTAddr:    *restAddr,
+		ObserveAddr: *observeAddr,
+		Tags:        splitComma(*tags),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb norn manifest: %v\n", err)
+		os.Exit(2)
+	}
+	writeIndentedJSON(entry)
+}
+
+func runNornValidate(args []string) {
+	fs := flag.NewFlagSet("contextdb norn validate", flag.ExitOnError)
+	path := fs.String("file", "-", "manifest entry JSON file, or - for stdin")
+	_ = fs.Parse(args)
+
+	var data []byte
+	var err error
+	if *path == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(*path)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb norn validate: read manifest: %v\n", err)
+		os.Exit(2)
+	}
+	var entry nornManifestEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb norn validate: decode manifest: %v\n", err)
+		os.Exit(2)
+	}
+	if err := validateNornManifestEntry(entry); err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb norn validate: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stdout, "ok")
+}
+
+type nornManifestOptions struct {
+	App         string
+	Name        string
+	Endpoint    string
+	GRPCAddr    string
+	RESTAddr    string
+	ObserveAddr string
+	Tags        []string
+}
+
+func buildNornManifestEntry(opts nornManifestOptions) (nornManifestEntry, error) {
+	endpoint, err := normalizeEndpoint(opts.Endpoint)
+	if err != nil {
+		return nornManifestEntry{}, err
+	}
+	entry := nornManifestEntry{
+		App:         strings.TrimSpace(opts.App),
+		Name:        strings.TrimSpace(opts.Name),
+		Version:     buildinfo.Version,
+		Endpoint:    endpoint,
+		HealthURL:   endpoint + "/v1/ping",
+		GraphQLURL:  endpoint + "/graphql",
+		FeaturesURL: endpoint + "/v1/features",
+		Ports: nornPorts{
+			GRPC:    portFromAddr(opts.GRPCAddr, 7700),
+			REST:    portFromAddr(opts.RESTAddr, 7701),
+			Observe: portFromAddr(opts.ObserveAddr, 7702),
+		},
+		Tags: opts.Tags,
+	}
+	if err := validateNornManifestEntry(entry); err != nil {
+		return nornManifestEntry{}, err
+	}
+	return entry, nil
+}
+
+func defaultNornEndpoint() string {
+	if publicURL := os.Getenv("CONTEXTDB_PUBLIC_URL"); publicURL != "" {
+		return publicURL
+	}
+	restAddr := getenv("CONTEXTDB_REST_ADDR", ":7701")
+	if strings.HasPrefix(restAddr, ":") {
+		return "http://127.0.0.1" + restAddr
+	}
+	if strings.HasPrefix(restAddr, "http://") || strings.HasPrefix(restAddr, "https://") {
+		return restAddr
+	}
+	return "http://" + restAddr
+}
+
+func validateNornManifestEntry(entry nornManifestEntry) error {
+	if strings.TrimSpace(entry.App) != "contextdb" {
+		return fmt.Errorf("app must be contextdb")
+	}
+	if strings.TrimSpace(entry.Name) == "" {
+		return fmt.Errorf("name is required")
+	}
+	if _, err := normalizeEndpoint(entry.Endpoint); err != nil {
+		return err
+	}
+	if entry.Ports.REST <= 0 {
+		return fmt.Errorf("ports.rest is required")
+	}
+	return nil
+}
+
+func normalizeEndpoint(raw string) (string, error) {
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	if raw == "" {
+		return "", fmt.Errorf("endpoint is required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("endpoint must be an absolute URL")
+	}
+	return u.String(), nil
+}
+
+func portFromAddr(addr string, fallback int) int {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fallback
+	}
+	idx := strings.LastIndex(addr, ":")
+	if idx < 0 || idx == len(addr)-1 {
+		return fallback
+	}
+	port, err := strconv.Atoi(addr[idx+1:])
+	if err != nil || port <= 0 {
+		return fallback
+	}
+	return port
+}
+
+func dropSubcommand(args []string, subcommand string) []string {
+	if len(args) > 0 && args[0] == subcommand {
+		return args[1:]
+	}
+	return args
+}
+
+func writeIndentedJSON(v any) {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb: encode json: %v\n", err)
+		os.Exit(2)
+	}
+}
+
 func runDoctor(args []string) {
 	fs := flag.NewFlagSet("contextdb doctor", flag.ExitOnError)
 	baseURL := fs.String("url", getenv("CONTEXTDB_REST_URL", "http://127.0.0.1:7701"), "contextdb REST base URL")
@@ -114,12 +318,7 @@ func runDoctor(args []string) {
 		fmt.Fprintf(os.Stderr, "contextdb doctor: %v\n", err)
 		os.Exit(2)
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(report); err != nil {
-		fmt.Fprintf(os.Stderr, "contextdb doctor: encode report: %v\n", err)
-		os.Exit(2)
-	}
+	writeIndentedJSON(report)
 	if !report.OK {
 		os.Exit(1)
 	}

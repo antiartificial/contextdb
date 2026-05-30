@@ -1,0 +1,99 @@
+package main
+
+import (
+	"testing"
+
+	"github.com/matryer/is"
+
+	"github.com/antiartificial/contextdb/internal/buildinfo"
+)
+
+func TestBuildNornManifestEntry(t *testing.T) {
+	is := is.New(t)
+
+	entry, err := buildNornManifestEntry(nornManifestOptions{
+		App:         "contextdb",
+		Name:        "contextdb-mini",
+		Endpoint:    "https://contextdb.example.test/",
+		GRPCAddr:    ":7700",
+		RESTAddr:    "127.0.0.1:8801",
+		ObserveAddr: ":9902",
+		Tags:        []string{"contextdb", "rest"},
+	})
+	is.NoErr(err)
+	is.Equal(entry.App, "contextdb")
+	is.Equal(entry.Name, "contextdb-mini")
+	is.Equal(entry.Version, buildinfo.Version)
+	is.Equal(entry.Endpoint, "https://contextdb.example.test")
+	is.Equal(entry.HealthURL, "https://contextdb.example.test/v1/ping")
+	is.Equal(entry.GraphQLURL, "https://contextdb.example.test/graphql")
+	is.Equal(entry.FeaturesURL, "https://contextdb.example.test/v1/features")
+	is.Equal(entry.Ports.GRPC, 7700)
+	is.Equal(entry.Ports.REST, 8801)
+	is.Equal(entry.Ports.Observe, 9902)
+	is.Equal(len(entry.Tags), 2)
+}
+
+func TestDefaultNornEndpoint(t *testing.T) {
+	tests := []struct {
+		name      string
+		publicURL string
+		restAddr  string
+		want      string
+	}{
+		{
+			name: "default local rest port",
+			want: "http://127.0.0.1:7701",
+		},
+		{
+			name:     "host port rest address",
+			restAddr: "127.0.0.1:8801",
+			want:     "http://127.0.0.1:8801",
+		},
+		{
+			name:     "absolute rest URL",
+			restAddr: "https://contextdb.example.test",
+			want:     "https://contextdb.example.test",
+		},
+		{
+			name:      "public URL override",
+			publicURL: "https://public.contextdb.example.test",
+			restAddr:  "127.0.0.1:8801",
+			want:      "https://public.contextdb.example.test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			is := is.New(t)
+			t.Setenv("CONTEXTDB_PUBLIC_URL", tt.publicURL)
+			t.Setenv("CONTEXTDB_REST_ADDR", tt.restAddr)
+
+			is.Equal(defaultNornEndpoint(), tt.want)
+		})
+	}
+}
+
+func TestValidateNornManifestEntryRejectsWrongApp(t *testing.T) {
+	is := is.New(t)
+
+	err := validateNornManifestEntry(nornManifestEntry{
+		App:      "other",
+		Name:     "contextdb",
+		Endpoint: "https://contextdb.example.test",
+		Ports:    nornPorts{REST: 7701},
+	})
+	is.True(err != nil)
+}
+
+func TestValidateNornManifestEntryRejectsRelativeEndpoint(t *testing.T) {
+	is := is.New(t)
+
+	err := validateNornManifestEntry(nornManifestEntry{
+		App:      "contextdb",
+		Name:     "contextdb",
+		Endpoint: "/contextdb",
+		Ports:    nornPorts{REST: 7701},
+	})
+	is.True(err != nil)
+}
