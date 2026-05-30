@@ -157,6 +157,28 @@ query {
 
 The timeline is derived from feedback events that changed the source's effective credibility.
 
+## Explain Rank
+
+```graphql
+query {
+  explainRank(
+    namespace: "my-app"
+    nodeId: "550e8400-e29b-41d4-a716-446655440000"
+    otherNodeId: "660e8400-e29b-41d4-a716-446655440001"
+  ) {
+    winnerNodeId
+    loserNodeId
+    margin
+    summary
+    node { nodeId score scoreBreakdown { similarity confidence recency utility } }
+    other { nodeId score scoreBreakdown { similarity confidence recency utility } }
+    factors { factor nodeContribution otherContribution delta }
+  }
+}
+```
+
+`explainRank` compares two nodes under the namespace scoring model and returns the component deltas that explain the ranking difference.
+
 ## Claim Review Queue
 
 ```graphql

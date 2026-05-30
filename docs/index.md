@@ -27,7 +27,7 @@ features:
 ---
 
 ::: tip Current release
-contextdb is currently `v0.7.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+contextdb is currently `v0.8.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 :::
 
 <div class="stat-row">
@@ -197,6 +197,7 @@ All weights are normalised at query time. You supply `alpha` (decay rate) and th
 | [Credibility learning](concepts/credibility) | Bayesian source trust updates based on validation/refutation |
 | [Reranking](architecture/read-path) | Optional LLM cross-encoder reranking after fusion |
 | [Score breakdown](api/rest#retrieve) | Weighted similarity, confidence, recency, and utility contributions per result |
+| [Explain-rank](api/rest#explain-rank) | Compare two nodes and inspect factor deltas that explain the ranking difference |
 | [GraphQL API](api/graphql) | Graph-shaped search, filters, edges, sources, feedback mutations, narratives, and gaps |
 | [Label filtering](api/go-sdk) | Filter retrieval by node labels |
 | [Feedback APIs](api/rest#feedback) | Validate, refute, mark useful, and mark stale across SDK, REST, gRPC, and GraphQL |

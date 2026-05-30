@@ -682,6 +682,125 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	rankedNodeExplanationType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "RankedNodeExplanation",
+		Fields: graphql.Fields{
+			"nodeId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.NodeID.String(), nil
+			}},
+			"text": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.Text, nil
+			}},
+			"score": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.Score, nil
+			}},
+			"similarityScore": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.SimilarityScore, nil
+			}},
+			"confidenceScore": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.ConfidenceScore, nil
+			}},
+			"recencyScore": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.RecencyScore, nil
+			}},
+			"utilityScore": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.UtilityScore, nil
+			}},
+			"scoreBreakdown": &graphql.Field{Type: graphql.NewNonNull(scoreBreakdownType), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.ScoreBreakdown, nil
+			}},
+			"retrievalSource": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				n, _ := p.Source.(client.RankedNodeExplanation)
+				return n.RetrievalSource, nil
+			}},
+		},
+	})
+
+	rankFactorDeltaType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "RankFactorDelta",
+		Fields: graphql.Fields{
+			"factor": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(client.RankFactorDelta)
+				return f.Factor, nil
+			}},
+			"nodeContribution": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(client.RankFactorDelta)
+				return f.NodeContribution, nil
+			}},
+			"otherContribution": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(client.RankFactorDelta)
+				return f.OtherContribution, nil
+			}},
+			"delta": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				f, _ := p.Source.(client.RankFactorDelta)
+				return f.Delta, nil
+			}},
+		},
+	})
+
+	rankExplanationType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "RankExplanation",
+		Fields: graphql.Fields{
+			"node": &graphql.Field{Type: graphql.NewNonNull(rankedNodeExplanationType), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				e, _ := p.Source.(*client.RankExplanation)
+				if e == nil {
+					return client.RankedNodeExplanation{}, nil
+				}
+				return e.Node, nil
+			}},
+			"other": &graphql.Field{Type: graphql.NewNonNull(rankedNodeExplanationType), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				e, _ := p.Source.(*client.RankExplanation)
+				if e == nil {
+					return client.RankedNodeExplanation{}, nil
+				}
+				return e.Other, nil
+			}},
+			"winnerNodeId": &graphql.Field{Type: graphql.ID, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				e, _ := p.Source.(*client.RankExplanation)
+				if e == nil || e.WinnerNodeID == uuid.Nil {
+					return nil, nil
+				}
+				return e.WinnerNodeID.String(), nil
+			}},
+			"loserNodeId": &graphql.Field{Type: graphql.ID, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				e, _ := p.Source.(*client.RankExplanation)
+				if e == nil || e.LoserNodeID == uuid.Nil {
+					return nil, nil
+				}
+				return e.LoserNodeID.String(), nil
+			}},
+			"margin": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				e, _ := p.Source.(*client.RankExplanation)
+				if e == nil {
+					return 0, nil
+				}
+				return e.Margin, nil
+			}},
+			"summary": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				e, _ := p.Source.(*client.RankExplanation)
+				if e == nil {
+					return "", nil
+				}
+				return e.Summary, nil
+			}},
+			"factors": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(rankFactorDeltaType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				e, _ := p.Source.(*client.RankExplanation)
+				if e == nil {
+					return []client.RankFactorDelta{}, nil
+				}
+				return e.Factors, nil
+			}},
+		},
+	})
+
 	queryType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Query",
 		Fields: graphql.Fields{
@@ -695,6 +814,18 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 					"limit":     &graphql.ArgumentConfig{Type: graphql.Int, DefaultValue: 10},
 				},
 				Resolve: s.resolveSearch,
+			},
+			"explainRank": &graphql.Field{
+				Type: graphql.NewNonNull(rankExplanationType),
+				Args: graphql.FieldConfigArgument{
+					"namespace":   &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":        &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"nodeId":      &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.ID)},
+					"otherNodeId": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.ID)},
+					"text":        &graphql.ArgumentConfig{Type: graphql.String},
+					"vector":      &graphql.ArgumentConfig{Type: graphql.NewList(graphql.Float)},
+				},
+				Resolve: s.resolveExplainRank,
 			},
 			"narrative": &graphql.Field{
 				Type: narrativeReportType,
@@ -848,6 +979,31 @@ func (s *GraphQLServer) resolveSearch(p graphql.ResolveParams) (interface{}, err
 		nodes = nodes[:limit]
 	}
 	return graphQLSearchResult{Nodes: nodes, TotalCount: len(nodes)}, nil
+}
+
+func (s *GraphQLServer) resolveExplainRank(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	nodeID, err := uuid.Parse(fmt.Sprint(p.Args["nodeId"]))
+	if err != nil {
+		return nil, fmt.Errorf("invalid nodeId: %w", err)
+	}
+	otherNodeID, err := uuid.Parse(fmt.Sprint(p.Args["otherNodeId"]))
+	if err != nil {
+		return nil, fmt.Errorf("invalid otherNodeId: %w", err)
+	}
+	text, _ := p.Args["text"].(string)
+
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ExplainRank(p.Context, client.ExplainRankRequest{
+		NodeID:      nodeID,
+		OtherNodeID: otherNodeID,
+		Text:        text,
+		Vector:      float32SliceArg(p.Args["vector"]),
+	})
 }
 
 func (s *GraphQLServer) resolveNarrative(p graphql.ResolveParams) (interface{}, error) {
@@ -1231,6 +1387,20 @@ func float32sToFloat64s(v []float32) []float64 {
 	out := make([]float64, len(v))
 	for i, f := range v {
 		out[i] = float64(f)
+	}
+	return out
+}
+
+func float32SliceArg(raw any) []float32 {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]float32, 0, len(items))
+	for _, item := range items {
+		if v, ok := floatArg(item); ok {
+			out = append(out, float32(v))
+		}
 	}
 	return out
 }

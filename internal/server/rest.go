@@ -40,6 +40,7 @@ func (s *RESTServer) Handler() http.Handler {
 
 	// POST /v1/namespaces/{ns}/retrieve
 	mux.HandleFunc("POST /v1/namespaces/{ns}/retrieve", s.handleRetrieve)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/rank/explain", s.handleExplainRank)
 
 	// POST /v1/namespaces/{ns}/ingest
 	mux.HandleFunc("POST /v1/namespaces/{ns}/ingest", s.handleIngest)
@@ -123,6 +124,16 @@ type scoreParams struct {
 	RecencyWeight    float64 `json:"recency_weight"`
 	UtilityWeight    float64 `json:"utility_weight"`
 	DecayAlpha       float64 `json:"decay_alpha"`
+}
+
+type explainRankRequest struct {
+	Mode        string       `json:"mode"`
+	NodeID      string       `json:"node_id"`
+	OtherNodeID string       `json:"other_node_id"`
+	Text        string       `json:"text"`
+	Vector      []float32    `json:"vector"`
+	ScoreParams *scoreParams `json:"score_params,omitempty"`
+	AsOf        *time.Time   `json:"as_of,omitempty"`
 }
 
 type retrieveResponse struct {
@@ -365,6 +376,62 @@ func (s *RESTServer) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *RESTServer) handleExplainRank(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var req explainRankRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	nodeID, err := uuid.Parse(req.NodeID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid node_id: %w", err))
+		return
+	}
+	otherNodeID, err := uuid.Parse(req.OtherNodeID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid other_node_id: %w", err))
+		return
+	}
+
+	var sp core.ScoreParams
+	if req.ScoreParams != nil {
+		sp = core.ScoreParams{
+			SimilarityWeight: req.ScoreParams.SimilarityWeight,
+			ConfidenceWeight: req.ScoreParams.ConfidenceWeight,
+			RecencyWeight:    req.ScoreParams.RecencyWeight,
+			UtilityWeight:    req.ScoreParams.UtilityWeight,
+			DecayAlpha:       req.ScoreParams.DecayAlpha,
+		}
+	}
+
+	var asOf time.Time
+	if req.AsOf != nil {
+		asOf = *req.AsOf
+	}
+
+	h := s.db.Namespace(ns, resolveMode(req.Mode))
+	explanation, err := h.ExplainRank(r.Context(), client.ExplainRankRequest{
+		NodeID:      nodeID,
+		OtherNodeID: otherNodeID,
+		Text:        req.Text,
+		Vector:      req.Vector,
+		ScoreParams: sp,
+		AsOf:        asOf,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, explanation)
 }
 
 func (s *RESTServer) handleIngest(w http.ResponseWriter, r *http.Request) {

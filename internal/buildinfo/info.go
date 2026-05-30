@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.7.0"
+	Version = "0.8.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.7.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.8.0",
 	}
 }
 
@@ -58,6 +58,7 @@ func Features() []Feature {
 		{Name: "feedback-event-log", Status: "stable", Since: "v0.5.0", Description: "Durable feedback audit events exposed through the Go SDK, REST, and GraphQL."},
 		{Name: "source-trust-timeline", Status: "stable", Since: "v0.6.0", Description: "Source credibility timeline points derived from durable feedback events."},
 		{Name: "claim-review-queue", Status: "stable", Since: "v0.7.0", Description: "Derived review tasks for refuted, stale, low-confidence, and contradictory claims."},
+		{Name: "explain-rank", Status: "stable", Since: "v0.8.0", Description: "Compare two nodes and explain ranking differences with score component deltas."},
 	}
 }
 

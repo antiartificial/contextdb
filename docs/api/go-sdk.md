@@ -191,6 +191,22 @@ Runs hybrid retrieval (vector + graph + session) with optional reranking and ret
 | `UtilityScore` | `float64` | Utility component |
 | `RetrievalSource` | `string` | "vector", "graph", "session", or "fused" |
 
+### ExplainRank
+
+```go
+explanation, err := ns.ExplainRank(ctx, client.ExplainRankRequest{
+    NodeID:      firstID,
+    OtherNodeID: secondID,
+    Vector:      queryVector,
+})
+fmt.Println(explanation.Summary)
+for _, factor := range explanation.Factors {
+    fmt.Printf("%s: %.3f\n", factor.Factor, factor.Delta)
+}
+```
+
+`ExplainRank` compares two existing nodes under the namespace scoring model and returns each node's score breakdown, the winner, margin, and factor deltas.
+
 ### GetNode
 
 ```go

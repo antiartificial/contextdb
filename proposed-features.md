@@ -36,13 +36,19 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Claim review queue | Implemented | Go SDK, REST, and GraphQL expose ranked tasks for refuted, stale, low-confidence, and contradictory claims |
 
+## Completed In v0.8.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Explain-rank endpoint | Implemented | Go SDK, REST, and GraphQL compare two nodes and expose score component deltas |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
 | Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Back it with the existing GraphQL surface |
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Useful before changing score weights or fusion logic |
-| Explain-rank endpoint | Answers "why did this node rank above that one?" | Combine score breakdown, source credibility, recency, utility, and graph path evidence |
+| Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; next step is graph path evidence and UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
 | Local Norn registration helper | Reduces drift between live services and docs | Generate or validate a Norn manifest entry for contextdb |
 
@@ -85,8 +91,9 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs next | First useful slice |
 |:--------|:--------------------|:-------------------|
-| Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, score breakdowns, sources, edges, and narrative reports |
+| Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, explain-rank comparisons, sources, edges, and narrative reports |
 | Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
+| Explain-rank graph evidence | The first explain-rank slice covers score deltas; graph-aware evidence would make explanations deeper | Include shortest supporting/contradicting paths and source trust context in the explanation payload |
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks would make it more operationally complete | Check snapshot/export availability and warn when persistent embedded data has no recent backup marker |
 | Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Add assigned/resolved/snoozed metadata and an append-only review decision log |
 | Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |

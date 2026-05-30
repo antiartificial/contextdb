@@ -12,6 +12,7 @@ contextdb exposes a REST API on port **7701**.
 |:-------|:-----|:------------|
 | `POST` | `/v1/namespaces/{ns}/write` | Write a node |
 | `POST` | `/v1/namespaces/{ns}/retrieve` | Retrieve nodes |
+| `POST` | `/v1/namespaces/{ns}/rank/explain` | Explain ranking difference between two nodes |
 | `POST` | `/v1/namespaces/{ns}/ingest` | Ingest text (LLM extraction) |
 | `GET` | `/v1/namespaces/{ns}/nodes/{id}` | Get a single node |
 | `POST` | `/v1/namespaces/{ns}/sources/label` | Label a source |
@@ -196,9 +197,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "api_version": "v1",
-  "docs_version": "0.7.0",
+  "docs_version": "0.8.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -231,6 +232,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.7.0",
       "description": "Derived review tasks for refuted, stale, low-confidence, and contradictory claims."
+    },
+    {
+      "name": "explain-rank",
+      "status": "stable",
+      "since": "v0.8.0",
+      "description": "Compare two nodes and explain ranking differences with score component deltas."
     }
   ],
   "migrations": [
@@ -238,11 +245,45 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.7.0"
+  "release_notes_path": "/contextdb/releases/v0.8.0"
 }
 ```
 
 `/v1/features` returns only the feature list plus the server version. `/v1/migrations` returns the embedded migration list and latest migration version.
+
+## Explain Rank
+
+Compare two existing nodes under the namespace scoring model:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/rank/explain \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mode": "belief_system",
+    "node_id": "550e8400-e29b-41d4-a716-446655440000",
+    "other_node_id": "660e8400-e29b-41d4-a716-446655440001",
+    "vector": [0.1, 0.2, 0.3]
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "winner_node_id": "550e8400-e29b-41d4-a716-446655440000",
+  "loser_node_id": "660e8400-e29b-41d4-a716-446655440001",
+  "margin": 0.22,
+  "summary": "550e8400-e29b-41d4-a716-446655440000 ranks above 660e8400-e29b-41d4-a716-446655440001 by 0.2200 points; confidence contributes the largest difference.",
+  "factors": [
+    {
+      "factor": "confidence",
+      "node_contribution": 0.43,
+      "other_contribution": 0.09,
+      "delta": 0.34
+    }
+  ]
+}
+```
 
 ## Ingest Text
 

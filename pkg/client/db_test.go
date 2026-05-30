@@ -357,6 +357,45 @@ func TestNamespace_ExplainAndKnowledgeGaps(t *testing.T) {
 	is.Equal(gaps.TotalNodes, 1)
 }
 
+func TestNamespace_ExplainRankComparesScoreFactors(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:explain-rank", namespace.ModeBeliefSystem)
+	credible, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Deploys use blue green rollout",
+		SourceID:   "runbook",
+		Vector:     vec8(0),
+		Confidence: 0.95,
+	})
+	is.NoErr(err)
+	uncertain, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Deploys use manual copy rollout",
+		SourceID:   "chat",
+		Vector:     vec8(1),
+		Confidence: 0.2,
+	})
+	is.NoErr(err)
+	is.True(credible.Admitted)
+	is.True(uncertain.Admitted)
+
+	explanation, err := ns.ExplainRank(ctx, client.ExplainRankRequest{
+		NodeID:      credible.NodeID,
+		OtherNodeID: uncertain.NodeID,
+		Vector:      vec8(0),
+	})
+	is.NoErr(err)
+	is.Equal(explanation.WinnerNodeID, credible.NodeID)
+	is.True(explanation.Margin > 0)
+	is.Equal(explanation.Node.NodeID, credible.NodeID)
+	is.Equal(explanation.Other.NodeID, uncertain.NodeID)
+	is.True(len(explanation.Factors) == 4)
+	is.True(explanation.Summary != "")
+}
+
 func TestNamespace_PersistentEmbeddedRestartPreservesCoreData(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

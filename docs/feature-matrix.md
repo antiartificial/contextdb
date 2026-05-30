@@ -20,6 +20,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Narrative retrieval | Implemented | v0.3 | `epistemics`, `inspectability` | Go SDK, REST, and GraphQL expose structured narrative reports |
 | Knowledge gaps | Implemented | v0.3 | `epistemics`, `active-learning` | Go SDK, REST, and GraphQL expose gap reports |
 | Feedback APIs | Implemented | v0.3 | `feedback-loop`, `non-breaking` | Go SDK, REST, gRPC, and GraphQL expose validate/refute/useful/stale |
+| Explain-rank | Implemented | v0.8 | `inspectability`, `ranking`, `non-breaking` | Go SDK, REST, and GraphQL compare two nodes with score component deltas |
 | Feedback event log | Implemented | v0.5 | `feedback-loop`, `audit`, `non-breaking` | Go SDK, REST, and GraphQL expose durable feedback events |
 | Source trust timeline | Implemented | v0.6 | `audit`, `epistemics`, `feedback-loop` | Go SDK, REST, and GraphQL expose credibility points from feedback events |
 | Claim review queue | Implemented | v0.7 | `feedback-loop`, `epistemics`, `operations` | Go SDK, REST, and GraphQL expose ranked review tasks for refuted, stale, low-confidence, and contradictory claims |
@@ -32,6 +33,6 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 ## Next Candidates
 
-1. A local belief debugger UI backed by GraphQL, feature introspection, feedback events, and source trust timelines.
+1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
 2. Review workflow persistence for assignment, status, resolution notes, and re-check scheduling.
 3. Doctor backup readiness and deeper index consistency checks.

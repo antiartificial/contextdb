@@ -5,9 +5,9 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.7.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.7.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.8.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.8.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
-**Current release:** `v0.7.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+**Current release:** `v0.8.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
 
 ## What & Why
@@ -194,6 +194,8 @@ results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
 ```
 
 **[Score breakdown](docs/api/rest.md#retrieve)** -- Retrieval responses expose the weighted contribution of similarity, confidence, recency, and utility, so ranking is explainable without re-deriving the scoring function. *Typical vector DBs: opaque score.*
+
+**[Explain-rank](docs/api/rest.md#explain-rank)** -- Compare two nodes and see which score factors made one rank above the other. *Typical vector DBs: rank explanations require separate observability code.*
 
 **[Query DSL](docs/api/dsl.md)** -- Two syntax tiers. Pipe syntax for the REPL (`search "x" | where confidence > 0.7 | top 5`). CQL for apps (`FIND "x" WHERE ... WEIGHT ... LIMIT 5`). Both compile to the same AST. [Example](docs/examples.md#query-dsl-pipe-syntax-and-cql). *Typical vector DBs: API-only.*
 
