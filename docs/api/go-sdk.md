@@ -203,9 +203,13 @@ fmt.Println(explanation.Summary)
 for _, factor := range explanation.Factors {
     fmt.Printf("%s: %.3f\n", factor.Factor, factor.Delta)
 }
+fmt.Printf("supports=%d compound=%.2f\n",
+    explanation.Node.Evidence.SupportCount,
+    explanation.Node.Evidence.CompoundConfidence,
+)
 ```
 
-`ExplainRank` compares two existing nodes under the namespace scoring model and returns each node's score breakdown, the winner, margin, and factor deltas.
+`ExplainRank` compares two existing nodes under the namespace scoring model and returns each node's score breakdown, the winner, margin, factor deltas, and support-chain evidence when available.
 
 ### GetNode
 

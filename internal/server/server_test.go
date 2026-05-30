@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/matryer/is"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/antiartificial/contextdb/internal/buildinfo"
+	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/server"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
@@ -136,6 +139,26 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	var writeOtherResp map[string]any
 	is.NoErr(json.Unmarshal(wOther.Body.Bytes(), &writeOtherResp))
 	otherNodeID := writeOtherResp["node_id"].(string)
+	graph, _, _, _ := db.Stores()
+	supportUUID := uuid.New()
+	nodeUUID, err := uuid.Parse(nodeID)
+	is.NoErr(err)
+	is.NoErr(graph.UpsertNode(context.Background(), core.Node{
+		ID:         supportUUID,
+		Namespace:  "channel:general",
+		Properties: map[string]any{"text": "Runbook confirms goroutine concurrency", "source_id": "docs"},
+		Confidence: 0.9,
+		ValidFrom:  time.Now().Add(time.Hour),
+		TxTime:     time.Now(),
+	}))
+	is.NoErr(graph.UpsertEdge(context.Background(), core.Edge{
+		ID:        uuid.New(),
+		Namespace: "channel:general",
+		Src:       supportUUID,
+		Dst:       nodeUUID,
+		Type:      core.EdgeSupports,
+		Weight:    0.8,
+	}))
 
 	// Retrieve
 	retrieveBody, _ := json.Marshal(map[string]any{
@@ -172,6 +195,9 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(rankResp["winner_node_id"], nodeID)
 	is.True(rankResp["summary"].(string) != "")
 	is.True(len(rankResp["factors"].([]any)) == 4)
+	nodeRank := rankResp["node"].(map[string]any)
+	evidence := nodeRank["evidence"].(map[string]any)
+	is.Equal(evidence["support_count"], float64(1))
 
 	feedbackBody, _ := json.Marshal(map[string]any{"reason": "verified externally"})
 	req3 := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/validate", bytes.NewReader(feedbackBody))
@@ -368,6 +394,26 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	var writeOtherResp map[string]any
 	is.NoErr(json.Unmarshal(w.Body.Bytes(), &writeOtherResp))
 	otherNodeID := writeOtherResp["node_id"].(string)
+	graph, _, _, _ := db.Stores()
+	supportUUID := uuid.New()
+	nodeUUID, err := uuid.Parse(nodeID)
+	is.NoErr(err)
+	is.NoErr(graph.UpsertNode(context.Background(), core.Node{
+		ID:         supportUUID,
+		Namespace:  "graphql-test",
+		Properties: map[string]any{"text": "Docs confirm goroutines are the Go concurrency primitive", "source_id": "docs"},
+		Confidence: 0.9,
+		ValidFrom:  time.Now().Add(time.Hour),
+		TxTime:     time.Now(),
+	}))
+	is.NoErr(graph.UpsertEdge(context.Background(), core.Edge{
+		ID:        uuid.New(),
+		Namespace: "graphql-test",
+		Src:       supportUUID,
+		Dst:       nodeUUID,
+		Type:      core.EdgeSupports,
+		Weight:    0.8,
+	}))
 
 	queryBody, _ := json.Marshal(map[string]any{
 		"query": `{
@@ -458,6 +504,7 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 			explainRank(namespace: "graphql-test", nodeId: $id, otherNodeId: $otherID) {
 				winnerNodeId
 				summary
+				node { evidence { supportCount links { nodeId edgeWeight } } }
 				factors { factor delta }
 			}
 			reviewQueue(namespace: "graphql-test", lowConfidenceThreshold: 0.99) {
@@ -503,6 +550,9 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(rank["winnerNodeId"], nodeID)
 	is.True(rank["summary"].(string) != "")
 	is.True(len(rank["factors"].([]any)) == 4)
+	rankNode := rank["node"].(map[string]any)
+	rankEvidence := rankNode["evidence"].(map[string]any)
+	is.Equal(rankEvidence["supportCount"], float64(1))
 	queue := data["reviewQueue"].([]any)
 	is.True(len(queue) > 0)
 	queueItem := queue[0].(map[string]any)

@@ -381,6 +381,22 @@ func TestNamespace_ExplainRankComparesScoreFactors(t *testing.T) {
 	is.NoErr(err)
 	is.True(credible.Admitted)
 	is.True(uncertain.Admitted)
+	supportID := uuid.New()
+	graph, _, _, _ := db.Stores()
+	is.NoErr(graph.UpsertNode(ctx, core.Node{
+		ID:         supportID,
+		Namespace:  "test:explain-rank",
+		Properties: map[string]any{"text": "Runbook confirms blue green deployment", "source_id": "runbook"},
+		Confidence: 0.9,
+		ValidFrom:  time.Now(),
+		TxTime:     time.Now(),
+	}))
+	is.NoErr(ns.AddEdge(ctx, core.Edge{
+		Src:    supportID,
+		Dst:    credible.NodeID,
+		Type:   core.EdgeSupports,
+		Weight: 0.8,
+	}))
 
 	explanation, err := ns.ExplainRank(ctx, client.ExplainRankRequest{
 		NodeID:      credible.NodeID,
@@ -392,6 +408,8 @@ func TestNamespace_ExplainRankComparesScoreFactors(t *testing.T) {
 	is.True(explanation.Margin > 0)
 	is.Equal(explanation.Node.NodeID, credible.NodeID)
 	is.Equal(explanation.Other.NodeID, uncertain.NodeID)
+	is.Equal(explanation.Node.Evidence.SupportCount, 1)
+	is.Equal(explanation.Node.Evidence.Links[0].NodeID, supportID)
 	is.True(len(explanation.Factors) == 4)
 	is.True(explanation.Summary != "")
 }

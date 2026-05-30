@@ -135,6 +135,7 @@ type explainRankRequest struct {
 	Vector      []float32    `json:"vector"`
 	ScoreParams *scoreParams `json:"score_params,omitempty"`
 	AsOf        *time.Time   `json:"as_of,omitempty"`
+	MaxDepth    int          `json:"max_depth,omitempty"`
 }
 
 type retrieveResponse struct {
@@ -434,6 +435,7 @@ func (s *RESTServer) handleExplainRank(w http.ResponseWriter, r *http.Request) {
 		Vector:      req.Vector,
 		ScoreParams: sp,
 		AsOf:        asOf,
+		MaxDepth:    req.MaxDepth,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

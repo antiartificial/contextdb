@@ -170,14 +170,28 @@ query {
     loserNodeId
     margin
     summary
-    node { nodeId score scoreBreakdown { similarity confidence recency utility } }
-    other { nodeId score scoreBreakdown { similarity confidence recency utility } }
+    node {
+      nodeId
+      score
+      scoreBreakdown { similarity confidence recency utility }
+      evidence {
+        compoundConfidence
+        supportCount
+        links { nodeId edgeId edgeWeight confidence text }
+      }
+    }
+    other {
+      nodeId
+      score
+      scoreBreakdown { similarity confidence recency utility }
+      evidence { compoundConfidence supportCount }
+    }
     factors { factor nodeContribution otherContribution delta }
   }
 }
 ```
 
-`explainRank` compares two nodes under the namespace scoring model and returns the component deltas that explain the ranking difference.
+`explainRank` compares two nodes under the namespace scoring model and returns component deltas plus supporting graph evidence when `supports` chains are available.
 
 ## Claim Review Queue
 

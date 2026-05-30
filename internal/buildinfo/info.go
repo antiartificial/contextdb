@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.10.0"
+	Version = "0.11.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.10.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.11.0",
 	}
 }
 
@@ -61,6 +61,7 @@ func Features() []Feature {
 		{Name: "explain-rank", Status: "stable", Since: "v0.8.0", Description: "Compare two nodes and explain ranking differences with score component deltas."},
 		{Name: "knowledge-acquisition-planner", Status: "stable", Since: "v0.9.0", Description: "Convert knowledge gaps and weak claims into prioritized source-backed acquisition tasks."},
 		{Name: "doctor-backup-readiness", Status: "stable", Since: "v0.10.0", Description: "Opt-in doctor check for recent backup marker evidence."},
+		{Name: "explain-rank-graph-evidence", Status: "stable", Since: "v0.11.0", Description: "Support-chain evidence and compound confidence in rank explanations."},
 	}
 }
 

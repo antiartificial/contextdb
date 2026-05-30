@@ -882,6 +882,7 @@ type ExplainRankRequest struct {
 	Vector      []float32
 	ScoreParams core.ScoreParams
 	AsOf        time.Time
+	MaxDepth    int
 }
 
 // RankedNodeExplanation is one side of a rank comparison.
@@ -895,6 +896,23 @@ type RankedNodeExplanation struct {
 	UtilityScore    float64             `json:"utility_score"`
 	ScoreBreakdown  core.ScoreBreakdown `json:"score_breakdown"`
 	RetrievalSource string              `json:"retrieval_source"`
+	Evidence        RankEvidence        `json:"evidence"`
+}
+
+// RankEvidence summarizes graph evidence connected to one ranked node.
+type RankEvidence struct {
+	CompoundConfidence float64            `json:"compound_confidence"`
+	SupportCount       int                `json:"support_count"`
+	Links              []RankEvidenceLink `json:"links"`
+}
+
+// RankEvidenceLink is one supporting edge in a rank explanation.
+type RankEvidenceLink struct {
+	NodeID     uuid.UUID `json:"node_id"`
+	EdgeID     uuid.UUID `json:"edge_id"`
+	EdgeWeight float64   `json:"edge_weight"`
+	Confidence float64   `json:"confidence"`
+	Text       string    `json:"text,omitempty"`
 }
 
 // RankFactorDelta explains how much one score component favored NodeID.
@@ -1050,9 +1068,21 @@ func (h *NamespaceHandle) ExplainRank(ctx context.Context, req ExplainRankReques
 
 	leftScored := scoreRankNode(*left, req.Vector, params)
 	rightScored := scoreRankNode(*right, req.Vector, params)
+	leftEvidence, err := h.rankEvidence(ctx, leftScored.Node.ID, req.MaxDepth)
+	if err != nil {
+		return nil, err
+	}
+	rightEvidence, err := h.rankEvidence(ctx, rightScored.Node.ID, req.MaxDepth)
+	if err != nil {
+		return nil, err
+	}
+	leftExplanation := newRankedNodeExplanation(leftScored)
+	leftExplanation.Evidence = leftEvidence
+	rightExplanation := newRankedNodeExplanation(rightScored)
+	rightExplanation.Evidence = rightEvidence
 	explanation := &RankExplanation{
-		Node:    newRankedNodeExplanation(leftScored),
-		Other:   newRankedNodeExplanation(rightScored),
+		Node:    leftExplanation,
+		Other:   rightExplanation,
 		Margin:  leftScored.Score - rightScored.Score,
 		Factors: rankFactorDeltas(leftScored.Breakdown, rightScored.Breakdown),
 	}
@@ -1377,6 +1407,31 @@ func (h *NamespaceHandle) AcquisitionPlan(ctx context.Context, req AcquisitionPl
 		plan.Tasks = plan.Tasks[:budget]
 	}
 	return plan, nil
+}
+
+func (h *NamespaceHandle) rankEvidence(ctx context.Context, nodeID uuid.UUID, maxDepth int) (RankEvidence, error) {
+	chain, err := retrieval.TraceInferenceChain(ctx, h.db.graph, h.cfg.ID, nodeID, maxDepth)
+	if err != nil {
+		return RankEvidence{}, fmt.Errorf("explain rank: trace evidence: %w", err)
+	}
+	if chain == nil {
+		return RankEvidence{}, nil
+	}
+	evidence := RankEvidence{
+		CompoundConfidence: chain.CompoundConfidence,
+		SupportCount:       len(chain.Links),
+		Links:              make([]RankEvidenceLink, 0, len(chain.Links)),
+	}
+	for _, link := range chain.Links {
+		evidence.Links = append(evidence.Links, RankEvidenceLink{
+			NodeID:     link.Node.ID,
+			EdgeID:     link.Edge.ID,
+			EdgeWeight: link.Edge.Weight,
+			Confidence: link.Confidence,
+			Text:       core.NodeText(link.Node),
+		})
+	}
+	return evidence, nil
 }
 
 // ── Enhanced SDK (Phase 6) ────────────────────────────────────────────────

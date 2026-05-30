@@ -2,5 +2,5 @@ apiVersion: v2
 name: contextdb
 description: A temporal graph-vector database
 type: application
-version: 0.10.0
-appVersion: "0.10.0"
+version: 0.11.0
+appVersion: "0.11.0"

@@ -1,6 +1,6 @@
 {
   "name": "contextdb",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "**[Documentation](docs/) | [Architecture](docs/architecture/) | [API](docs/api/) | [Quick Start](docs/quick-start.md)**",
   "main": "index.js",
   "directories": {

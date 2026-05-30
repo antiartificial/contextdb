@@ -22,6 +22,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Knowledge acquisition planner | Implemented | v0.9 | `active-learning`, `epistemics`, `operations` | Go SDK, REST, and GraphQL expose prioritized acquisition tasks from gaps and weak claims |
 | Feedback APIs | Implemented | v0.3 | `feedback-loop`, `non-breaking` | Go SDK, REST, gRPC, and GraphQL expose validate/refute/useful/stale |
 | Explain-rank | Implemented | v0.8 | `inspectability`, `ranking`, `non-breaking` | Go SDK, REST, and GraphQL compare two nodes with score component deltas |
+| Explain-rank graph evidence | Implemented | v0.11 | `inspectability`, `ranking`, `graph` | Explain-rank responses include support-chain evidence and compound confidence |
 | Feedback event log | Implemented | v0.5 | `feedback-loop`, `audit`, `non-breaking` | Go SDK, REST, and GraphQL expose durable feedback events |
 | Source trust timeline | Implemented | v0.6 | `audit`, `epistemics`, `feedback-loop` | Go SDK, REST, and GraphQL expose credibility points from feedback events |
 | Claim review queue | Implemented | v0.7 | `feedback-loop`, `epistemics`, `operations` | Go SDK, REST, and GraphQL expose ranked review tasks for refuted, stale, low-confidence, and contradictory claims |

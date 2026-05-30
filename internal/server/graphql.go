@@ -796,6 +796,58 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	rankEvidenceLinkType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "RankEvidenceLink",
+		Fields: graphql.Fields{
+			"nodeId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				link, _ := p.Source.(client.RankEvidenceLink)
+				return link.NodeID.String(), nil
+			}},
+			"edgeId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				link, _ := p.Source.(client.RankEvidenceLink)
+				return link.EdgeID.String(), nil
+			}},
+			"edgeWeight": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				link, _ := p.Source.(client.RankEvidenceLink)
+				return link.EdgeWeight, nil
+			}},
+			"confidence": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				link, _ := p.Source.(client.RankEvidenceLink)
+				return link.Confidence, nil
+			}},
+			"text": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				link, _ := p.Source.(client.RankEvidenceLink)
+				return link.Text, nil
+			}},
+		},
+	})
+
+	rankEvidenceType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "RankEvidence",
+		Fields: graphql.Fields{
+			"compoundConfidence": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				evidence, _ := p.Source.(client.RankEvidence)
+				return evidence.CompoundConfidence, nil
+			}},
+			"supportCount": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				evidence, _ := p.Source.(client.RankEvidence)
+				return evidence.SupportCount, nil
+			}},
+			"links": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(rankEvidenceLinkType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				evidence, _ := p.Source.(client.RankEvidence)
+				return evidence.Links, nil
+			}},
+		},
+	})
+
+	rankedNodeExplanationType.AddFieldConfig("evidence", &graphql.Field{
+		Type: graphql.NewNonNull(rankEvidenceType),
+		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+			n, _ := p.Source.(client.RankedNodeExplanation)
+			return n.Evidence, nil
+		},
+	})
+
 	rankFactorDeltaType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "RankFactorDelta",
 		Fields: graphql.Fields{
@@ -896,6 +948,7 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 					"otherNodeId": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.ID)},
 					"text":        &graphql.ArgumentConfig{Type: graphql.String},
 					"vector":      &graphql.ArgumentConfig{Type: graphql.NewList(graphql.Float)},
+					"maxDepth":    &graphql.ArgumentConfig{Type: graphql.Int},
 				},
 				Resolve: s.resolveExplainRank,
 			},
@@ -1080,6 +1133,7 @@ func (s *GraphQLServer) resolveExplainRank(p graphql.ResolveParams) (interface{}
 		return nil, fmt.Errorf("invalid otherNodeId: %w", err)
 	}
 	text, _ := p.Args["text"].(string)
+	maxDepth, _ := p.Args["maxDepth"].(int)
 
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ExplainRank(p.Context, client.ExplainRankRequest{
@@ -1087,6 +1141,7 @@ func (s *GraphQLServer) resolveExplainRank(p graphql.ResolveParams) (interface{}
 		OtherNodeID: otherNodeID,
 		Text:        text,
 		Vector:      float32SliceArg(p.Args["vector"]),
+		MaxDepth:    maxDepth,
 	})
 }
 

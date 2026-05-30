@@ -198,9 +198,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.10.0",
+  "version": "0.11.0",
   "api_version": "v1",
-  "docs_version": "0.10.0",
+  "docs_version": "0.11.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -251,6 +251,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.10.0",
       "description": "Opt-in doctor check for recent backup marker evidence."
+    },
+    {
+      "name": "explain-rank-graph-evidence",
+      "status": "stable",
+      "since": "v0.11.0",
+      "description": "Support-chain evidence and compound confidence in rank explanations."
     }
   ],
   "migrations": [
@@ -258,7 +264,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.10.0"
+  "release_notes_path": "/contextdb/releases/v0.11.0"
 }
 ```
 
@@ -287,6 +293,23 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/rank/explain \
   "loser_node_id": "660e8400-e29b-41d4-a716-446655440001",
   "margin": 0.22,
   "summary": "550e8400-e29b-41d4-a716-446655440000 ranks above 660e8400-e29b-41d4-a716-446655440001 by 0.2200 points; confidence contributes the largest difference.",
+  "node": {
+    "node_id": "550e8400-e29b-41d4-a716-446655440000",
+    "score": 0.82,
+    "evidence": {
+      "compound_confidence": 0.68,
+      "support_count": 1,
+      "links": [
+        {
+          "node_id": "770e8400-e29b-41d4-a716-446655440002",
+          "edge_id": "880e8400-e29b-41d4-a716-446655440003",
+          "edge_weight": 0.8,
+          "confidence": 0.9,
+          "text": "Runbook confirms blue-green deployment"
+        }
+      ]
+    }
+  },
   "factors": [
     {
       "factor": "confidence",

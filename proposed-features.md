@@ -54,13 +54,19 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Doctor backup readiness | Implemented | `contextdb doctor --backup-marker PATH --max-backup-age 24h` adds a `backup_readiness` check |
 
+## Completed In v0.11.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Explain-rank graph evidence | Implemented | Explain-rank responses include support-chain links, edge weights, and compound confidence through Go SDK, REST, and GraphQL |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
 | Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Back it with the existing GraphQL surface |
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Useful before changing score weights or fusion logic |
-| Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; next step is graph path evidence and UI integration |
+| Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
 | Local Norn registration helper | Reduces drift between live services and docs | Generate or validate a Norn manifest entry for contextdb |
 
@@ -105,7 +111,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:--------------------|:-------------------|
 | Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, explain-rank comparisons, sources, edges, and narrative reports |
 | Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
-| Explain-rank graph evidence | The first explain-rank slice covers score deltas; graph-aware evidence would make explanations deeper | Include shortest supporting/contradicting paths and source trust context in the explanation payload |
+| Explain-rank graph evidence | The first explain-rank slice covers score deltas; graph-aware evidence makes explanations deeper | Support-chain evidence completed in v0.11.0; source trust context and contradiction path summaries remain useful next steps |
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks make it more operationally complete | Completed in v0.10.0; deeper store/index consistency checks remain |
 | Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Add assigned/resolved/snoozed metadata and an append-only review decision log |
 | Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |
