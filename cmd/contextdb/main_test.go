@@ -1,6 +1,10 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/matryer/is"
@@ -72,6 +76,85 @@ func TestDefaultNornEndpoint(t *testing.T) {
 			is.Equal(defaultNornEndpoint(), tt.want)
 		})
 	}
+}
+
+func TestBuildNornDriftReportMatches(t *testing.T) {
+	is := is.New(t)
+
+	entry := nornManifestEntry{
+		App:         "contextdb",
+		Name:        "contextdb",
+		Version:     buildinfo.Version,
+		Endpoint:    "https://contextdb.example.test",
+		HealthURL:   "https://contextdb.example.test/v1/ping",
+		GraphQLURL:  "https://contextdb.example.test/graphql",
+		FeaturesURL: "https://contextdb.example.test/v1/features",
+		Ports:       nornPorts{GRPC: 7700, REST: 7701, Observe: 7702},
+		Tags:        []string{"contextdb", "rest", "graphql"},
+	}
+
+	report := buildNornDriftReport(entry, entry)
+
+	is.True(report.OK)
+	is.Equal(len(report.Diffs), 0)
+}
+
+func TestBuildNornDriftReportDetectsFieldDiffs(t *testing.T) {
+	is := is.New(t)
+
+	expected := nornManifestEntry{
+		App:         "contextdb",
+		Name:        "contextdb",
+		Version:     buildinfo.Version,
+		Endpoint:    "https://contextdb.example.test",
+		HealthURL:   "https://contextdb.example.test/v1/ping",
+		GraphQLURL:  "https://contextdb.example.test/graphql",
+		FeaturesURL: "https://contextdb.example.test/v1/features",
+		Ports:       nornPorts{GRPC: 7700, REST: 7701, Observe: 7702},
+		Tags:        []string{"contextdb", "rest", "graphql"},
+	}
+	actual := expected
+	actual.Endpoint = "https://old-contextdb.example.test"
+	actual.Ports.REST = 8801
+
+	report := buildNornDriftReport(expected, actual)
+
+	is.True(!report.OK)
+	is.Equal(len(report.Diffs), 2)
+	is.Equal(report.Diffs[0].Field, "endpoint")
+	is.Equal(report.Diffs[1].Field, "ports.rest")
+}
+
+func TestFetchNornManifestEntryFindsServiceDocumentEntry(t *testing.T) {
+	is := is.New(t)
+
+	expected := nornManifestEntry{
+		App:         "contextdb",
+		Name:        "contextdb",
+		Version:     buildinfo.Version,
+		Endpoint:    "https://contextdb.example.test",
+		HealthURL:   "https://contextdb.example.test/v1/ping",
+		GraphQLURL:  "https://contextdb.example.test/graphql",
+		FeaturesURL: "https://contextdb.example.test/v1/features",
+		Ports:       nornPorts{GRPC: 7700, REST: 7701, Observe: 7702},
+		Tags:        []string{"contextdb", "rest", "graphql"},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Method, http.MethodGet)
+		_ = json.NewEncoder(w).Encode(nornManifestDocument{
+			Services: []nornManifestEntry{
+				{App: "other", Name: "other"},
+				expected,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	actual, err := fetchNornManifestEntry(context.Background(), srv.URL, "contextdb", "contextdb")
+
+	is.NoErr(err)
+	is.Equal(actual.Endpoint, expected.Endpoint)
+	is.Equal(actual.Ports.REST, expected.Ports.REST)
 }
 
 func TestValidateNornManifestEntryRejectsWrongApp(t *testing.T) {

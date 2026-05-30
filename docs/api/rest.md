@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.15.0",
+  "version": "0.16.0",
   "api_version": "v1",
-  "docs_version": "0.15.0",
+  "docs_version": "0.16.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -289,6 +289,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.15.0",
       "description": "Review queue filters for task type, source, workflow status, and owner across Go SDK, REST, and GraphQL."
+    },
+    {
+      "name": "norn-live-drift-check",
+      "status": "stable",
+      "since": "v0.16.0",
+      "description": "CLI drift check that compares the expected contextdb Norn manifest entry with the live Norn manifest."
     }
   ],
   "migrations": [
@@ -296,7 +302,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.15.0"
+  "release_notes_path": "/contextdb/releases/v0.16.0"
 }
 ```
 

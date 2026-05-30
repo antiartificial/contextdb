@@ -97,6 +97,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review queue filters | Implemented | Go SDK, REST, and GraphQL review queues filter by task type, source ID, workflow status, and owner; undecided tasks match `open` |
 
+## Completed In v0.16.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Norn live drift check | Implemented | `contextdb norn drift` compares the expected generated manifest entry with the live Norn manifest and reports field-level differences |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -105,7 +111,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Useful before changing score weights or fusion logic |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
-| Local Norn registration helper | Reduces drift between live services and docs | Completed in v0.14.0; next step is optionally posting to Norn when an authenticated API is available |
+| Local Norn registration helper | Reduces drift between live services and docs | Completed in v0.14.0; live drift check completed in v0.16.0; next step is optionally posting to Norn when an authenticated API is available |
 
 ## Feedback And Epistemics
 
@@ -201,7 +207,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Norn manifest publish | Manifest generation exists, but registration may still be manual | Add a dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
-| Norn live drift check | Validation catches local shape errors, not live manifest drift | Compare generated manifest with `$NORN_MANIFEST_URL` and report field-level differences |
+| Norn live drift check | Validation catches local shape errors, not live manifest drift | Completed in v0.16.0 with `contextdb norn drift` |
 | Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Completed in v0.15.0 with review queue filters for type, source ID, status, and owner |
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation |
 | CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
@@ -211,7 +217,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
-| Norn live drift check | Manifest generation exists, but hosted services can drift from local expectations | Compare generated manifest with `$NORN_MANIFEST_URL` and report field-level differences |
+| Norn live drift check | Manifest generation exists, but hosted services can drift from local expectations | Completed in v0.16.0 with `contextdb norn drift` |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation |
+| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+
+## Fresh Brainstorm After v0.16.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation and namespace filters |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |

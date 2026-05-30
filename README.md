@@ -5,9 +5,9 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.15.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.15.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.16.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.16.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
-**Current release:** `v0.15.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+**Current release:** `v0.16.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
 
 ## What & Why
@@ -284,6 +284,7 @@ Generate or validate the expected manifest entry from the CLI:
 ```bash
 contextdb norn manifest --endpoint "$CONTEXTDB_URL"
 contextdb norn validate --file contextdb.norn.json
+contextdb norn drift --manifest-url "$NORN_MANIFEST_URL" --endpoint "$CONTEXTDB_URL"
 ```
 
 Once the service route is advertised, set `CONTEXTDB_URL` to the HTTP endpoint and use the normal REST and GraphQL APIs:

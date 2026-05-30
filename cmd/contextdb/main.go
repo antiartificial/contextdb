@@ -22,9 +22,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -120,6 +122,23 @@ type nornManifestEntry struct {
 	Tags        []string  `json:"tags,omitempty"`
 }
 
+type nornManifestDocument struct {
+	Services []nornManifestEntry `json:"services"`
+}
+
+type nornDriftReport struct {
+	OK       bool               `json:"ok"`
+	Expected nornManifestEntry  `json:"expected"`
+	Actual   nornManifestEntry  `json:"actual"`
+	Diffs    []nornManifestDiff `json:"diffs,omitempty"`
+}
+
+type nornManifestDiff struct {
+	Field    string `json:"field"`
+	Expected any    `json:"expected,omitempty"`
+	Actual   any    `json:"actual,omitempty"`
+}
+
 func runNorn(args []string) {
 	if len(args) == 0 || args[0] == "manifest" {
 		runNornManifest(dropSubcommand(args, "manifest"))
@@ -127,6 +146,10 @@ func runNorn(args []string) {
 	}
 	if args[0] == "validate" {
 		runNornValidate(args[1:])
+		return
+	}
+	if args[0] == "drift" {
+		runNornDrift(args[1:])
 		return
 	}
 	fmt.Fprintf(os.Stderr, "contextdb norn: unknown subcommand %q\n", args[0])
@@ -188,6 +211,50 @@ func runNornValidate(args []string) {
 	fmt.Fprintln(os.Stdout, "ok")
 }
 
+func runNornDrift(args []string) {
+	fs := flag.NewFlagSet("contextdb norn drift", flag.ExitOnError)
+	manifestURL := fs.String("manifest-url", os.Getenv("NORN_MANIFEST_URL"), "Norn manifest URL")
+	app := fs.String("app", "contextdb", "Norn app id")
+	name := fs.String("name", "contextdb", "Norn service name")
+	endpoint := fs.String("endpoint", defaultNornEndpoint(), "public REST endpoint expected in Norn")
+	grpcAddr := fs.String("grpc-addr", getenv("CONTEXTDB_GRPC_ADDR", ":7700"), "gRPC listen address")
+	restAddr := fs.String("rest-addr", getenv("CONTEXTDB_REST_ADDR", ":7701"), "REST listen address")
+	observeAddr := fs.String("observe-addr", getenv("CONTEXTDB_OBS_ADDR", ":7702"), "observe listen address")
+	tags := fs.String("tags", "contextdb,rest,graphql", "comma-separated service tags")
+	timeout := fs.Duration("timeout", 5*time.Second, "manifest fetch timeout")
+	_ = fs.Parse(args)
+
+	if strings.TrimSpace(*manifestURL) == "" {
+		fmt.Fprintln(os.Stderr, "contextdb norn drift: --manifest-url or NORN_MANIFEST_URL is required")
+		os.Exit(2)
+	}
+	expected, err := buildNornManifestEntry(nornManifestOptions{
+		App:         *app,
+		Name:        *name,
+		Endpoint:    *endpoint,
+		GRPCAddr:    *grpcAddr,
+		RESTAddr:    *restAddr,
+		ObserveAddr: *observeAddr,
+		Tags:        splitComma(*tags),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb norn drift: expected manifest: %v\n", err)
+		os.Exit(2)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	actual, err := fetchNornManifestEntry(ctx, *manifestURL, expected.App, expected.Name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb norn drift: %v\n", err)
+		os.Exit(2)
+	}
+	report := buildNornDriftReport(expected, actual)
+	writeIndentedJSON(report)
+	if !report.OK {
+		os.Exit(1)
+	}
+}
+
 type nornManifestOptions struct {
 	App         string
 	Name        string
@@ -222,6 +289,92 @@ func buildNornManifestEntry(opts nornManifestOptions) (nornManifestEntry, error)
 		return nornManifestEntry{}, err
 	}
 	return entry, nil
+}
+
+func fetchNornManifestEntry(ctx context.Context, manifestURL, app, name string) (nornManifestEntry, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL, nil)
+	if err != nil {
+		return nornManifestEntry{}, fmt.Errorf("build manifest request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nornManifestEntry{}, fmt.Errorf("fetch manifest: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nornManifestEntry{}, fmt.Errorf("fetch manifest: unexpected status %s", resp.Status)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nornManifestEntry{}, fmt.Errorf("read manifest: %w", err)
+	}
+	entries, err := decodeNornManifestEntries(data)
+	if err != nil {
+		return nornManifestEntry{}, err
+	}
+	for _, entry := range entries {
+		if entry.App == app && entry.Name == name {
+			return entry, nil
+		}
+	}
+	return nornManifestEntry{}, fmt.Errorf("manifest entry app=%q name=%q not found", app, name)
+}
+
+func decodeNornManifestEntries(data []byte) ([]nornManifestEntry, error) {
+	var document nornManifestDocument
+	if err := json.Unmarshal(data, &document); err == nil && len(document.Services) > 0 {
+		return document.Services, nil
+	}
+	var entries []nornManifestEntry
+	if err := json.Unmarshal(data, &entries); err == nil && len(entries) > 0 {
+		return entries, nil
+	}
+	var entry nornManifestEntry
+	if err := json.Unmarshal(data, &entry); err == nil && entry.App != "" {
+		return []nornManifestEntry{entry}, nil
+	}
+	return nil, fmt.Errorf("decode manifest: expected service object, service array, or object with services")
+}
+
+func buildNornDriftReport(expected, actual nornManifestEntry) nornDriftReport {
+	diffs := nornManifestDiffs(expected, actual)
+	return nornDriftReport{
+		OK:       len(diffs) == 0,
+		Expected: expected,
+		Actual:   actual,
+		Diffs:    diffs,
+	}
+}
+
+func nornManifestDiffs(expected, actual nornManifestEntry) []nornManifestDiff {
+	checks := []struct {
+		field    string
+		expected any
+		actual   any
+	}{
+		{"app", expected.App, actual.App},
+		{"name", expected.Name, actual.Name},
+		{"version", expected.Version, actual.Version},
+		{"endpoint", expected.Endpoint, strings.TrimRight(actual.Endpoint, "/")},
+		{"health_url", expected.HealthURL, strings.TrimRight(actual.HealthURL, "/")},
+		{"graphql_url", expected.GraphQLURL, strings.TrimRight(actual.GraphQLURL, "/")},
+		{"features_url", expected.FeaturesURL, strings.TrimRight(actual.FeaturesURL, "/")},
+		{"ports.grpc", expected.Ports.GRPC, actual.Ports.GRPC},
+		{"ports.rest", expected.Ports.REST, actual.Ports.REST},
+		{"ports.observe", expected.Ports.Observe, actual.Ports.Observe},
+		{"tags", expected.Tags, actual.Tags},
+	}
+	diffs := make([]nornManifestDiff, 0)
+	for _, check := range checks {
+		if !reflect.DeepEqual(check.expected, check.actual) {
+			diffs = append(diffs, nornManifestDiff{
+				Field:    check.field,
+				Expected: check.expected,
+				Actual:   check.actual,
+			})
+		}
+	}
+	return diffs
 }
 
 func defaultNornEndpoint() string {

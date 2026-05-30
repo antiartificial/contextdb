@@ -51,6 +51,14 @@ contextdb norn validate --file contextdb.norn.json
 
 Validation checks that the entry is for `app: contextdb`, has an absolute endpoint URL, includes a service name, and advertises a REST port.
 
+Compare the expected local entry with the live Norn manifest:
+
+```bash
+contextdb norn drift --manifest-url "$NORN_MANIFEST_URL" --endpoint "$CONTEXTDB_URL"
+```
+
+The drift report returns `ok: true` when the generated entry matches the live manifest. When fields differ, it prints `diffs` entries such as `endpoint`, `version`, `ports.rest`, or `tags` and exits non-zero.
+
 ## Health Checks
 
 REST health:
@@ -96,4 +104,4 @@ db := client.MustOpen(client.Options{
 
 ## Release Notes
 
-The current non-breaking release is `v0.15.0`. Deduplication is opt-in via `WriteRequest.Dedup`, `Options.DedupWrites`, REST `dedup`, or `CONTEXTDB_DEDUP_WRITES=true`, so existing writers continue creating distinct nodes by default. Live services can report their package version and supported feature surface through `/v1/version`, `/v1/features`, `/v1/migrations`, and matching GraphQL introspection fields. Operators can also run `contextdb doctor --sample-write` when they want an explicit write/retrieve probe, `contextdb doctor --backup-marker PATH` when they want backup freshness in the report, and `contextdb norn manifest` when they want to register or validate the Norn service entry. Feedback audits, source trust timelines with anomaly review tasks, claim review queues with durable decisions and reviewer filters, evidence-rich explain-rank APIs, acquisition plans, wider candidate-pool ranking, and release health docs are available through the Go SDK, REST, GraphQL, and GitHub Pages.
+The current non-breaking release is `v0.16.0`. Deduplication is opt-in via `WriteRequest.Dedup`, `Options.DedupWrites`, REST `dedup`, or `CONTEXTDB_DEDUP_WRITES=true`, so existing writers continue creating distinct nodes by default. Live services can report their package version and supported feature surface through `/v1/version`, `/v1/features`, `/v1/migrations`, and matching GraphQL introspection fields. Operators can also run `contextdb doctor --sample-write` when they want an explicit write/retrieve probe, `contextdb doctor --backup-marker PATH` when they want backup freshness in the report, `contextdb norn manifest` when they want to register or validate the Norn service entry, and `contextdb norn drift` when they want to detect live manifest drift. Feedback audits, source trust timelines with anomaly review tasks, claim review queues with durable decisions and reviewer filters, evidence-rich explain-rank APIs, acquisition plans, wider candidate-pool ranking, and release health docs are available through the Go SDK, REST, GraphQL, and GitHub Pages.
