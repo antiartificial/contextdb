@@ -499,6 +499,78 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	acquisitionTaskType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "AcquisitionTask",
+		Fields: graphql.Fields{
+			"id": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				t, _ := p.Source.(client.AcquisitionTask)
+				return t.ID, nil
+			}},
+			"type": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				t, _ := p.Source.(client.AcquisitionTask)
+				return t.Type, nil
+			}},
+			"priority": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				t, _ := p.Source.(client.AcquisitionTask)
+				return t.Priority, nil
+			}},
+			"description": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				t, _ := p.Source.(client.AcquisitionTask)
+				return t.Description, nil
+			}},
+			"prompt": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				t, _ := p.Source.(client.AcquisitionTask)
+				return t.Prompt, nil
+			}},
+			"relatedNodeIds": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.ID))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				t, _ := p.Source.(client.AcquisitionTask)
+				out := make([]string, len(t.RelatedNodeIDs))
+				for i, id := range t.RelatedNodeIDs {
+					out[i] = id.String()
+				}
+				return out, nil
+			}},
+			"nearestTopics": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.String))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				t, _ := p.Source.(client.AcquisitionTask)
+				return t.NearestTopics, nil
+			}},
+		},
+	})
+
+	acquisitionPlanType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "AcquisitionPlan",
+		Fields: graphql.Fields{
+			"namespace": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				plan, _ := p.Source.(*client.AcquisitionPlan)
+				if plan == nil {
+					return "", nil
+				}
+				return plan.Namespace, nil
+			}},
+			"coverageScore": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				plan, _ := p.Source.(*client.AcquisitionPlan)
+				if plan == nil {
+					return 0, nil
+				}
+				return plan.CoverageScore, nil
+			}},
+			"totalNodes": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				plan, _ := p.Source.(*client.AcquisitionPlan)
+				if plan == nil {
+					return 0, nil
+				}
+				return plan.TotalNodes, nil
+			}},
+			"tasks": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(acquisitionTaskType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				plan, _ := p.Source.(*client.AcquisitionPlan)
+				if plan == nil {
+					return []client.AcquisitionTask{}, nil
+				}
+				return plan.Tasks, nil
+			}},
+		},
+	})
+
 	var nodeType *graphql.Object
 	edgeType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Edge",
@@ -847,6 +919,18 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveKnowledgeGaps,
 			},
+			"acquisitionPlan": &graphql.Field{
+				Type: graphql.NewNonNull(acquisitionPlanType),
+				Args: graphql.FieldConfigArgument{
+					"namespace":  &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"topK":       &graphql.ArgumentConfig{Type: graphql.Int},
+					"minGapSize": &graphql.ArgumentConfig{Type: graphql.Float},
+					"maxGaps":    &graphql.ArgumentConfig{Type: graphql.Int},
+					"budget":     &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveAcquisitionPlan,
+			},
 			"version": &graphql.Field{
 				Type:    graphql.NewNonNull(versionInfoType),
 				Resolve: s.resolveVersionInfo,
@@ -1035,6 +1119,25 @@ func (s *GraphQLServer) resolveKnowledgeGaps(p graphql.ResolveParams) (interface
 		TopK:       topK,
 		MinGapSize: minGapSize,
 		MaxGaps:    maxGaps,
+	})
+}
+
+func (s *GraphQLServer) resolveAcquisitionPlan(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	topK, _ := p.Args["topK"].(int)
+	minGapSize, _ := p.Args["minGapSize"].(float64)
+	maxGaps, _ := p.Args["maxGaps"].(int)
+	budget, _ := p.Args["budget"].(int)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.AcquisitionPlan(p.Context, client.AcquisitionPlanRequest{
+		TopK:       topK,
+		MinGapSize: minGapSize,
+		MaxGaps:    maxGaps,
+		Budget:     budget,
 	})
 }
 

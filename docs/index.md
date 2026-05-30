@@ -27,7 +27,7 @@ features:
 ---
 
 ::: tip Current release
-contextdb is currently `v0.8.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+contextdb is currently `v0.9.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 :::
 
 <div class="stat-row">
@@ -221,6 +221,7 @@ Features that make AI memory auditable and trustworthy:
 | [Belief reconciliation](concepts/epistemics#belief-reconciliation) | Structured disagreements between agents with evidence chains |
 | [Narrative retrieval](concepts/epistemics#narrative-retrieval) | "Walk me through what you know about X and why" with full citations |
 | [Knowledge gap detection](concepts/epistemics#knowledge-gap-detection) | "What don't I know?" Sparse region detection with acquisition suggestions |
+| [Knowledge acquisition planner](api/rest#knowledge-acquisition-plan) | Prioritized research, crawl, verification, and refresh tasks from gaps and weak claims |
 | [Calibration](concepts/epistemics#calibration) | Brier score, ECE, Platt scaling. Confidence becomes calibrated probability |
 | [GDPR erasure](concepts/epistemics#gdpr-erasure) | Audit-trailed right-to-erasure across graph, vectors, KV, and event log |
 | [Interference detection](concepts/epistemics#interference-detection) | Low-credibility sources can't erode well-established claims |

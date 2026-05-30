@@ -201,3 +201,26 @@ query {
 ```
 
 The queue derives review tasks from refuted and stale feedback, low-confidence active claims, and contradiction clusters.
+
+## Knowledge Acquisition Plan
+
+```graphql
+query {
+  acquisitionPlan(namespace: "my-app", budget: 5, maxGaps: 3) {
+    namespace
+    coverageScore
+    totalNodes
+    tasks {
+      id
+      type
+      priority
+      description
+      prompt
+      relatedNodeIds
+      nearestTopics
+    }
+  }
+}
+```
+
+The plan converts knowledge gaps and weak-claim signals into prioritized research, crawl, verification, and refresh tasks.

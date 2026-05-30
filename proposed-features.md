@@ -42,6 +42,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Explain-rank endpoint | Implemented | Go SDK, REST, and GraphQL compare two nodes and expose score component deltas |
 
+## Completed In v0.9.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Knowledge acquisition planner | Implemented | Go SDK, REST, and GraphQL convert knowledge gaps and weak claims into prioritized acquisition tasks |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -59,7 +65,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; next step is persistence for status, assignment, and resolution notes |
 | Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; next step is richer timeline visualization in the debugger UI |
-| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Natural next step after gap detection |
+| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Completed in v0.9.0; next step is connector-specific acquisition execution |
 | Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Builds on the derived queue without making queue generation stateful |
 
 ## Durability And Operations
@@ -97,5 +103,5 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks would make it more operationally complete | Check snapshot/export availability and warn when persistent embedded data has no recent backup marker |
 | Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Add assigned/resolved/snoozed metadata and an append-only review decision log |
 | Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |
-| Knowledge acquisition planner | Gap detection now identifies missing semantic regions; planner turns gaps into concrete research tasks | Convert gap reports into crawl/search prompts with source constraints and expected evidence shape |
+| Acquisition execution connectors | Planner tasks now exist; the next step is executing them through configured crawlers/search tools | Add connector hooks and dry-run previews for source-constrained acquisition tasks |
 | Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |

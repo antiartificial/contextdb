@@ -314,9 +314,13 @@ gaps, err := ns.KnowledgeGaps(ctx, client.GapRequest{
     MinGapSize: 0.5,
     MaxGaps:    10,
 })
+plan, err := ns.AcquisitionPlan(ctx, client.AcquisitionPlanRequest{
+    Budget: 5,
+    MaxGaps: 3,
+})
 ```
 
-`Explain` returns a structured narrative report with evidence, contradictions, provenance, and confidence explanation. `KnowledgeGaps` returns sparse semantic regions that suggest where the namespace needs more information.
+`Explain` returns a structured narrative report with evidence, contradictions, provenance, and confidence explanation. `KnowledgeGaps` returns sparse semantic regions that suggest where the namespace needs more information. `AcquisitionPlan` turns gaps and weak claims into prioritized research, crawl, verification, or refresh tasks.
 
 Sets labels on a source. Use "moderator"/"admin" for full trust, "troll"/"flagged" for floor.
 

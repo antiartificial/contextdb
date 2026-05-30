@@ -244,6 +244,18 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	var gapResp map[string]any
 	is.NoErr(json.Unmarshal(w5.Body.Bytes(), &gapResp))
 	is.Equal(gapResp["total_nodes"], float64(2))
+
+	planBody, _ := json.Marshal(map[string]any{"budget": 3})
+	reqPlan := httptest.NewRequest("POST", "/v1/namespaces/channel:general/acquisition/plan", bytes.NewReader(planBody))
+	reqPlan.Header.Set("Content-Type", "application/json")
+	wPlan := httptest.NewRecorder()
+	handler.ServeHTTP(wPlan, reqPlan)
+	is.Equal(wPlan.Code, http.StatusOK)
+	var planResp map[string]any
+	is.NoErr(json.Unmarshal(wPlan.Body.Bytes(), &planResp))
+	planTasks := planResp["tasks"].([]any)
+	is.True(len(planTasks) > 0)
+	is.True(planTasks[0].(map[string]any)["prompt"].(string) != "")
 }
 
 func TestRESTServer_InvalidFeedbackNodeIDReturnsBadRequest(t *testing.T) {
@@ -428,6 +440,10 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				totalNodes
 				gapsDetected
 			}
+			acquisitionPlan(namespace: "graphql-test", budget: 3) {
+				totalNodes
+				tasks { type prompt }
+			}
 			feedbackEvents(namespace: "graphql-test") {
 				nodeId
 				action
@@ -468,6 +484,9 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(narrative["claim"].(map[string]any)["text"], "Go uses goroutines for concurrency")
 	gaps := data["knowledgeGaps"].(map[string]any)
 	is.Equal(gaps["totalNodes"], float64(2))
+	plan := data["acquisitionPlan"].(map[string]any)
+	is.Equal(plan["totalNodes"], float64(2))
+	is.True(len(plan["tasks"].([]any)) > 0)
 	events := data["feedbackEvents"].([]any)
 	is.Equal(len(events), 1)
 	event := events[0].(map[string]any)

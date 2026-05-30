@@ -396,6 +396,33 @@ func TestNamespace_ExplainRankComparesScoreFactors(t *testing.T) {
 	is.True(explanation.Summary != "")
 }
 
+func TestNamespace_AcquisitionPlanIncludesWeakClaimTasks(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:acquisition-plan", namespace.ModeGeneral)
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "The deployment process is undocumented",
+		SourceID:   "chat",
+		Vector:     vec8(0),
+		Confidence: 0.2,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+
+	plan, err := ns.AcquisitionPlan(ctx, client.AcquisitionPlanRequest{Budget: 3})
+	is.NoErr(err)
+	is.True(plan != nil)
+	is.Equal(plan.Namespace, "test:acquisition-plan")
+	is.True(len(plan.Tasks) > 0)
+	is.Equal(plan.Tasks[0].Type, "low_confidence")
+	is.Equal(plan.Tasks[0].RelatedNodeIDs[0], written.NodeID)
+	is.True(plan.Tasks[0].Prompt != "")
+}
+
 func TestNamespace_PersistentEmbeddedRestartPreservesCoreData(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

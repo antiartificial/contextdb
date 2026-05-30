@@ -25,6 +25,7 @@ contextdb exposes a REST API on port **7701**.
 | `GET` | `/v1/namespaces/{ns}/feedback/events` | List feedback audit events |
 | `GET` | `/v1/namespaces/{ns}/nodes/{id}/narrative` | Explain a claim with evidence |
 | `POST` | `/v1/namespaces/{ns}/gaps` | Detect knowledge gaps |
+| `POST` | `/v1/namespaces/{ns}/acquisition/plan` | Plan research, crawl, verification, and refresh tasks |
 | `GET` | `/v1/stats` | Runtime statistics |
 | `GET` | `/v1/ping` | Health check |
 | `GET` | `/v1/version` | Release, API, feature, and migration summary |
@@ -197,9 +198,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "api_version": "v1",
-  "docs_version": "0.8.0",
+  "docs_version": "0.9.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -238,6 +239,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.8.0",
       "description": "Compare two nodes and explain ranking differences with score component deltas."
+    },
+    {
+      "name": "knowledge-acquisition-planner",
+      "status": "stable",
+      "since": "v0.9.0",
+      "description": "Convert knowledge gaps and weak claims into prioritized source-backed acquisition tasks."
     }
   ],
   "migrations": [
@@ -245,7 +252,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.8.0"
+  "release_notes_path": "/contextdb/releases/v0.9.0"
 }
 ```
 
@@ -475,6 +482,36 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/gaps \
 ```
 
 Returns sparse semantic regions with nearest topics, centroid vectors, density, confidence, and temporal gap metadata.
+
+## Knowledge Acquisition Plan
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/acquisition/plan \
+  -H "Content-Type: application/json" \
+  -d '{"budget": 5, "max_gaps": 3}'
+```
+
+Returns prioritized acquisition tasks derived from knowledge gaps, low-confidence claims, stale claims, and active contradictions.
+
+**Response:**
+
+```json
+{
+  "namespace": "my-app",
+  "coverage_score": 0.72,
+  "total_nodes": 42,
+  "tasks": [
+    {
+      "id": "low_confidence:550e8400-e29b-41d4-a716-446655440000",
+      "type": "low_confidence",
+      "priority": 0.8,
+      "description": "Low confidence claim needs supporting evidence: Deploys use manual copy rollout",
+      "prompt": "Find independent evidence that validates or refutes the related claim, then apply feedback or ingest counter-evidence.",
+      "related_node_ids": ["550e8400-e29b-41d4-a716-446655440000"]
+    }
+  ]
+}
+```
 
 ## Stats
 

@@ -64,6 +64,7 @@ func (s *RESTServer) Handler() http.Handler {
 
 	mux.HandleFunc("GET /v1/namespaces/{ns}/nodes/{id}/narrative", s.handleNarrative)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/gaps", s.handleKnowledgeGaps)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/acquisition/plan", s.handleAcquisitionPlan)
 
 	// GET /v1/stats
 	mux.HandleFunc("GET /v1/stats", s.handleStats)
@@ -198,6 +199,14 @@ type gapRequest struct {
 	TopK       int     `json:"top_k,omitempty"`
 	MinGapSize float64 `json:"min_gap_size,omitempty"`
 	MaxGaps    int     `json:"max_gaps,omitempty"`
+}
+
+type acquisitionPlanRequest struct {
+	Mode       string  `json:"mode"`
+	TopK       int     `json:"top_k,omitempty"`
+	MinGapSize float64 `json:"min_gap_size,omitempty"`
+	MaxGaps    int     `json:"max_gaps,omitempty"`
+	Budget     int     `json:"budget,omitempty"`
 }
 
 type reviewQueueResponse struct {
@@ -765,6 +774,33 @@ func (s *RESTServer) handleKnowledgeGaps(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, newGapReportResponse(report))
+}
+
+func (s *RESTServer) handleAcquisitionPlan(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var req acquisitionPlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	h := s.db.Namespace(ns, resolveMode(req.Mode))
+	plan, err := h.AcquisitionPlan(r.Context(), client.AcquisitionPlanRequest{
+		TopK:       req.TopK,
+		MinGapSize: req.MinGapSize,
+		MaxGaps:    req.MaxGaps,
+		Budget:     req.Budget,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
 }
 
 func (s *RESTServer) handleStats(w http.ResponseWriter, r *http.Request) {

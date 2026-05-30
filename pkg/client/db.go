@@ -570,6 +570,33 @@ type GapRequest struct {
 	MaxGaps    int
 }
 
+// AcquisitionPlanRequest configures knowledge acquisition planning.
+type AcquisitionPlanRequest struct {
+	TopK       int
+	MinGapSize float64
+	MaxGaps    int
+	Budget     int
+}
+
+// AcquisitionTask is a suggested research, crawl, or verification task.
+type AcquisitionTask struct {
+	ID             string      `json:"id"`
+	Type           string      `json:"type"`
+	Priority       float64     `json:"priority"`
+	Description    string      `json:"description"`
+	Prompt         string      `json:"prompt"`
+	RelatedNodeIDs []uuid.UUID `json:"related_node_ids,omitempty"`
+	NearestTopics  []string    `json:"nearest_topics,omitempty"`
+}
+
+// AcquisitionPlan turns gaps and weak claims into concrete acquisition tasks.
+type AcquisitionPlan struct {
+	Namespace     string            `json:"namespace"`
+	CoverageScore float64           `json:"coverage_score"`
+	TotalNodes    int               `json:"total_nodes"`
+	Tasks         []AcquisitionTask `json:"tasks"`
+}
+
 // Write ingests a new claim, memory, or fact into the namespace.
 // It runs through the admission gate (credibility floor, near-duplicate
 // check, novelty threshold) before writing.
@@ -1297,6 +1324,61 @@ func (h *NamespaceHandle) KnowledgeGaps(ctx context.Context, req GapRequest) (*r
 	return retrieval.BuildGapReport(h.cfg.ID, gaps, len(nodes)), nil
 }
 
+// AcquisitionPlan turns detected knowledge gaps and weak claims into acquisition tasks.
+func (h *NamespaceHandle) AcquisitionPlan(ctx context.Context, req AcquisitionPlanRequest) (*AcquisitionPlan, error) {
+	budget := req.Budget
+	if budget <= 0 {
+		budget = 10
+	}
+	gapReport, err := h.KnowledgeGaps(ctx, GapRequest{
+		TopK:       req.TopK,
+		MinGapSize: req.MinGapSize,
+		MaxGaps:    req.MaxGaps,
+	})
+	if err != nil {
+		return nil, err
+	}
+	plan := &AcquisitionPlan{
+		Namespace:     h.cfg.ID,
+		CoverageScore: gapReport.CoverageScore,
+		TotalNodes:    gapReport.TotalNodes,
+		Tasks:         make([]AcquisitionTask, 0, budget),
+	}
+	for _, gap := range gapReport.Gaps {
+		plan.Tasks = append(plan.Tasks, AcquisitionTask{
+			ID:            "gap:" + gap.ID.String(),
+			Type:          "research_gap",
+			Priority:      clampPriority(1.0 - gap.DensityScore + (1.0-gap.ConfidenceGap)*0.25),
+			Description:   "Sparse knowledge region near: " + strings.Join(gap.NearestTopics, "; "),
+			Prompt:        acquisitionPrompt("research_gap", gap.NearestTopics),
+			NearestTopics: gap.NearestTopics,
+		})
+	}
+
+	learner := retrieval.NewActiveLearner(h.db.graph)
+	suggestions, err := learner.Suggest(ctx, h.cfg.ID, budget)
+	if err != nil {
+		return nil, err
+	}
+	for _, suggestion := range suggestions {
+		plan.Tasks = append(plan.Tasks, AcquisitionTask{
+			ID:             fmt.Sprintf("%s:%s", suggestion.Type, reviewIDsKey(suggestion.RelatedNodeIDs)),
+			Type:           string(suggestion.Type),
+			Priority:       clampPriority(suggestion.Priority),
+			Description:    suggestion.Description,
+			Prompt:         acquisitionPrompt(string(suggestion.Type), nil),
+			RelatedNodeIDs: suggestion.RelatedNodeIDs,
+		})
+	}
+	sort.SliceStable(plan.Tasks, func(i, j int) bool {
+		return plan.Tasks[i].Priority > plan.Tasks[j].Priority
+	})
+	if len(plan.Tasks) > budget {
+		plan.Tasks = plan.Tasks[:budget]
+	}
+	return plan, nil
+}
+
 // ── Enhanced SDK (Phase 6) ────────────────────────────────────────────────
 
 // WriteBatch writes multiple items in a single call. Returns results
@@ -1671,6 +1753,34 @@ func absFloat(v float64) float64 {
 		return -v
 	}
 	return v
+}
+
+func clampPriority(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func acquisitionPrompt(taskType string, topics []string) string {
+	switch taskType {
+	case "research_gap":
+		if len(topics) == 0 {
+			return "Find high-credibility sources that fill this sparse knowledge region, then ingest concise claims with source IDs."
+		}
+		return "Research the gap around: " + strings.Join(topics, "; ") + ". Prefer primary or high-credibility sources and ingest concise supporting claims."
+	case "verify_claim", "low_confidence":
+		return "Find independent evidence that validates or refutes the related claim, then apply feedback or ingest counter-evidence."
+	case "refresh_stale":
+		return "Find current information for the related stale claim, then update or supersede it with fresh source-backed evidence."
+	case "high_utility":
+		return "Find stronger sources for this frequently used claim and ingest corroborating evidence."
+	default:
+		return "Acquire source-backed evidence and ingest it into this namespace."
+	}
 }
 
 func propertyFloat(props map[string]any, key string, fallback float64) float64 {
