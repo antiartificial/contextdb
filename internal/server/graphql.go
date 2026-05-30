@@ -1087,11 +1087,14 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 			"reviewQueue": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewItemType))),
 				Args: graphql.FieldConfigArgument{
-					"namespace":              &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
-					"mode":                   &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
-					"after":                  &graphql.ArgumentConfig{Type: graphql.DateTime},
-					"lowConfidenceThreshold": &graphql.ArgumentConfig{Type: graphql.Float},
-					"limit":                  &graphql.ArgumentConfig{Type: graphql.Int},
+					"namespace":                 &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":                      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":                     &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"lowConfidenceThreshold":    &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustThreshold":      &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustDropThreshold":  &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceRefutationThreshold": &graphql.ArgumentConfig{Type: graphql.Int},
+					"limit":                     &graphql.ArgumentConfig{Type: graphql.Int},
 				},
 				Resolve: s.resolveReviewQueue,
 			},
@@ -1331,12 +1334,18 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 	mode, _ := p.Args["mode"].(string)
 	after, _ := p.Args["after"].(time.Time)
 	threshold, _ := p.Args["lowConfidenceThreshold"].(float64)
+	sourceTrustThreshold, _ := p.Args["sourceTrustThreshold"].(float64)
+	sourceTrustDropThreshold, _ := p.Args["sourceTrustDropThreshold"].(float64)
+	sourceRefutationThreshold, _ := p.Args["sourceRefutationThreshold"].(int)
 	limit, _ := p.Args["limit"].(int)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ReviewQueue(p.Context, client.ReviewQueueRequest{
-		After:                  after,
-		LowConfidenceThreshold: threshold,
-		Limit:                  limit,
+		After:                     after,
+		LowConfidenceThreshold:    threshold,
+		SourceTrustThreshold:      sourceTrustThreshold,
+		SourceTrustDropThreshold:  sourceTrustDropThreshold,
+		SourceRefutationThreshold: sourceRefutationThreshold,
+		Limit:                     limit,
 	})
 }
 

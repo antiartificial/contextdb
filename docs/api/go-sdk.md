@@ -300,14 +300,18 @@ Review queues derive operator tasks from feedback, low-confidence claims, and co
 
 ```go
 items, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
-    After:                  time.Now().Add(-24 * time.Hour),
-    LowConfidenceThreshold: 0.35,
-    Limit:                  20,
+    After:                     time.Now().Add(-24 * time.Hour),
+    LowConfidenceThreshold:    0.35,
+    SourceTrustDropThreshold:  0.2,
+    SourceRefutationThreshold: 2,
+    Limit:                     20,
 })
 for _, item := range items {
     fmt.Printf("%s %.2f %s\n", item.Type, item.Priority, item.Suggested)
 }
 ```
+
+Source trust anomaly tasks are emitted as `ReviewItem{Type: "source_trust_anomaly"}` when configured source credibility thresholds are crossed.
 
 Review decisions persist workflow state without making queue generation stateful:
 

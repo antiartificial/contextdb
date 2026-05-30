@@ -79,6 +79,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review workflow persistence | Implemented | Go SDK, REST, and GraphQL expose append-only review decisions; derived queue items overlay latest status, owner, decision, note, and re-check time |
 
+## Completed In v0.13.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Source trust anomaly alerts | Implemented | Review queues emit `source_trust_anomaly` tasks for configured source credibility drops, low trust thresholds, and repeated refutations through Go SDK, REST, and GraphQL |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -95,7 +101,7 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:---------------|:------|
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; durable workflow decisions completed in v0.12.0 |
-| Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; next step is richer timeline visualization in the debugger UI |
+| Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; anomaly review tasks completed in v0.13.0; next step is richer timeline visualization in the debugger UI |
 | Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Completed in v0.9.0; next step is connector-specific acquisition execution |
 | Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Completed in v0.12.0; next step is richer reviewer filters and escalation rules |
 
@@ -133,7 +139,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Explain-rank graph evidence | The first explain-rank slice covers score deltas; graph-aware evidence makes explanations deeper | Support-chain evidence completed in v0.11.0; source trust context and contradiction path summaries remain useful next steps |
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks make it more operationally complete | Completed in v0.10.0; deeper store/index consistency checks remain |
 | Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Completed in v0.12.0; next step is reviewer filters and escalation rules |
-| Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |
+| Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Completed in v0.13.0; next step is reviewer-facing anomaly filters |
 | Acquisition execution connectors | Planner tasks now exist; the next step is executing them through configured crawlers/search tools | Add connector hooks and dry-run previews for source-constrained acquisition tasks |
 | Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |
 
@@ -145,7 +151,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Candidate-pool telemetry | Wider rescoring improves quality, but operators should know when candidate pools are saturated | Add retrieval stats for vector candidates considered, fused candidates, and final top-k by namespace |
 | Corpus authoring guide | Representative tests will age better if adding a scenario is low-friction | Document how to add fixtures, labelled queries, and expected rank cutoffs |
 | Review workflow persistence | Derived review tasks are useful, but operators need durable decisions around them | Completed in v0.12.0; next step is reviewer filters and escalation rules |
-| Trust anomaly review tasks | Source timelines exist, and sudden credibility drops should become actionable | Generate review queue items when a source crosses configured trust thresholds or accumulates repeated refutations |
+| Trust anomaly review tasks | Source timelines exist, and sudden credibility drops should become actionable | Completed in v0.13.0; next step is anomaly filters and escalation rules |
 | Release health page | The project now has meaningful release gates to summarize | Completed in v0.11.2; next step is generated CI-backed status by release |
 
 ## Fresh Brainstorm After v0.11.2
@@ -156,7 +162,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Ranking eval snapshots | Corpus tests protect expected ordering; snapshots would explain score movement | Emit JSON and markdown reports with top-k, MRR, and score breakdowns for each corpus query |
 | Candidate-pool telemetry | Wider candidate pools improve quality but should be observable | Add retrieval counters for vector candidates fetched, fused candidates scored, and final top-k size |
 | Review workflow persistence | Derived review tasks now have durable triage state | Add reviewer filters, escalation rules, and review aging metrics |
-| Trust anomaly review tasks | Source trust timelines should become actionable when credibility shifts sharply | Generate review queue items when source credibility crosses configured thresholds |
+| Trust anomaly review tasks | Source trust timelines should become actionable when credibility shifts sharply | Completed in v0.13.0; next step is anomaly filters and escalation rules |
 
 ## Fresh Brainstorm After v0.12.0
 
@@ -164,6 +170,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Review filters and aging metrics | Review decisions now persist, so operators need views by owner, status, age, and snooze horizon | Add queue filters for owner/status and expose task age buckets |
 | Review escalation rules | Snoozed or assigned tasks can silently age out without escalation | Emit high-priority review tasks when assigned items exceed an age threshold |
-| Trust anomaly review tasks | Review workflow can now receive durable triage decisions | Generate review tasks when source credibility drops sharply or repeated refutations accumulate |
+| Trust anomaly review tasks | Review workflow can now receive durable triage decisions | Completed in v0.13.0; next step is anomaly filters and escalation rules |
 | CI-backed release health | Release health is visible but still hand-maintained | Generate release-health rows from verified command artifacts |
 | Ranking eval snapshots | Ranking tests protect expected results but do not expose score drift | Emit JSON reports for top-k, reciprocal rank, and score breakdowns per corpus query |
+
+## Fresh Brainstorm After v0.13.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Add queue filters for review type, source ID, status, and owner |
+| Trust anomaly escalation rules | High-severity source drops should not wait in a generic queue forever | Add age/severity escalation metadata for source anomaly items |
+| Source quarantine workflow | Repeated refutations often imply the source should be temporarily excluded | Add source label suggestions or a dry-run quarantine action tied to review decisions |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |

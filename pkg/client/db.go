@@ -542,9 +542,12 @@ type SourceTrustPoint struct {
 
 // ReviewQueueRequest configures claim review queue generation.
 type ReviewQueueRequest struct {
-	After                  time.Time
-	LowConfidenceThreshold float64
-	Limit                  int
+	After                     time.Time
+	LowConfidenceThreshold    float64
+	SourceTrustThreshold      float64
+	SourceTrustDropThreshold  float64
+	SourceRefutationThreshold int
+	Limit                     int
 }
 
 // ReviewDecisionRequest records durable workflow state for a derived review task.
@@ -1375,6 +1378,7 @@ func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueReques
 			})
 		}
 	}
+	items = append(items, sourceTrustAnomalyItems(events, req)...)
 
 	nodes, err := h.db.graph.ValidAt(ctx, h.cfg.ID, now, nil)
 	if err != nil {
@@ -1859,6 +1863,102 @@ func reviewIDsKey(ids []uuid.UUID) string {
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ",")
+}
+
+func sourceTrustAnomalyItems(events []FeedbackEvent, req ReviewQueueRequest) []ReviewItem {
+	dropThreshold := req.SourceTrustDropThreshold
+	lowTrustThreshold := req.SourceTrustThreshold
+	refutationThreshold := req.SourceRefutationThreshold
+
+	type sourceState struct {
+		firstCredibility  float64
+		latestCredibility float64
+		latestAt          time.Time
+		refutations       int
+		nodeIDs           []uuid.UUID
+	}
+	states := map[string]*sourceState{}
+	for _, event := range events {
+		if event.SourceID == "" || event.SourceCredibility == 0 {
+			continue
+		}
+		state := states[event.SourceID]
+		if state == nil {
+			state = &sourceState{firstCredibility: event.SourceCredibility}
+			states[event.SourceID] = state
+		}
+		state.latestCredibility = event.SourceCredibility
+		state.latestAt = event.TxTime
+		if event.NodeID != uuid.Nil {
+			state.nodeIDs = append(state.nodeIDs, event.NodeID)
+		}
+		if event.Action == "refuted" {
+			state.refutations++
+		}
+	}
+
+	items := make([]ReviewItem, 0, len(states))
+	for sourceID, state := range states {
+		drop := state.firstCredibility - state.latestCredibility
+		reasons := []string{}
+		priority := 0.0
+		action := ""
+		if dropThreshold > 0 && drop >= dropThreshold {
+			reasons = append(reasons, fmt.Sprintf("source credibility dropped %.2f", drop))
+			priority = maxFloat(priority, 0.65+drop)
+			action = "credibility_drop"
+		}
+		if lowTrustThreshold > 0 && state.latestCredibility <= lowTrustThreshold {
+			reasons = append(reasons, fmt.Sprintf("source credibility %.2f is at or below %.2f", state.latestCredibility, lowTrustThreshold))
+			priority = maxFloat(priority, 0.75+(lowTrustThreshold-state.latestCredibility))
+			if action == "" {
+				action = "low_trust"
+			}
+		}
+		if refutationThreshold > 0 && state.refutations >= refutationThreshold {
+			reasons = append(reasons, fmt.Sprintf("source has %d recent refutations", state.refutations))
+			priority = maxFloat(priority, 0.8+float64(state.refutations)*0.05)
+			if action == "" {
+				action = "repeated_refutations"
+			}
+		}
+		if len(reasons) == 0 {
+			continue
+		}
+		items = append(items, ReviewItem{
+			ID:         "source_trust:" + sourceID,
+			Type:       "source_trust_anomaly",
+			Priority:   priority,
+			Reason:     strings.Join(reasons, "; "),
+			NodeIDs:    uniqueUUIDs(state.nodeIDs),
+			SourceID:   sourceID,
+			Action:     action,
+			CreatedAt:  state.latestAt,
+			Suggested:  "review recent claims from this source and decide whether to relabel, exclude, or verify manually",
+			Confidence: state.latestCredibility,
+		})
+	}
+	return items
+}
+
+func uniqueUUIDs(ids []uuid.UUID) []uuid.UUID {
+	seen := map[uuid.UUID]bool{}
+	out := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if id == uuid.Nil || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func latestReviewDecisions(decisions []ReviewDecision) map[string]ReviewDecision {

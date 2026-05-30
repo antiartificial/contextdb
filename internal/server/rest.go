@@ -720,6 +720,33 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 		}
 		threshold = parsed
 	}
+	sourceTrustThreshold := 0.0
+	if raw := strings.TrimSpace(r.URL.Query().Get("source_trust_threshold")); raw != "" {
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_trust_threshold: %w", err))
+			return
+		}
+		sourceTrustThreshold = parsed
+	}
+	sourceTrustDropThreshold := 0.0
+	if raw := strings.TrimSpace(r.URL.Query().Get("source_trust_drop_threshold")); raw != "" {
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_trust_drop_threshold: %w", err))
+			return
+		}
+		sourceTrustDropThreshold = parsed
+	}
+	sourceRefutationThreshold := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("source_refutation_threshold")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_refutation_threshold: %w", err))
+			return
+		}
+		sourceRefutationThreshold = parsed
+	}
 	limit := 0
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
@@ -732,9 +759,12 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 
 	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
 	items, err := h.ReviewQueue(r.Context(), client.ReviewQueueRequest{
-		After:                  after,
-		LowConfidenceThreshold: threshold,
-		Limit:                  limit,
+		After:                     after,
+		LowConfidenceThreshold:    threshold,
+		SourceTrustThreshold:      sourceTrustThreshold,
+		SourceTrustDropThreshold:  sourceTrustDropThreshold,
+		SourceRefutationThreshold: sourceRefutationThreshold,
+		Limit:                     limit,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

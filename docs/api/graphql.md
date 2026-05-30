@@ -197,7 +197,13 @@ query {
 
 ```graphql
 query {
-  reviewQueue(namespace: "my-app", lowConfidenceThreshold: 0.35, limit: 20) {
+  reviewQueue(
+    namespace: "my-app"
+    lowConfidenceThreshold: 0.35
+    sourceTrustDropThreshold: 0.2
+    sourceRefutationThreshold: 2
+    limit: 20
+  ) {
     id
     type
     priority
@@ -219,7 +225,7 @@ query {
 }
 ```
 
-The queue derives review tasks from refuted and stale feedback, low-confidence active claims, and contradiction clusters.
+The queue derives review tasks from refuted and stale feedback, low-confidence active claims, contradiction clusters, and configured source-trust anomalies such as credibility drops or repeated refutations.
 
 Record and inspect review workflow state with:
 

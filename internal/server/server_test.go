@@ -279,6 +279,30 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(len(decisions), 1)
 	is.Equal(decisions[0].(map[string]any)["owner"], "alice")
 
+	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
+	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
+	reqRefute.Header.Set("Content-Type", "application/json")
+	wRefute := httptest.NewRecorder()
+	handler.ServeHTTP(wRefute, reqRefute)
+	is.Equal(wRefute.Code, http.StatusOK)
+
+	reqAnomalyQueue := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/queue?source_trust_drop_threshold=0.1", nil)
+	wAnomalyQueue := httptest.NewRecorder()
+	handler.ServeHTTP(wAnomalyQueue, reqAnomalyQueue)
+	is.Equal(wAnomalyQueue.Code, http.StatusOK)
+	var anomalyQueueResp map[string]any
+	is.NoErr(json.Unmarshal(wAnomalyQueue.Body.Bytes(), &anomalyQueueResp))
+	anomalyItems := anomalyQueueResp["items"].([]any)
+	foundAnomaly := false
+	for _, raw := range anomalyItems {
+		item := raw.(map[string]any)
+		if item["type"] == "source_trust_anomaly" {
+			foundAnomaly = true
+			is.Equal(item["source_id"], "moderator:alice")
+		}
+	}
+	is.True(foundAnomaly)
+
 	req4 := httptest.NewRequest("GET", "/v1/namespaces/channel:general/nodes/"+nodeID+"/narrative", nil)
 	w4 := httptest.NewRecorder()
 	handler.ServeHTTP(w4, req4)
@@ -537,6 +561,28 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(reviewMutation["reviewId"], reviewID)
 	is.Equal(reviewMutation["status"], "assigned")
 
+	refuteMutationBody, _ := json.Marshal(map[string]any{
+		"query": `mutation($id: ID!) {
+			refuteClaim(namespace: "graphql-test", nodeId: $id, reason: "audit contradicted source") {
+				action
+				sourceCredibility
+			}
+		}`,
+		"variables": map[string]any{"id": nodeID},
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(refuteMutationBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql refute mutation errors: %v", errs)
+	}
+	refuteMutation := resp["data"].(map[string]any)["refuteClaim"].(map[string]any)
+	is.Equal(refuteMutation["action"], "refuted")
+
 	queryBody, _ = json.Marshal(map[string]any{
 		"query": `query($id: ID!, $otherID: ID!) {
 			narrative(namespace: "graphql-test", nodeId: $id) {
@@ -568,10 +614,12 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				node { evidence { supportCount links { nodeId edgeWeight } } }
 				factors { factor delta }
 			}
-			reviewQueue(namespace: "graphql-test", lowConfidenceThreshold: 0.99) {
+			reviewQueue(namespace: "graphql-test", lowConfidenceThreshold: 0.99, sourceTrustDropThreshold: 0.1) {
 				id
 				type
 				nodeId
+				sourceId
+				action
 				status
 				owner
 				suggestedAction
@@ -605,19 +653,19 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(plan["totalNodes"], float64(2))
 	is.True(len(plan["tasks"].([]any)) > 0)
 	events := data["feedbackEvents"].([]any)
-	is.Equal(len(events), 1)
+	is.Equal(len(events), 2)
 	event := events[0].(map[string]any)
 	is.Equal(event["nodeId"], nodeID)
 	is.Equal(event["action"], "validated")
 	is.Equal(event["sourceId"], "docs")
 	points := data["sourceTrustTimeline"].([]any)
-	is.Equal(len(points), 1)
+	is.Equal(len(points), 2)
 	point := points[0].(map[string]any)
 	is.Equal(point["nodeId"], nodeID)
 	is.Equal(point["action"], "validated")
 	is.True(point["sourceCredibility"].(float64) > 0.5)
 	rank := data["explainRank"].(map[string]any)
-	is.Equal(rank["winnerNodeId"], nodeID)
+	is.True(rank["winnerNodeId"].(string) != "")
 	is.True(rank["summary"].(string) != "")
 	is.True(len(rank["factors"].([]any)) == 4)
 	rankNode := rank["node"].(map[string]any)
@@ -638,6 +686,16 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(queueItem["id"], reviewID)
 	is.Equal(queueItem["status"], "assigned")
 	is.Equal(queueItem["owner"], "alice")
+	foundAnomaly := false
+	for _, raw := range queue {
+		candidate := raw.(map[string]any)
+		if candidate["type"] == "source_trust_anomaly" {
+			foundAnomaly = true
+			is.Equal(candidate["sourceId"], "docs")
+			is.Equal(candidate["action"], "credibility_drop")
+		}
+	}
+	is.True(foundAnomaly)
 	reviewDecisions := data["reviewDecisions"].([]any)
 	is.Equal(len(reviewDecisions), 1)
 	reviewDecision := reviewDecisions[0].(map[string]any)

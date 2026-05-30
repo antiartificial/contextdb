@@ -27,6 +27,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Source trust timeline | Implemented | v0.6 | `audit`, `epistemics`, `feedback-loop` | Go SDK, REST, and GraphQL expose credibility points from feedback events |
 | Claim review queue | Implemented | v0.7 | `feedback-loop`, `epistemics`, `operations` | Go SDK, REST, and GraphQL expose ranked review tasks for refuted, stale, low-confidence, and contradictory claims |
 | Review workflow persistence | Implemented | v0.12 | `feedback-loop`, `operations`, `audit` | Go SDK, REST, and GraphQL expose append-only review decisions for assignment, snooze, resolution, and notes |
+| Source trust anomaly alerts | Implemented | v0.13 | `feedback-loop`, `epistemics`, `operations` | Review queues emit source-trust anomaly tasks for credibility drops, low trust, and repeated refutations |
 | Version and feature introspection | Implemented | v0.4 | `introspection`, `non-breaking` | REST `/v1/version`, `/v1/features`, `/v1/migrations`; GraphQL `version`, `features`, `migrations` |
 | `contextdb doctor` | Implemented, non-mutating checks | v0.4 | `operations`, `introspection` | CLI checks live REST ping, version, features, and migration metadata |
 | `contextdb doctor --sample-write` | Implemented, opt-in mutating probe | v0.4.1 | `operations`, `durability` | CLI writes a deduplicated probe node and verifies vector retrieval sees it |

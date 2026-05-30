@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.12.0",
+  "version": "0.13.0",
   "api_version": "v1",
-  "docs_version": "0.12.0",
+  "docs_version": "0.13.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -271,6 +271,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.12.0",
       "description": "Append-only review decisions for assignment, status, resolution notes, and re-check scheduling."
+    },
+    {
+      "name": "source-trust-anomaly-alerts",
+      "status": "stable",
+      "since": "v0.13.0",
+      "description": "Review queue tasks for source credibility drops, low trust thresholds, and repeated refutations."
     }
   ],
   "migrations": [
@@ -278,7 +284,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.12.0"
+  "release_notes_path": "/contextdb/releases/v0.13.0"
 }
 ```
 
@@ -484,6 +490,9 @@ Query parameters:
 |:----------|:------------|
 | `after` | Optional RFC3339 timestamp for feedback-derived review items |
 | `low_confidence_threshold` | Optional threshold for low-confidence claim tasks; defaults to `0.35` |
+| `source_trust_threshold` | Optional latest source credibility threshold for source-trust anomaly tasks |
+| `source_trust_drop_threshold` | Optional credibility drop threshold across the selected feedback window |
+| `source_refutation_threshold` | Optional count threshold for repeated source refutations |
 | `limit` | Optional maximum number of ranked tasks |
 | `mode` | Optional namespace mode when opening the namespace |
 
@@ -511,6 +520,12 @@ Query parameters:
     }
   ]
 }
+```
+
+Source trust anomaly tasks use `type: "source_trust_anomaly"` and are derived from the same durable feedback events as the source trust timeline. They can be triggered by a configured credibility drop, a low latest credibility threshold, or repeated refutations:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/queue?source_trust_drop_threshold=0.2&source_refutation_threshold=2"
 ```
 
 Record workflow state for a derived review item with:

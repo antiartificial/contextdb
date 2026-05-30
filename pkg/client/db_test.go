@@ -349,6 +349,47 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	}
 }
 
+func TestNamespace_ReviewQueueIncludesSourceTrustAnomalies(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:source-anomalies", namespace.ModeGeneral)
+	start := time.Now().Add(-time.Second)
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Source-backed claim",
+		SourceID:   "crawler",
+		Labels:     []string{"Claim"},
+		Confidence: 0.8,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+
+	_, err = ns.ValidateClaim(ctx, written.NodeID)
+	is.NoErr(err)
+	_, err = ns.RefuteClaim(ctx, written.NodeID, "source contradicted by audit")
+	is.NoErr(err)
+
+	queue, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
+		After:                    start,
+		SourceTrustDropThreshold: 0.1,
+	})
+	is.NoErr(err)
+	found := false
+	for _, item := range queue {
+		if item.Type == "source_trust_anomaly" {
+			found = true
+			is.Equal(item.SourceID, "crawler")
+			is.Equal(item.Action, "credibility_drop")
+			is.True(item.Confidence > 0)
+			is.True(len(item.NodeIDs) == 1)
+		}
+	}
+	is.True(found)
+}
+
 func TestNamespace_ReviewQueueIncludesContradictions(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
