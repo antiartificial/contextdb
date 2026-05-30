@@ -18,6 +18,7 @@ export default withMermaid(
         { text: 'Quick Start', link: '/quick-start' },
         { text: 'Examples', link: '/examples' },
         { text: 'API', link: '/api/' },
+        { text: 'Releases', link: '/releases/' },
         { text: 'GitHub', link: 'https://github.com/antiartificial/contextdb' },
       ],
 
@@ -28,6 +29,8 @@ export default withMermaid(
             items: [
               { text: 'Quick Start', link: '/quick-start' },
               { text: 'Examples', link: '/examples' },
+              { text: 'Releases', link: '/releases/' },
+              { text: 'v1.2.0 Recap', link: '/releases/v1.2.0' },
             ]
           },
           {

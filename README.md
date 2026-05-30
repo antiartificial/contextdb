@@ -5,7 +5,7 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**API Reference**](https://antiartificial.github.io/contextdb/api/) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v1.2.0 Recap**](https://antiartificial.github.io/contextdb/releases/v1.2.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
 
 ## What & Why
