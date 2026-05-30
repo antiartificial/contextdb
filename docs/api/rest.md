@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.14.0",
+  "version": "0.15.0",
   "api_version": "v1",
-  "docs_version": "0.14.0",
+  "docs_version": "0.15.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -283,6 +283,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.14.0",
       "description": "CLI helper to generate and validate contextdb Norn manifest entries."
+    },
+    {
+      "name": "review-queue-filters",
+      "status": "stable",
+      "since": "v0.15.0",
+      "description": "Review queue filters for task type, source, workflow status, and owner across Go SDK, REST, and GraphQL."
     }
   ],
   "migrations": [
@@ -290,7 +296,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.14.0"
+  "release_notes_path": "/contextdb/releases/v0.15.0"
 }
 ```
 
@@ -499,6 +505,10 @@ Query parameters:
 | `source_trust_threshold` | Optional latest source credibility threshold for source-trust anomaly tasks |
 | `source_trust_drop_threshold` | Optional credibility drop threshold across the selected feedback window |
 | `source_refutation_threshold` | Optional count threshold for repeated source refutations |
+| `type` | Optional comma-separated review item types, such as `low_confidence` or `source_trust_anomaly` |
+| `source_id` | Optional source identifier filter |
+| `status` | Optional workflow status filter; undecided items match `open` |
+| `owner` | Optional workflow owner filter |
 | `limit` | Optional maximum number of ranked tasks |
 | `mode` | Optional namespace mode when opening the namespace |
 
@@ -532,6 +542,13 @@ Source trust anomaly tasks use `type: "source_trust_anomaly"` and are derived fr
 
 ```bash
 curl "http://localhost:7701/v1/namespaces/my-app/review/queue?source_trust_drop_threshold=0.2&source_refutation_threshold=2"
+```
+
+Use filters to focus operational review views:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/queue?type=source_trust_anomaly&source_id=docs-crawler&status=open"
+curl "http://localhost:7701/v1/namespaces/my-app/review/queue?type=low_confidence&status=assigned&owner=alice"
 ```
 
 Record workflow state for a derived review item with:

@@ -1094,6 +1094,10 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 					"sourceTrustThreshold":      &graphql.ArgumentConfig{Type: graphql.Float},
 					"sourceTrustDropThreshold":  &graphql.ArgumentConfig{Type: graphql.Float},
 					"sourceRefutationThreshold": &graphql.ArgumentConfig{Type: graphql.Int},
+					"types":                     &graphql.ArgumentConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+					"sourceId":                  &graphql.ArgumentConfig{Type: graphql.String},
+					"status":                    &graphql.ArgumentConfig{Type: graphql.String},
+					"owner":                     &graphql.ArgumentConfig{Type: graphql.String},
 					"limit":                     &graphql.ArgumentConfig{Type: graphql.Int},
 				},
 				Resolve: s.resolveReviewQueue,
@@ -1337,6 +1341,10 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 	sourceTrustThreshold, _ := p.Args["sourceTrustThreshold"].(float64)
 	sourceTrustDropThreshold, _ := p.Args["sourceTrustDropThreshold"].(float64)
 	sourceRefutationThreshold, _ := p.Args["sourceRefutationThreshold"].(int)
+	types, _ := stringList(p.Args["types"])
+	sourceID, _ := p.Args["sourceId"].(string)
+	status, _ := p.Args["status"].(string)
+	owner, _ := p.Args["owner"].(string)
 	limit, _ := p.Args["limit"].(int)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ReviewQueue(p.Context, client.ReviewQueueRequest{
@@ -1345,6 +1353,10 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 		SourceTrustThreshold:      sourceTrustThreshold,
 		SourceTrustDropThreshold:  sourceTrustDropThreshold,
 		SourceRefutationThreshold: sourceRefutationThreshold,
+		Types:                     types,
+		SourceID:                  sourceID,
+		Status:                    status,
+		Owner:                     owner,
 		Limit:                     limit,
 	})
 }

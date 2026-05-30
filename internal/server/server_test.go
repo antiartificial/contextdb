@@ -279,6 +279,16 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(len(decisions), 1)
 	is.Equal(decisions[0].(map[string]any)["owner"], "alice")
 
+	reqFilteredQueue := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/queue?low_confidence_threshold=0.99&type="+queueItem["type"].(string)+"&status=assigned&owner=alice", nil)
+	wFilteredQueue := httptest.NewRecorder()
+	handler.ServeHTTP(wFilteredQueue, reqFilteredQueue)
+	is.Equal(wFilteredQueue.Code, http.StatusOK)
+	var filteredQueueResp map[string]any
+	is.NoErr(json.Unmarshal(wFilteredQueue.Body.Bytes(), &filteredQueueResp))
+	filteredItems := filteredQueueResp["items"].([]any)
+	is.Equal(len(filteredItems), 1)
+	is.Equal(filteredItems[0].(map[string]any)["id"], reviewID)
+
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
 	reqRefute.Header.Set("Content-Type", "application/json")
@@ -286,7 +296,7 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	handler.ServeHTTP(wRefute, reqRefute)
 	is.Equal(wRefute.Code, http.StatusOK)
 
-	reqAnomalyQueue := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/queue?source_trust_drop_threshold=0.1", nil)
+	reqAnomalyQueue := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/queue?source_trust_drop_threshold=0.1&type=source_trust_anomaly&source_id=moderator:alice", nil)
 	wAnomalyQueue := httptest.NewRecorder()
 	handler.ServeHTTP(wAnomalyQueue, reqAnomalyQueue)
 	is.Equal(wAnomalyQueue.Code, http.StatusOK)
@@ -624,6 +634,18 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				owner
 				suggestedAction
 			}
+			assignedReviews: reviewQueue(namespace: "graphql-test", lowConfidenceThreshold: 0.99, types: ["low_confidence"], status: "assigned", owner: "alice") {
+				id
+				type
+				status
+				owner
+			}
+			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
+				id
+				type
+				sourceId
+				action
+			}
 			reviewDecisions(namespace: "graphql-test") {
 				reviewId
 				status
@@ -686,6 +708,11 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(queueItem["id"], reviewID)
 	is.Equal(queueItem["status"], "assigned")
 	is.Equal(queueItem["owner"], "alice")
+	assignedReviews := data["assignedReviews"].([]any)
+	is.Equal(len(assignedReviews), 1)
+	assignedReview := assignedReviews[0].(map[string]any)
+	is.Equal(assignedReview["id"], reviewID)
+	is.Equal(assignedReview["status"], "assigned")
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)
@@ -696,6 +723,11 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 		}
 	}
 	is.True(foundAnomaly)
+	sourceAnomalies := data["sourceAnomalies"].([]any)
+	is.Equal(len(sourceAnomalies), 1)
+	sourceAnomaly := sourceAnomalies[0].(map[string]any)
+	is.Equal(sourceAnomaly["type"], "source_trust_anomaly")
+	is.Equal(sourceAnomaly["sourceId"], "docs")
 	reviewDecisions := data["reviewDecisions"].([]any)
 	is.Equal(len(reviewDecisions), 1)
 	reviewDecision := reviewDecisions[0].(map[string]any)

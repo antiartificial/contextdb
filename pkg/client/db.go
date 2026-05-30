@@ -547,6 +547,10 @@ type ReviewQueueRequest struct {
 	SourceTrustThreshold      float64
 	SourceTrustDropThreshold  float64
 	SourceRefutationThreshold int
+	Types                     []string
+	SourceID                  string
+	Status                    string
+	Owner                     string
 	Limit                     int
 }
 
@@ -1430,6 +1434,7 @@ func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueReques
 		return nil, err
 	}
 	items = applyReviewDecisions(items, latestReviewDecisions(decisions), now)
+	items = filterReviewItems(items, req)
 
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].Priority == items[j].Priority {
@@ -1995,6 +2000,52 @@ func applyReviewDecisions(items []ReviewItem, decisions map[string]ReviewDecisio
 		item.RecheckAt = decision.RecheckAt
 		item.ReviewedAt = decision.TxTime
 		out = append(out, item)
+	}
+	return out
+}
+
+func filterReviewItems(items []ReviewItem, req ReviewQueueRequest) []ReviewItem {
+	types := stringSet(req.Types)
+	sourceID := strings.TrimSpace(req.SourceID)
+	status := strings.TrimSpace(req.Status)
+	owner := strings.TrimSpace(req.Owner)
+	if len(types) == 0 && sourceID == "" && status == "" && owner == "" {
+		return items
+	}
+	out := make([]ReviewItem, 0, len(items))
+	for _, item := range items {
+		if len(types) > 0 && !types[item.Type] {
+			continue
+		}
+		if sourceID != "" && item.SourceID != sourceID {
+			continue
+		}
+		if status != "" && reviewItemStatus(item) != status {
+			continue
+		}
+		if owner != "" && item.Owner != owner {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func reviewItemStatus(item ReviewItem) string {
+	if strings.TrimSpace(item.Status) == "" {
+		return "open"
+	}
+	return item.Status
+}
+
+func stringSet(values []string) map[string]bool {
+	out := make(map[string]bool, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		out[value] = true
 	}
 	return out
 }

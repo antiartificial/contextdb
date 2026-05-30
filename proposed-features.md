@@ -91,6 +91,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Local Norn registration helper | Implemented | `contextdb norn manifest` generates a contextdb service entry and `contextdb norn validate` checks app, endpoint, service name, and REST port |
 
+## Completed In v0.15.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Review queue filters | Implemented | Go SDK, REST, and GraphQL review queues filter by task type, source ID, workflow status, and owner; undecided tasks match `open` |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -109,7 +115,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; durable workflow decisions completed in v0.12.0 |
 | Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; anomaly review tasks completed in v0.13.0; next step is richer timeline visualization in the debugger UI |
 | Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Completed in v0.9.0; next step is connector-specific acquisition execution |
-| Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Completed in v0.12.0; next step is richer reviewer filters and escalation rules |
+| Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Completed in v0.12.0; reviewer filters completed in v0.15.0; next step is escalation rules |
 
 ## Durability And Operations
 
@@ -174,7 +180,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Review filters and aging metrics | Review decisions now persist, so operators need views by owner, status, age, and snooze horizon | Add queue filters for owner/status and expose task age buckets |
+| Review filters and aging metrics | Review decisions now persist, so operators need views by owner, status, age, and snooze horizon | Queue filters completed in v0.15.0; age buckets remain a useful escalation slice |
 | Review escalation rules | Snoozed or assigned tasks can silently age out without escalation | Emit high-priority review tasks when assigned items exceed an age threshold |
 | Trust anomaly review tasks | Review workflow can now receive durable triage decisions | Completed in v0.13.0; next step is anomaly filters and escalation rules |
 | CI-backed release health | Release health is visible but still hand-maintained | Generate release-health rows from verified command artifacts |
@@ -184,7 +190,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Add queue filters for review type, source ID, status, and owner |
+| Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Completed in v0.15.0 with review queue filters for type, source ID, status, and owner |
 | Trust anomaly escalation rules | High-severity source drops should not wait in a generic queue forever | Add age/severity escalation metadata for source anomaly items |
 | Source quarantine workflow | Repeated refutations often imply the source should be temporarily excluded | Add source label suggestions or a dry-run quarantine action tied to review decisions |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
@@ -196,6 +202,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Norn manifest publish | Manifest generation exists, but registration may still be manual | Add a dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Norn live drift check | Validation catches local shape errors, not live manifest drift | Compare generated manifest with `$NORN_MANIFEST_URL` and report field-level differences |
-| Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Add queue filters for review type, source ID, status, and owner |
+| Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Completed in v0.15.0 with review queue filters for type, source ID, status, and owner |
+| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation |
+| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+
+## Fresh Brainstorm After v0.15.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Norn live drift check | Manifest generation exists, but hosted services can drift from local expectations | Compare generated manifest with `$NORN_MANIFEST_URL` and report field-level differences |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation |
 | CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |

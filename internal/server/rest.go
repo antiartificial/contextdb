@@ -756,6 +756,10 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = parsed
 	}
+	types := parseCommaList(r.URL.Query().Get("type"))
+	sourceID := strings.TrimSpace(r.URL.Query().Get("source_id"))
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	owner := strings.TrimSpace(r.URL.Query().Get("owner"))
 
 	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
 	items, err := h.ReviewQueue(r.Context(), client.ReviewQueueRequest{
@@ -764,6 +768,10 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 		SourceTrustThreshold:      sourceTrustThreshold,
 		SourceTrustDropThreshold:  sourceTrustDropThreshold,
 		SourceRefutationThreshold: sourceRefutationThreshold,
+		Types:                     types,
+		SourceID:                  sourceID,
+		Status:                    status,
+		Owner:                     owner,
 		Limit:                     limit,
 	})
 	if err != nil {
@@ -771,6 +779,21 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, reviewQueueResponse{Items: items})
+}
+
+func parseCommaList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func (s *RESTServer) handleReviewDecisions(w http.ResponseWriter, r *http.Request) {

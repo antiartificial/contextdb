@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.14.0"
+	Version = "0.15.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.14.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.15.0",
 	}
 }
 
@@ -66,6 +66,7 @@ func Features() []Feature {
 		{Name: "review-workflow-persistence", Status: "stable", Since: "v0.12.0", Description: "Append-only review decisions for assignment, status, resolution notes, and re-check scheduling."},
 		{Name: "source-trust-anomaly-alerts", Status: "stable", Since: "v0.13.0", Description: "Review queue tasks for source credibility drops, low trust thresholds, and repeated refutations."},
 		{Name: "norn-registration-helper", Status: "stable", Since: "v0.14.0", Description: "CLI helper to generate and validate contextdb Norn manifest entries."},
+		{Name: "review-queue-filters", Status: "stable", Since: "v0.15.0", Description: "Review queue filters for task type, source, workflow status, and owner across Go SDK, REST, and GraphQL."},
 	}
 }
 

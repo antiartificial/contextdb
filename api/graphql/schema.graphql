@@ -2,6 +2,7 @@ type Query {
   search(namespace: String = "default", mode: String = "general", query: String!, filter: FilterInput, limit: Int = 10): SearchResult!
   narrative(namespace: String = "default", mode: String = "general", nodeId: ID!): NarrativeReport
   knowledgeGaps(namespace: String = "default", mode: String = "general", topK: Int, minGapSize: Float, maxGaps: Int): GapReport!
+  reviewQueue(namespace: String = "default", mode: String = "general", after: Timestamp, lowConfidenceThreshold: Float, sourceTrustThreshold: Float, sourceTrustDropThreshold: Float, sourceRefutationThreshold: Int, types: [String!], sourceId: String, status: String, owner: String, limit: Int): [ReviewItem!]!
 }
 
 type Mutation {
@@ -9,6 +10,27 @@ type Mutation {
   refuteClaim(namespace: String = "default", mode: String = "general", nodeId: ID!, reason: String, quality: Int): FeedbackResult!
   markUseful(namespace: String = "default", mode: String = "general", nodeId: ID!, reason: String, quality: Int): FeedbackResult!
   markStale(namespace: String = "default", mode: String = "general", nodeId: ID!, reason: String, quality: Int): FeedbackResult!
+}
+
+type ReviewItem {
+  id: ID!
+  type: String!
+  priority: Float!
+  reason: String!
+  nodeId: ID
+  nodeIds: [ID!]
+  sourceId: String
+  action: String
+  text: String
+  createdAt: Timestamp
+  suggestedAction: String
+  confidence: Float
+  status: String
+  owner: String
+  decision: String
+  note: String
+  recheckAt: Timestamp
+  reviewedAt: Timestamp
 }
 
 type FeedbackResult {

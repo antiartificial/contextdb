@@ -333,6 +333,17 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(queue[0].Owner, "alice")
 	is.Equal(queue[0].Note, "check source logs")
 
+	filtered, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
+		LowConfidenceThreshold: 0.35,
+		Types:                  []string{"low_confidence"},
+		SourceID:               "docs",
+		Status:                 "assigned",
+		Owner:                  "alice",
+	})
+	is.NoErr(err)
+	is.Equal(len(filtered), 1)
+	is.Equal(filtered[0].ID, reviewID)
+
 	_, err = ns.RecordReviewDecision(ctx, client.ReviewDecisionRequest{
 		ReviewID: reviewID,
 		Status:   "resolved",
@@ -375,6 +386,8 @@ func TestNamespace_ReviewQueueIncludesSourceTrustAnomalies(t *testing.T) {
 	queue, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
 		After:                    start,
 		SourceTrustDropThreshold: 0.1,
+		Types:                    []string{"source_trust_anomaly"},
+		SourceID:                 "crawler",
 	})
 	is.NoErr(err)
 	found := false

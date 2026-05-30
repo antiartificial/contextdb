@@ -202,6 +202,9 @@ query {
     lowConfidenceThreshold: 0.35
     sourceTrustDropThreshold: 0.2
     sourceRefutationThreshold: 2
+    types: ["source_trust_anomaly"]
+    sourceId: "docs-crawler"
+    status: "open"
     limit: 20
   ) {
     id
@@ -226,6 +229,8 @@ query {
 ```
 
 The queue derives review tasks from refuted and stale feedback, low-confidence active claims, contradiction clusters, and configured source-trust anomalies such as credibility drops or repeated refutations.
+
+Filter arguments are additive: `types` narrows by review item type, `sourceId` focuses source-specific tasks, and `status`/`owner` focus the latest workflow state. Items with no recorded decision match `status: "open"`.
 
 Record and inspect review workflow state with:
 
