@@ -79,16 +79,16 @@ contextdb snapshot export \
 Validate a backup without writing:
 
 ```bash
-contextdb snapshot import --namespace restore-preview --in my-app.contextdb.ndjson --dry-run
+contextdb snapshot import --namespace restore-preview --in my-app.contextdb.ndjson --dry-run --report
 ```
 
 Restore into a namespace:
 
 ```bash
 CONTEXTDB_DATA_DIR=/var/lib/contextdb \
-  contextdb snapshot import --namespace my-app --in my-app.contextdb.ndjson
+  contextdb snapshot import --namespace my-app --in my-app.contextdb.ndjson --report
 ```
 
-Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
+The report includes processed line, node, edge, source, vector, and namespace override counts. Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
 
 Future doctor slices should add deeper store/index consistency checks.

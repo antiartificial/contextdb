@@ -165,6 +165,7 @@ func runSnapshotImport(args []string) {
 	namespace := fs.String("namespace", "default", "namespace to import into")
 	inPath := fs.String("in", "-", "input NDJSON file, or - for stdin")
 	dryRun := fs.Bool("dry-run", false, "validate the snapshot without writing")
+	reportOut := fs.Bool("report", false, "print a JSON import report")
 	_ = fs.Parse(args)
 
 	in, closeIn, err := inputReader(*inPath)
@@ -176,16 +177,19 @@ func runSnapshotImport(args []string) {
 
 	db := openSnapshotDB()
 	defer db.Close()
+	var report client.SnapshotReport
 	if *dryRun {
-		err = db.ValidateSnapshot(context.Background(), *namespace, in)
+		report, err = db.ValidateSnapshotReport(context.Background(), *namespace, in)
 	} else {
-		err = db.ImportSnapshot(context.Background(), *namespace, in)
+		report, err = db.ImportSnapshotReport(context.Background(), *namespace, in)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
 		os.Exit(1)
 	}
-	if *dryRun {
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if *dryRun {
 		fmt.Fprintln(os.Stdout, "ok")
 	}
 }

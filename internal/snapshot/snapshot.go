@@ -205,6 +205,18 @@ type Importer struct {
 	vecs  store.VectorIndex
 }
 
+// ImportReport summarizes records processed during snapshot import.
+type ImportReport struct {
+	Namespace          string `json:"namespace"`
+	DryRun             bool   `json:"dry_run"`
+	Lines              int    `json:"lines"`
+	Nodes              int    `json:"nodes"`
+	Edges              int    `json:"edges"`
+	Sources            int    `json:"sources"`
+	Vectors            int    `json:"vectors"`
+	NamespaceOverrides int    `json:"namespace_overrides"`
+}
+
 // NewImporter creates a new Importer that writes to the given stores.
 func NewImporter(graph store.GraphStore, vecs store.VectorIndex) *Importer {
 	return &Importer{graph: graph, vecs: vecs}
@@ -214,6 +226,13 @@ func NewImporter(graph store.GraphStore, vecs store.VectorIndex) *Importer {
 // under the given namespace. If a record specifies a different namespace,
 // the provided namespace overrides it.
 func (im *Importer) Import(ctx context.Context, namespace string, r io.Reader) error {
+	_, err := im.ImportWithReport(ctx, namespace, r)
+	return err
+}
+
+// ImportWithReport imports an NDJSON snapshot and returns processed counts.
+func (im *Importer) ImportWithReport(ctx context.Context, namespace string, r io.Reader) (ImportReport, error) {
+	report := ImportReport{Namespace: namespace}
 	scanner := bufio.NewScanner(r)
 	// Allow large lines (up to 10MB)
 	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
@@ -221,6 +240,7 @@ func (im *Importer) Import(ctx context.Context, namespace string, r io.Reader) e
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
+		report.Lines++
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
@@ -228,21 +248,23 @@ func (im *Importer) Import(ctx context.Context, namespace string, r io.Reader) e
 
 		var rec record
 		if err := json.Unmarshal(line, &rec); err != nil {
-			return fmt.Errorf("line %d: unmarshal record: %w", lineNum, err)
+			return report, fmt.Errorf("line %d: unmarshal record: %w", lineNum, err)
 		}
 
 		switch rec.Type {
 		case recordNode:
 			var node core.Node
 			if err := json.Unmarshal(rec.Data, &node); err != nil {
-				return fmt.Errorf("line %d: unmarshal node: %w", lineNum, err)
+				return report, fmt.Errorf("line %d: unmarshal node: %w", lineNum, err)
 			}
-			if namespace != "" {
+			if namespace != "" && node.Namespace != namespace {
+				report.NamespaceOverrides++
 				node.Namespace = namespace
 			}
 			if err := im.graph.UpsertNode(ctx, node); err != nil {
-				return fmt.Errorf("line %d: upsert node %s: %w", lineNum, node.ID, err)
+				return report, fmt.Errorf("line %d: upsert node %s: %w", lineNum, node.ID, err)
 			}
+			report.Nodes++
 			// Index vector if present
 			if len(node.Vector) > 0 {
 				if reg, ok := im.vecs.(interface{ RegisterNode(core.Node) }); ok {
@@ -257,42 +279,47 @@ func (im *Importer) Import(ctx context.Context, namespace string, r io.Reader) e
 					ModelID:   node.ModelID,
 					CreatedAt: node.TxTime,
 				}); err != nil {
-					return fmt.Errorf("line %d: index vector for node %s: %w", lineNum, node.ID, err)
+					return report, fmt.Errorf("line %d: index vector for node %s: %w", lineNum, node.ID, err)
 				}
+				report.Vectors++
 			}
 
 		case recordEdge:
 			var edge core.Edge
 			if err := json.Unmarshal(rec.Data, &edge); err != nil {
-				return fmt.Errorf("line %d: unmarshal edge: %w", lineNum, err)
+				return report, fmt.Errorf("line %d: unmarshal edge: %w", lineNum, err)
 			}
-			if namespace != "" {
+			if namespace != "" && edge.Namespace != namespace {
+				report.NamespaceOverrides++
 				edge.Namespace = namespace
 			}
 			if err := im.graph.UpsertEdge(ctx, edge); err != nil {
-				return fmt.Errorf("line %d: upsert edge %s: %w", lineNum, edge.ID, err)
+				return report, fmt.Errorf("line %d: upsert edge %s: %w", lineNum, edge.ID, err)
 			}
+			report.Edges++
 
 		case recordSource:
 			var src core.Source
 			if err := json.Unmarshal(rec.Data, &src); err != nil {
-				return fmt.Errorf("line %d: unmarshal source: %w", lineNum, err)
+				return report, fmt.Errorf("line %d: unmarshal source: %w", lineNum, err)
 			}
-			if namespace != "" {
+			if namespace != "" && src.Namespace != namespace {
+				report.NamespaceOverrides++
 				src.Namespace = namespace
 			}
 			if err := im.graph.UpsertSource(ctx, src); err != nil {
-				return fmt.Errorf("line %d: upsert source %s: %w", lineNum, src.ID, err)
+				return report, fmt.Errorf("line %d: upsert source %s: %w", lineNum, src.ID, err)
 			}
+			report.Sources++
 
 		default:
-			return fmt.Errorf("line %d: unknown record type: %q", lineNum, rec.Type)
+			return report, fmt.Errorf("line %d: unknown record type: %q", lineNum, rec.Type)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read snapshot: %w", err)
+		return report, fmt.Errorf("read snapshot: %w", err)
 	}
 
-	return nil
+	return report, nil
 }

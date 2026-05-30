@@ -109,6 +109,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Snapshot backup/restore command | Implemented | Go client snapshot helpers and `contextdb snapshot export/import` provide NDJSON backup, seeded subgraph export, namespace restore override, and dry-run validation |
 
+## Completed In v0.18.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Snapshot restore report | Implemented | Go client report helpers and `contextdb snapshot import --report` summarize processed lines, nodes, edges, sources, vectors, and namespace overrides |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -242,8 +248,18 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Snapshot restore report | Backup/restore now exists, but imports should summarize what changed | Add dry-run and import counts for nodes, edges, sources, vectors, and namespace overrides |
+| Snapshot restore report | Backup/restore now exists, but imports should summarize what changed | Completed in v0.18.0 with dry-run and import reports |
 | Scheduled backup marker | Snapshot export pairs naturally with doctor backup readiness | Add a tiny command or documented script that writes `.last-backup` only after export and dry-run validation pass |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+
+## Fresh Brainstorm After v0.18.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Scheduled backup marker | Snapshot reports can prove an export/validation completed | Add a tiny command or documented script that writes `.last-backup` only after export and dry-run validation pass |
+| Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Add dry-run changed/new/skipped counts by checking target IDs before import |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
