@@ -63,7 +63,10 @@ Use `contextdb snapshot export` to write an NDJSON namespace backup:
 
 ```bash
 CONTEXTDB_DATA_DIR=/var/lib/contextdb \
-  contextdb snapshot export --namespace my-app --out my-app.contextdb.ndjson
+  contextdb snapshot export \
+    --namespace my-app \
+    --out my-app.contextdb.ndjson \
+    --backup-marker /var/lib/contextdb/.last-backup
 ```
 
 Use seed IDs for a filtered subgraph export:
@@ -90,5 +93,7 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 ```
 
 The report includes processed line, node, edge, source, vector, and namespace override counts. Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
+
+The export marker is written only after the snapshot stream completes successfully. Point `contextdb doctor --backup-marker` at the same marker file to include backup freshness in readiness checks.
 
 Future doctor slices should add deeper store/index consistency checks.

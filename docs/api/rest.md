@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.18.0",
+  "version": "0.19.0",
   "api_version": "v1",
-  "docs_version": "0.18.0",
+  "docs_version": "0.19.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -307,6 +307,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.18.0",
       "description": "Snapshot dry-run and import reports summarize processed lines, records, vectors, and namespace overrides."
+    },
+    {
+      "name": "snapshot-backup-marker",
+      "status": "stable",
+      "since": "v0.19.0",
+      "description": "Snapshot export can write a backup marker after a successful backup for doctor readiness checks."
     }
   ],
   "migrations": [
@@ -314,7 +320,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.18.0"
+  "release_notes_path": "/contextdb/releases/v0.19.0"
 }
 ```
 

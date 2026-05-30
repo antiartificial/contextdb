@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/matryer/is"
 
@@ -95,6 +98,19 @@ func TestParseUUIDListRejectsInvalidSeed(t *testing.T) {
 	_, err := parseUUIDList("not-a-uuid")
 
 	is.True(err != nil)
+}
+
+func TestWriteBackupMarker(t *testing.T) {
+	is := is.New(t)
+	path := filepath.Join(t.TempDir(), ".last-backup")
+	at := time.Date(2026, 5, 30, 18, 30, 0, 0, time.FixedZone("test", -5*60*60))
+
+	err := writeBackupMarker(path, at)
+
+	is.NoErr(err)
+	data, err := os.ReadFile(path)
+	is.NoErr(err)
+	is.Equal(string(data), "2026-05-30T23:30:00Z\n")
 }
 
 func TestBuildNornDriftReportMatches(t *testing.T) {

@@ -132,6 +132,7 @@ func runSnapshotExport(args []string) {
 	outPath := fs.String("out", "-", "output NDJSON file, or - for stdout")
 	seedRaw := fs.String("seeds", "", "comma-separated seed node IDs for filtered export")
 	maxDepth := fs.Int("max-depth", 10, "maximum graph depth for seeded exports")
+	backupMarker := fs.String("backup-marker", "", "marker file to write after successful export")
 	_ = fs.Parse(args)
 
 	db := openSnapshotDB()
@@ -155,6 +156,10 @@ func runSnapshotExport(args []string) {
 		err = db.ExportSnapshot(context.Background(), *namespace, out)
 	}
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(1)
+	}
+	if err := writeBackupMarker(*backupMarker, time.Now()); err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
 		os.Exit(1)
 	}
@@ -246,6 +251,14 @@ func parseUUIDList(raw string) ([]uuid.UUID, error) {
 		out = append(out, id)
 	}
 	return out, nil
+}
+
+func writeBackupMarker(path string, at time.Time) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	return os.WriteFile(path, []byte(at.UTC().Format(time.RFC3339)+"\n"), 0o644)
 }
 
 type nornPorts struct {

@@ -115,6 +115,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Snapshot restore report | Implemented | Go client report helpers and `contextdb snapshot import --report` summarize processed lines, nodes, edges, sources, vectors, and namespace overrides |
 
+## Completed In v0.19.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Scheduled backup marker | Implemented | `contextdb snapshot export --backup-marker PATH` writes a doctor-compatible marker only after successful export |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -249,7 +255,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Snapshot restore report | Backup/restore now exists, but imports should summarize what changed | Completed in v0.18.0 with dry-run and import reports |
-| Scheduled backup marker | Snapshot export pairs naturally with doctor backup readiness | Add a tiny command or documented script that writes `.last-backup` only after export and dry-run validation pass |
+| Scheduled backup marker | Snapshot export pairs naturally with doctor backup readiness | Completed in v0.19.0 with `contextdb snapshot export --backup-marker` |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
@@ -258,8 +264,18 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Scheduled backup marker | Snapshot reports can prove an export/validation completed | Add a tiny command or documented script that writes `.last-backup` only after export and dry-run validation pass |
+| Scheduled backup marker | Snapshot reports can prove an export/validation completed | Completed in v0.19.0 with export-side backup markers |
 | Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Add dry-run changed/new/skipped counts by checking target IDs before import |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+
+## Fresh Brainstorm After v0.19.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Add dry-run changed/new/skipped counts by checking target IDs before import |
+| Automated backup runbook | Export markers and doctor readiness now exist | Add a documented launchd/systemd/Norn schedule using export, dry-run validation, marker write, and doctor verification |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
