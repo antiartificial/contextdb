@@ -91,10 +91,14 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 			wg.Add(1)
 			go func(v []float32) {
 				defer wg.Done()
+				candidateK := q.TopK * 4
+				if candidateK < 50 {
+					candidateK = 50
+				}
 				res, err := e.Vectors.Search(ctx, store.VectorQuery{
 					Namespace: q.Namespace,
 					Vector:    v,
-					TopK:      q.TopK * 2,
+					TopK:      candidateK,
 					Labels:    q.Labels,
 					AsOf:      q.ScoreParams.AsOf,
 				})

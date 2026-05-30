@@ -30,6 +30,7 @@ export default withMermaid(
               { text: 'Quick Start', link: '/quick-start' },
               { text: 'Examples', link: '/examples' },
               { text: 'Releases', link: '/releases/' },
+              { text: 'v0.11.1 Recap', link: '/releases/v0.11.1' },
               { text: 'v0.11.0 Recap', link: '/releases/v0.11.0' },
               { text: 'v0.10.0 Recap', link: '/releases/v0.10.0' },
               { text: 'v0.9.0 Recap', link: '/releases/v0.9.0' },

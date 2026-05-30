@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.11.0"
+	Version = "0.11.1"
 )
 
 type Feature struct {
@@ -34,12 +34,12 @@ func Current(migrations []Migration) Info {
 		Version:          Version,
 		APIVersion:       "v1",
 		DocsVersion:      Version,
-		Compatibility:    "non-breaking pre-1.0 minor release",
+		Compatibility:    "non-breaking pre-1.0 patch release",
 		LatestMigration:  latestMigration(migrations),
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.11.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.11.1",
 	}
 }
 

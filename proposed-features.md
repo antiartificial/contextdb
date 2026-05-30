@@ -60,6 +60,13 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Explain-rank graph evidence | Implemented | Explain-rank responses include support-chain links, edge weights, and compound confidence through Go SDK, REST, and GraphQL |
 
+## Completed In v0.11.1
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Representative corpus ranking tests | Implemented | `TestRepresentativeCorpusRankingGolden` covers poisoning resistance, temporal memory, procedural memory, and general RAG queries over the synthetic corpus |
+| Ranking candidate-pool hardening | Implemented | Hybrid retrieval now rescans at least 50 vector candidates before final score fusion, so crowded near-match topics cannot hide stronger claims before scoring |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -96,7 +103,7 @@ Priority additions:
 
 1. Restart durability suite for Badger-backed embedded mode. Implemented for the core write/feedback/dedup/retrieve restart path in v0.4.0.
 2. Docker-backed Postgres integration suite for migrations, fingerprint indexes, feedback, and vector retrieval.
-3. Ranking golden tests for namespace modes and representative corpora. Implemented for belief-system and agent-memory presets in v0.4.0; representative corpora are still next.
+3. Ranking golden tests for namespace modes and representative corpora. Implemented for belief-system and agent-memory presets in v0.4.0; representative corpus coverage landed in v0.11.1.
 4. API contract parity tests across Go SDK, REST, gRPC, and GraphQL. Expanded in v0.4.0 with gRPC public contract and REST failure-path coverage.
 5. Failure injection for unavailable vector stores, graph stores, embedders, and malformed API requests.
 6. Long-running race/soak tests for concurrent writes, reads, feedback, dedup, and compaction.
@@ -117,3 +124,14 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Emit review tasks when a source crosses configured credibility thresholds |
 | Acquisition execution connectors | Planner tasks now exist; the next step is executing them through configured crawlers/search tools | Add connector hooks and dry-run previews for source-constrained acquisition tasks |
 | Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |
+
+## Fresh Brainstorm After v0.11.1
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Ranking eval snapshots | Ranking is now protected by corpus tests, but release-to-release score movement still needs visibility | Persist a JSON report with query ID, top result, reciprocal rank, and score breakdown for every corpus query |
+| Candidate-pool telemetry | Wider rescoring improves quality, but operators should know when candidate pools are saturated | Add retrieval stats for vector candidates considered, fused candidates, and final top-k by namespace |
+| Corpus authoring guide | Representative tests will age better if adding a scenario is low-friction | Document how to add fixtures, labelled queries, and expected rank cutoffs |
+| Review workflow persistence | Derived review tasks are useful, but operators need durable decisions around them | Add append-only review decisions with assigned, resolved, snoozed, and note fields |
+| Trust anomaly review tasks | Source timelines exist, and sudden credibility drops should become actionable | Generate review queue items when a source crosses configured trust thresholds or accumulates repeated refutations |
+| Release health page | The project now has meaningful release gates to summarize | Add a docs page with unit, corpus ranking, durability, API contract, docs-build, and optional race/soak status by release |
