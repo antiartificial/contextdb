@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -49,58 +50,43 @@ func NewExporter(graph store.GraphStore) *Exporter {
 	return &Exporter{graph: graph}
 }
 
-// Export writes all nodes, edges, and sources for the given namespace to w
-// in NDJSON format. The graph store interface does not provide a "list all"
-// method, so the caller must supply node IDs to export via ExportNodes, or
-// use ExportAll with a walker that discovers them.
-//
-// This method exports by walking from seed nodes. For a complete namespace
-// dump, use ExportFromSeeds with all known root IDs.
+// Export writes all current nodes, their history, outgoing edges, and sources
+// for the given namespace to w in NDJSON format.
 func (e *Exporter) Export(ctx context.Context, namespace string, w io.Writer) error {
-	// Walk the entire namespace starting from all reachable nodes.
-	// Since we cannot enumerate all nodes directly, we walk with a
-	// broad search. The store.Walk with empty seeds returns nothing,
-	// so we rely on the graph store's internal structure.
-	//
-	// For the memory store, we can iterate. For other stores, we use
-	// the event log or explicit seed IDs. This simple implementation
-	// handles the memory store case via a type assertion.
-	type nodeIterator interface {
-		AllNodes(ctx context.Context, ns string) ([]core.Node, error)
-	}
-	type edgeIterator interface {
-		AllEdges(ctx context.Context, ns string) ([]core.Edge, error)
-	}
 	type sourceIterator interface {
 		AllSources(ctx context.Context, ns string) ([]core.Source, error)
 	}
 
 	enc := json.NewEncoder(w)
+	nodes, err := e.graph.ValidAt(ctx, namespace, time.Now(), nil)
+	if err != nil {
+		return fmt.Errorf("export nodes: %w", err)
+	}
+	exportedEdges := make(map[uuid.UUID]bool)
 
-	// Export nodes
-	if ni, ok := e.graph.(nodeIterator); ok {
-		nodes, err := ni.AllNodes(ctx, namespace)
+	for _, n := range nodes {
+		versions, err := e.graph.History(ctx, namespace, n.ID)
 		if err != nil {
-			return fmt.Errorf("export nodes: %w", err)
+			return fmt.Errorf("history %s: %w", n.ID, err)
 		}
-		for _, n := range nodes {
-			data, err := json.Marshal(n)
+		for _, version := range versions {
+			data, err := json.Marshal(version)
 			if err != nil {
-				return fmt.Errorf("marshal node %s: %w", n.ID, err)
+				return fmt.Errorf("marshal node %s: %w", version.ID, err)
 			}
 			if err := enc.Encode(record{Type: recordNode, Data: data}); err != nil {
-				return fmt.Errorf("encode node %s: %w", n.ID, err)
+				return fmt.Errorf("encode node %s: %w", version.ID, err)
 			}
 		}
-	}
-
-	// Export edges
-	if ei, ok := e.graph.(edgeIterator); ok {
-		edges, err := ei.AllEdges(ctx, namespace)
+		edges, err := e.graph.EdgesFrom(ctx, namespace, n.ID, nil)
 		if err != nil {
-			return fmt.Errorf("export edges: %w", err)
+			return fmt.Errorf("edges from %s: %w", n.ID, err)
 		}
 		for _, edge := range edges {
+			if exportedEdges[edge.ID] {
+				continue
+			}
+			exportedEdges[edge.ID] = true
 			data, err := json.Marshal(edge)
 			if err != nil {
 				return fmt.Errorf("marshal edge %s: %w", edge.ID, err)
@@ -111,7 +97,6 @@ func (e *Exporter) Export(ctx context.Context, namespace string, w io.Writer) er
 		}
 	}
 
-	// Export sources
 	if si, ok := e.graph.(sourceIterator); ok {
 		sources, err := si.AllSources(ctx, namespace)
 		if err != nil {

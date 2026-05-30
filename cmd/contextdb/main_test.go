@@ -78,6 +78,25 @@ func TestDefaultNornEndpoint(t *testing.T) {
 	}
 }
 
+func TestParseUUIDList(t *testing.T) {
+	is := is.New(t)
+
+	ids, err := parseUUIDList("550e8400-e29b-41d4-a716-446655440000,550e8400-e29b-41d4-a716-446655440001")
+
+	is.NoErr(err)
+	is.Equal(len(ids), 2)
+	is.Equal(ids[0].String(), "550e8400-e29b-41d4-a716-446655440000")
+	is.Equal(ids[1].String(), "550e8400-e29b-41d4-a716-446655440001")
+}
+
+func TestParseUUIDListRejectsInvalidSeed(t *testing.T) {
+	is := is.New(t)
+
+	_, err := parseUUIDList("not-a-uuid")
+
+	is.True(err != nil)
+}
+
 func TestBuildNornDriftReportMatches(t *testing.T) {
 	is := is.New(t)
 

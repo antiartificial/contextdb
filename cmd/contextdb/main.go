@@ -32,6 +32,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/antiartificial/contextdb/internal/buildinfo"
 	"github.com/antiartificial/contextdb/internal/doctor"
 	"github.com/antiartificial/contextdb/internal/federation"
@@ -46,6 +48,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "norn" {
 		runNorn(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "snapshot" {
+		runSnapshot(os.Args[2:])
 		return
 	}
 
@@ -102,6 +108,140 @@ func main() {
 
 	logger.Info("shutting down...")
 	srv.Stop()
+}
+
+func runSnapshot(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export or import")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "export":
+		runSnapshotExport(args[1:])
+	case "import":
+		runSnapshotImport(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotExport(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot export", flag.ExitOnError)
+	namespace := fs.String("namespace", "default", "namespace to export")
+	outPath := fs.String("out", "-", "output NDJSON file, or - for stdout")
+	seedRaw := fs.String("seeds", "", "comma-separated seed node IDs for filtered export")
+	maxDepth := fs.Int("max-depth", 10, "maximum graph depth for seeded exports")
+	_ = fs.Parse(args)
+
+	db := openSnapshotDB()
+	defer db.Close()
+
+	out, closeOut, err := outputWriter(*outPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(2)
+	}
+	defer closeOut()
+
+	seeds, err := parseUUIDList(*seedRaw)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(2)
+	}
+	if len(seeds) > 0 {
+		err = db.ExportSnapshotFromSeeds(context.Background(), *namespace, seeds, *maxDepth, out)
+	} else {
+		err = db.ExportSnapshot(context.Background(), *namespace, out)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runSnapshotImport(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot import", flag.ExitOnError)
+	namespace := fs.String("namespace", "default", "namespace to import into")
+	inPath := fs.String("in", "-", "input NDJSON file, or - for stdin")
+	dryRun := fs.Bool("dry-run", false, "validate the snapshot without writing")
+	_ = fs.Parse(args)
+
+	in, closeIn, err := inputReader(*inPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
+		os.Exit(2)
+	}
+	defer closeIn()
+
+	db := openSnapshotDB()
+	defer db.Close()
+	if *dryRun {
+		err = db.ValidateSnapshot(context.Background(), *namespace, in)
+	} else {
+		err = db.ImportSnapshot(context.Background(), *namespace, in)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
+		os.Exit(1)
+	}
+	if *dryRun {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func openSnapshotDB() *client.DB {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := client.Open(client.Options{
+		Mode:        client.Mode(getenv("CONTEXTDB_MODE", "embedded")),
+		DataDir:     os.Getenv("CONTEXTDB_DATA_DIR"),
+		DSN:         os.Getenv("CONTEXTDB_DSN"),
+		DedupWrites: os.Getenv("CONTEXTDB_DEDUP_WRITES") == "true",
+		Logger:      logger,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot: open database: %v\n", err)
+		os.Exit(2)
+	}
+	return db
+}
+
+func outputWriter(path string) (io.Writer, func(), error) {
+	if path == "-" {
+		return os.Stdout, func() {}, nil
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("create output: %w", err)
+	}
+	return f, func() { _ = f.Close() }, nil
+}
+
+func inputReader(path string) (io.Reader, func(), error) {
+	if path == "-" {
+		return os.Stdin, func() {}, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("open input: %w", err)
+	}
+	return f, func() { _ = f.Close() }, nil
+}
+
+func parseUUIDList(raw string) ([]uuid.UUID, error) {
+	parts := splitComma(raw)
+	if len(parts) == 0 {
+		return nil, nil
+	}
+	out := make([]uuid.UUID, 0, len(parts))
+	for _, part := range parts {
+		id, err := uuid.Parse(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid seed %q: %w", part, err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 type nornPorts struct {

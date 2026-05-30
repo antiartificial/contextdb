@@ -34,6 +34,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"sort"
 	"strings"
@@ -49,6 +50,7 @@ import (
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/observe"
 	"github.com/antiartificial/contextdb/internal/retrieval"
+	"github.com/antiartificial/contextdb/internal/snapshot"
 	"github.com/antiartificial/contextdb/internal/store"
 	badgerstore "github.com/antiartificial/contextdb/internal/store/badger"
 	memstore "github.com/antiartificial/contextdb/internal/store/memory"
@@ -344,6 +346,43 @@ func (db *DB) Registry() *observe.Registry {
 // layer and tests that need direct store access.
 func (db *DB) Stores() (store.GraphStore, store.VectorIndex, store.KVStore, store.EventLog) {
 	return db.graph, db.vecs, db.kv, db.log
+}
+
+// ExportSnapshot writes a namespace snapshot as NDJSON.
+func (db *DB) ExportSnapshot(ctx context.Context, namespace string, w io.Writer) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	if db.closed {
+		return fmt.Errorf("contextdb: connection closed")
+	}
+	return snapshot.NewExporter(db.graph).Export(ctx, namespace, w)
+}
+
+// ExportSnapshotFromSeeds writes a seeded namespace snapshot as NDJSON.
+func (db *DB) ExportSnapshotFromSeeds(ctx context.Context, namespace string, seedIDs []uuid.UUID, maxDepth int, w io.Writer) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	if db.closed {
+		return fmt.Errorf("contextdb: connection closed")
+	}
+	return snapshot.NewExporter(db.graph).ExportFromSeeds(ctx, namespace, seedIDs, maxDepth, w)
+}
+
+// ImportSnapshot imports an NDJSON snapshot into namespace.
+func (db *DB) ImportSnapshot(ctx context.Context, namespace string, r io.Reader) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	if db.closed {
+		return fmt.Errorf("contextdb: connection closed")
+	}
+	return snapshot.NewImporter(db.graph, db.vecs).Import(ctx, namespace, r)
+}
+
+// ValidateSnapshot verifies an NDJSON snapshot without writing to the DB.
+func (db *DB) ValidateSnapshot(ctx context.Context, namespace string, r io.Reader) error {
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	return snapshot.NewImporter(graph, vecs).Import(ctx, namespace, r)
 }
 
 // Ping verifies the connection is still alive. Analogous to sql.DB.Ping.

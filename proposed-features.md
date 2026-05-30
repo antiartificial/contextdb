@@ -103,6 +103,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Norn live drift check | Implemented | `contextdb norn drift` compares the expected generated manifest entry with the live Norn manifest and reports field-level differences |
 
+## Completed In v0.17.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Snapshot backup/restore command | Implemented | Go client snapshot helpers and `contextdb snapshot export/import` provide NDJSON backup, seeded subgraph export, namespace restore override, and dry-run validation |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -129,7 +135,7 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:---------------|:------|
 | `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | Non-mutating checks completed in v0.4.0; opt-in sample write/retrieve probe completed in v0.4.1; deeper store/index checks remain |
 | Release health page | Makes release confidence visible | Completed in v0.11.2; next step is generating gate status from CI artifacts |
-| Backup/restore command | Productizes snapshot import/export | Include dry-run validation and namespace filters |
+| Backup/restore command | Productizes snapshot import/export | Completed in v0.17.0 with Go client helpers, CLI export/import, seeded filters, namespace restore override, and dry-run validation |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -209,7 +215,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Norn manifest publish | Manifest generation exists, but registration may still be manual | Add a dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Norn live drift check | Validation catches local shape errors, not live manifest drift | Completed in v0.16.0 with `contextdb norn drift` |
 | Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Completed in v0.15.0 with review queue filters for type, source ID, status, and owner |
-| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation |
+| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
 | CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
 
 ## Fresh Brainstorm After v0.15.0
@@ -219,7 +225,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Norn live drift check | Manifest generation exists, but hosted services can drift from local expectations | Completed in v0.16.0 with `contextdb norn drift` |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
-| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation |
+| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
 | CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
 
 ## Fresh Brainstorm After v0.16.0
@@ -227,7 +233,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
-| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Productize namespace export/import with dry-run validation and namespace filters |
+| Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+
+## Fresh Brainstorm After v0.17.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Snapshot restore report | Backup/restore now exists, but imports should summarize what changed | Add dry-run and import counts for nodes, edges, sources, vectors, and namespace overrides |
+| Scheduled backup marker | Snapshot export pairs naturally with doctor backup readiness | Add a tiny command or documented script that writes `.last-backup` only after export and dry-run validation pass |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |

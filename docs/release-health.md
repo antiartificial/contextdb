@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.17.0 | Passed | Passed | Corpus coverage present | Snapshot export/import coverage added | CLI and client snapshot tests added | Adds public snapshot backup/restore helpers and CLI dry-run validation |
 | v0.16.0 | Passed | Passed | Corpus coverage present | Restart coverage present | CLI Norn drift tests added | Adds live Norn manifest drift reporting |
 | v0.15.0 | Passed | Passed | Corpus coverage present | Restart coverage present | SDK, REST, and GraphQL review queue filter tests added | Adds review queue filters by type, source, status, and owner |
 | v0.14.0 | Passed | Passed | Corpus coverage present | Restart coverage present | CLI Norn helper tests added | Adds local Norn registration helper |

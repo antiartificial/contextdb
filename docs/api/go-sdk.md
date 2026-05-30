@@ -352,24 +352,18 @@ Sets labels on a source. Use "moderator"/"admin" for full trust, "troll"/"flagge
 
 ## Export / Import
 
-The `snapshot` package provides namespace export and import via NDJSON:
+The client provides namespace export and import via NDJSON:
 
 ```go
-import "github.com/antiartificial/contextdb/internal/snapshot"
-
-// Export a namespace
-graph, vecs, _, _ := db.Stores()
-exporter := snapshot.NewExporter(graph)
-
 var buf bytes.Buffer
-err := exporter.Export(ctx, "my-app", &buf)
+err := db.ExportSnapshot(ctx, "my-app", &buf)
 
-// Export subgraph from seeds
-err = exporter.ExportFromSeeds(ctx, "my-app", seedIDs, 3, &buf)
+// Export a filtered subgraph from seed nodes.
+err = db.ExportSnapshotFromSeeds(ctx, "my-app", seedIDs, 3, &buf)
 
-// Import into another DB
-importer := snapshot.NewImporter(graph, vecs)
-err = importer.Import(ctx, "my-app", &buf)
+// Validate without writing, then import into another namespace.
+err = db.ValidateSnapshot(ctx, "restore-preview", bytes.NewReader(buf.Bytes()))
+err = db.ImportSnapshot(ctx, "restore-preview", bytes.NewReader(buf.Bytes()))
 ```
 
 The NDJSON format contains one record per line:

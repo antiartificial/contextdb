@@ -57,4 +57,38 @@ contextdb doctor --backup-marker /var/lib/contextdb/.last-backup --max-backup-ag
 
 The JSON report includes a `backup_readiness` check with the observed marker age.
 
+## Snapshot Backup And Restore
+
+Use `contextdb snapshot export` to write an NDJSON namespace backup:
+
+```bash
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb snapshot export --namespace my-app --out my-app.contextdb.ndjson
+```
+
+Use seed IDs for a filtered subgraph export:
+
+```bash
+contextdb snapshot export \
+  --namespace my-app \
+  --seeds 550e8400-e29b-41d4-a716-446655440000 \
+  --max-depth 3 \
+  --out claim-subgraph.ndjson
+```
+
+Validate a backup without writing:
+
+```bash
+contextdb snapshot import --namespace restore-preview --in my-app.contextdb.ndjson --dry-run
+```
+
+Restore into a namespace:
+
+```bash
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb snapshot import --namespace my-app --in my-app.contextdb.ndjson
+```
+
+Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
+
 Future doctor slices should add deeper store/index consistency checks.
