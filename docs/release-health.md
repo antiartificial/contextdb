@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.20.0 | Passed | Passed | Corpus coverage present | Snapshot diff preview coverage added | Client snapshot diff report tests added | Adds new, changed, and unchanged node counts for snapshot restore reports |
 | v0.19.0 | Passed | Passed | Corpus coverage present | Snapshot marker coverage added | CLI backup marker test added | Adds export-side backup marker for doctor readiness |
 | v0.18.0 | Passed | Passed | Corpus coverage present | Snapshot report coverage added | Client snapshot report tests added | Adds dry-run and import reports for snapshot restore counts |
 | v0.17.0 | Passed | Passed | Corpus coverage present | Snapshot export/import coverage added | CLI and client snapshot tests added | Adds public snapshot backup/restore helpers and CLI dry-run validation |

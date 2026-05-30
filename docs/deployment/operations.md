@@ -92,7 +92,7 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
   contextdb snapshot import --namespace my-app --in my-app.contextdb.ndjson --report
 ```
 
-The report includes processed line, node, edge, source, vector, and namespace override counts. Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
+The report includes processed line, node, edge, source, vector, namespace override, and node diff counts (`new_nodes`, `changed_nodes`, `unchanged_nodes`). Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
 
 The export marker is written only after the snapshot stream completes successfully. Point `contextdb doctor --backup-marker` at the same marker file to include backup freshness in readiness checks.
 

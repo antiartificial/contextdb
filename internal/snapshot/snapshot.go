@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -215,6 +216,9 @@ type ImportReport struct {
 	Sources            int    `json:"sources"`
 	Vectors            int    `json:"vectors"`
 	NamespaceOverrides int    `json:"namespace_overrides"`
+	NewNodes           int    `json:"new_nodes"`
+	ChangedNodes       int    `json:"changed_nodes"`
+	UnchangedNodes     int    `json:"unchanged_nodes"`
 }
 
 // NewImporter creates a new Importer that writes to the given stores.
@@ -232,6 +236,17 @@ func (im *Importer) Import(ctx context.Context, namespace string, r io.Reader) e
 
 // ImportWithReport imports an NDJSON snapshot and returns processed counts.
 func (im *Importer) ImportWithReport(ctx context.Context, namespace string, r io.Reader) (ImportReport, error) {
+	return im.importWithReport(ctx, namespace, r, false)
+}
+
+// ValidateWithReport validates an NDJSON snapshot against the target stores without writing.
+func (im *Importer) ValidateWithReport(ctx context.Context, namespace string, r io.Reader) (ImportReport, error) {
+	report, err := im.importWithReport(ctx, namespace, r, true)
+	report.DryRun = true
+	return report, err
+}
+
+func (im *Importer) importWithReport(ctx context.Context, namespace string, r io.Reader, dryRun bool) (ImportReport, error) {
 	report := ImportReport{Namespace: namespace}
 	scanner := bufio.NewScanner(r)
 	// Allow large lines (up to 10MB)
@@ -261,25 +276,41 @@ func (im *Importer) ImportWithReport(ctx context.Context, namespace string, r io
 				report.NamespaceOverrides++
 				node.Namespace = namespace
 			}
-			if err := im.graph.UpsertNode(ctx, node); err != nil {
-				return report, fmt.Errorf("line %d: upsert node %s: %w", lineNum, node.ID, err)
+			existing, err := im.graph.GetNode(ctx, node.Namespace, node.ID)
+			if err != nil {
+				return report, fmt.Errorf("line %d: check existing node %s: %w", lineNum, node.ID, err)
+			}
+			switch {
+			case existing == nil:
+				report.NewNodes++
+			case reflect.DeepEqual(*existing, node):
+				report.UnchangedNodes++
+			default:
+				report.ChangedNodes++
+			}
+			if !dryRun {
+				if err := im.graph.UpsertNode(ctx, node); err != nil {
+					return report, fmt.Errorf("line %d: upsert node %s: %w", lineNum, node.ID, err)
+				}
 			}
 			report.Nodes++
 			// Index vector if present
 			if len(node.Vector) > 0 {
-				if reg, ok := im.vecs.(interface{ RegisterNode(core.Node) }); ok {
-					reg.RegisterNode(node)
-				}
-				nID := node.ID
-				if err := im.vecs.Index(ctx, core.VectorEntry{
-					ID:        uuid.New(),
-					Namespace: node.Namespace,
-					NodeID:    &nID,
-					Vector:    node.Vector,
-					ModelID:   node.ModelID,
-					CreatedAt: node.TxTime,
-				}); err != nil {
-					return report, fmt.Errorf("line %d: index vector for node %s: %w", lineNum, node.ID, err)
+				if !dryRun {
+					if reg, ok := im.vecs.(interface{ RegisterNode(core.Node) }); ok {
+						reg.RegisterNode(node)
+					}
+					nID := node.ID
+					if err := im.vecs.Index(ctx, core.VectorEntry{
+						ID:        uuid.New(),
+						Namespace: node.Namespace,
+						NodeID:    &nID,
+						Vector:    node.Vector,
+						ModelID:   node.ModelID,
+						CreatedAt: node.TxTime,
+					}); err != nil {
+						return report, fmt.Errorf("line %d: index vector for node %s: %w", lineNum, node.ID, err)
+					}
 				}
 				report.Vectors++
 			}
@@ -293,8 +324,10 @@ func (im *Importer) ImportWithReport(ctx context.Context, namespace string, r io
 				report.NamespaceOverrides++
 				edge.Namespace = namespace
 			}
-			if err := im.graph.UpsertEdge(ctx, edge); err != nil {
-				return report, fmt.Errorf("line %d: upsert edge %s: %w", lineNum, edge.ID, err)
+			if !dryRun {
+				if err := im.graph.UpsertEdge(ctx, edge); err != nil {
+					return report, fmt.Errorf("line %d: upsert edge %s: %w", lineNum, edge.ID, err)
+				}
 			}
 			report.Edges++
 
@@ -307,8 +340,10 @@ func (im *Importer) ImportWithReport(ctx context.Context, namespace string, r io
 				report.NamespaceOverrides++
 				src.Namespace = namespace
 			}
-			if err := im.graph.UpsertSource(ctx, src); err != nil {
-				return report, fmt.Errorf("line %d: upsert source %s: %w", lineNum, src.ID, err)
+			if !dryRun {
+				if err := im.graph.UpsertSource(ctx, src); err != nil {
+					return report, fmt.Errorf("line %d: upsert source %s: %w", lineNum, src.ID, err)
+				}
 			}
 			report.Sources++
 

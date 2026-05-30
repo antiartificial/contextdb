@@ -36,6 +36,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
 | Snapshot backup marker | Implemented | v0.19 | `operations`, `backup`, `durability` | `contextdb snapshot export --backup-marker` writes a doctor-compatible marker only after export succeeds |
+| Snapshot diff preview | Implemented | v0.20 | `operations`, `backup`, `inspectability` | Snapshot restore reports classify nodes as new, changed, or unchanged during dry-run and import |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |

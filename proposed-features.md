@@ -121,6 +121,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Scheduled backup marker | Implemented | `contextdb snapshot export --backup-marker PATH` writes a doctor-compatible marker only after successful export |
 
+## Completed In v0.20.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Snapshot diff preview | Implemented | Snapshot restore reports classify node records as new, changed, or unchanged during dry-run and import |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -265,7 +271,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Scheduled backup marker | Snapshot reports can prove an export/validation completed | Completed in v0.19.0 with export-side backup markers |
-| Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Add dry-run changed/new/skipped counts by checking target IDs before import |
+| Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Completed in v0.20.0 with new, changed, and unchanged node counts |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
@@ -274,8 +280,18 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Add dry-run changed/new/skipped counts by checking target IDs before import |
+| Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Completed in v0.20.0 with new, changed, and unchanged node counts |
 | Automated backup runbook | Export markers and doctor readiness now exist | Add a documented launchd/systemd/Norn schedule using export, dry-run validation, marker write, and doctor verification |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+
+## Fresh Brainstorm After v0.20.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Automated backup runbook | Export, restore preview, diff counts, backup markers, and doctor checks now compose into a real backup workflow | Add a documented launchd/systemd/Norn schedule using export, dry-run validation, marker write, and doctor verification |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |

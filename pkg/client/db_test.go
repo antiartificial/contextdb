@@ -59,6 +59,9 @@ func TestDB_SnapshotExportValidateImport(t *testing.T) {
 	is.True(dryRunReport.Nodes > 0)
 	is.True(dryRunReport.Vectors > 0)
 	is.True(dryRunReport.NamespaceOverrides > 0)
+	is.Equal(dryRunReport.NewNodes, dryRunReport.Nodes)
+	is.Equal(dryRunReport.ChangedNodes, 0)
+	is.Equal(dryRunReport.UnchangedNodes, 0)
 
 	dstNS := dst.Namespace("test:snapshot-cli-dest", namespace.ModeGeneral)
 	before, err := dstNS.Retrieve(ctx, client.RetrieveRequest{Vector: vec8(2), TopK: 5})
@@ -70,11 +73,18 @@ func TestDB_SnapshotExportValidateImport(t *testing.T) {
 	is.Equal(importReport.DryRun, false)
 	is.Equal(importReport.Nodes, dryRunReport.Nodes)
 	is.Equal(importReport.Vectors, dryRunReport.Vectors)
+	is.Equal(importReport.NewNodes, dryRunReport.Nodes)
 	after, err := dstNS.Retrieve(ctx, client.RetrieveRequest{Vector: vec8(2), TopK: 5})
 	is.NoErr(err)
 	is.True(len(after) > 0)
 	is.Equal(after[0].Node.ID, written.NodeID)
 	is.Equal(after[0].Node.Namespace, "test:snapshot-cli-dest")
+
+	secondReport, err := dst.ValidateSnapshotReport(ctx, "test:snapshot-cli-dest", bytes.NewReader(buf.Bytes()))
+	is.NoErr(err)
+	is.Equal(secondReport.NewNodes, 0)
+	is.Equal(secondReport.ChangedNodes, 0)
+	is.Equal(secondReport.UnchangedNodes, secondReport.Nodes)
 }
 
 type countingEmbedder struct {

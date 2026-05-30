@@ -393,9 +393,12 @@ func (db *DB) ValidateSnapshot(ctx context.Context, namespace string, r io.Reade
 
 // ValidateSnapshotReport verifies an NDJSON snapshot without writing and returns processed counts.
 func (db *DB) ValidateSnapshotReport(ctx context.Context, namespace string, r io.Reader) (SnapshotReport, error) {
-	graph := memstore.NewGraphStore()
-	vecs := memstore.NewVectorIndex()
-	report, err := snapshot.NewImporter(graph, vecs).ImportWithReport(ctx, namespace, r)
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	if db.closed {
+		return SnapshotReport{}, fmt.Errorf("contextdb: connection closed")
+	}
+	report, err := snapshot.NewImporter(db.graph, db.vecs).ValidateWithReport(ctx, namespace, r)
 	return snapshotReport(report, true), err
 }
 
@@ -409,6 +412,9 @@ func snapshotReport(report snapshot.ImportReport, dryRun bool) SnapshotReport {
 		Sources:            report.Sources,
 		Vectors:            report.Vectors,
 		NamespaceOverrides: report.NamespaceOverrides,
+		NewNodes:           report.NewNodes,
+		ChangedNodes:       report.ChangedNodes,
+		UnchangedNodes:     report.UnchangedNodes,
 	}
 }
 
@@ -478,6 +484,9 @@ type SnapshotReport struct {
 	Sources            int    `json:"sources"`
 	Vectors            int    `json:"vectors"`
 	NamespaceOverrides int    `json:"namespace_overrides"`
+	NewNodes           int    `json:"new_nodes"`
+	ChangedNodes       int    `json:"changed_nodes"`
+	UnchangedNodes     int    `json:"unchanged_nodes"`
 }
 
 // Namespace returns a handle for the named namespace, creating it if it

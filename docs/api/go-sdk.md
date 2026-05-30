@@ -364,7 +364,8 @@ err = db.ExportSnapshotFromSeeds(ctx, "my-app", seedIDs, 3, &buf)
 // Validate without writing, then import into another namespace.
 dryRun, err := db.ValidateSnapshotReport(ctx, "restore-preview", bytes.NewReader(buf.Bytes()))
 report, err := db.ImportSnapshotReport(ctx, "restore-preview", bytes.NewReader(buf.Bytes()))
-fmt.Printf("nodes=%d vectors=%d overrides=%d\n", report.Nodes, report.Vectors, dryRun.NamespaceOverrides)
+fmt.Printf("new=%d changed=%d unchanged=%d vectors=%d overrides=%d\n",
+    dryRun.NewNodes, dryRun.ChangedNodes, dryRun.UnchangedNodes, report.Vectors, report.NamespaceOverrides)
 ```
 
 The NDJSON format contains one record per line:
