@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.27.0",
+  "contextdb_version": "0.28.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -126,6 +126,83 @@ contextdb snapshot receipt verify \
 ```
 
 Receipt verification confirms the promoted import counts still line up with the exported artifact metadata.
+
+## Lifecycle Script
+
+For an operator-controlled end-to-end run, wrap the commands above in one script. The script always exports, verifies, rehearses, checks doctor backup freshness, and writes a lifecycle summary. It promotes only when `PROMOTE=1` is set.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${CONTEXTDB_NAMESPACE:?set CONTEXTDB_NAMESPACE}"
+: "${CONTEXTDB_BACKUP_DIR:?set CONTEXTDB_BACKUP_DIR}"
+: "${CONTEXTDB_BACKUP_MARKER:?set CONTEXTDB_BACKUP_MARKER}"
+: "${CONTEXTDB_REST_URL:?set CONTEXTDB_REST_URL}"
+
+mkdir -p "$CONTEXTDB_BACKUP_DIR"
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+backup="$CONTEXTDB_BACKUP_DIR/${CONTEXTDB_NAMESPACE}-${stamp}.ndjson"
+manifest="${backup%.ndjson}.manifest.json"
+rehearsal="${backup%.ndjson}.rehearsal.json"
+promotion="${backup%.ndjson}.promotion.json"
+receipt_check="${backup%.ndjson}.receipt-check.json"
+summary="${backup%.ndjson}.lifecycle.json"
+preview_namespace="${RESTORE_PREVIEW_NAMESPACE:-${CONTEXTDB_NAMESPACE}-restore-preview}"
+
+contextdb snapshot export \
+  --namespace "$CONTEXTDB_NAMESPACE" \
+  --out "$backup" \
+  --backup-marker "$CONTEXTDB_BACKUP_MARKER" \
+  --manifest "$manifest"
+
+contextdb snapshot verify \
+  --manifest "$manifest" \
+  --in "$backup" \
+  --report
+
+contextdb snapshot rehearse \
+  --manifest "$manifest" \
+  --in "$backup" \
+  --namespace "$preview_namespace" \
+  --report > "$rehearsal"
+
+contextdb doctor \
+  --url "$CONTEXTDB_REST_URL" \
+  --backup-marker "$CONTEXTDB_BACKUP_MARKER" \
+  --max-backup-age "${MAX_BACKUP_AGE:-24h}"
+
+promoted=false
+if [ "${PROMOTE:-0}" = "1" ]; then
+  contextdb snapshot import \
+    --namespace "$CONTEXTDB_NAMESPACE" \
+    --in "$backup" \
+    --report \
+    --promotion-note "${PROMOTION_NOTE:-promoted by backup lifecycle}" \
+    --promotion-report "$promotion"
+
+  contextdb snapshot receipt verify \
+    --promotion-report "$promotion" \
+    --manifest "$manifest" \
+    --report > "$receipt_check"
+  promoted=true
+fi
+
+cat > "$summary" <<JSON
+{
+  "namespace": "$CONTEXTDB_NAMESPACE",
+  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "backup": "$backup",
+  "manifest": "$manifest",
+  "rehearsal": "$rehearsal",
+  "promotion": "$promotion",
+  "receipt_check": "$receipt_check",
+  "promoted": $promoted
+}
+JSON
+```
+
+Use `PROMOTE=1` only after reviewing the rehearsal report. Without it, the script is a backup and preflight workflow that does not write restored records.
 
 ## launchd
 

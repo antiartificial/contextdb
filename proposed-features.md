@@ -169,6 +169,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Promotion receipt verification | Implemented | `contextdb snapshot receipt verify --promotion-report PATH --manifest PATH` compares promotion receipts with artifact manifests for backup identity, namespace consistency, and record counts |
 
+## Completed In v0.28.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Backup lifecycle bundle | Implemented | Backup runbook includes a guarded lifecycle script for export, verify, rehearse, doctor backup freshness, optional promotion, receipt verification, and summary output |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -203,6 +209,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Restore promotion checklist | Makes the post-rehearsal import step explicit | Completed in v0.25.0 with rehearsal timestamp, target namespace, and recommended import command fields |
 | Restore promotion audit event | Leaves a receipt for actual restore promotions | Completed in v0.26.0 with `contextdb snapshot import --promotion-report --promotion-note` |
 | Promotion receipt verification | Confirms promotion receipts match exported artifacts | Completed in v0.27.0 with `contextdb snapshot receipt verify --promotion-report --manifest` |
+| Backup lifecycle bundle | Gives operators one copyable backup-to-promotion workflow | Completed in v0.28.0 with guarded lifecycle script and summary output |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -409,7 +416,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Backup lifecycle bundle | Export, verify, rehearse, promote, and receipt verify now exist as separate commands | Add a documented `backup-lifecycle` script or CLI helper that runs the full chain and writes a final summary |
+| Backup lifecycle bundle | Export, verify, rehearse, promote, and receipt verify now exist as separate commands | Completed in v0.28.0 with a guarded runbook script and lifecycle summary |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.28.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Lifecycle summary verifier | Lifecycle summaries now exist, but operators need a quick consistency check across every referenced artifact | Add a script or CLI helper that loads the summary and checks referenced manifest, rehearsal, promotion, and receipt-check files |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
