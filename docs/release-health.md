@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.26.0 | Passed | Passed | Corpus coverage present | Restore promotion receipt coverage added | CLI import receipt tests added | Adds promotion JSON receipts for snapshot imports |
 | v0.25.0 | Passed | Passed | Corpus coverage present | Restore promotion checklist coverage added | CLI rehearsal report tests added | Adds rehearsal timestamp, target namespace, and recommended import command |
 | v0.24.0 | Passed | Passed | Corpus coverage present | Restore rehearsal coverage added | CLI rehearsal tests added | Adds combined artifact verification and dry-run restore preflight |
 | v0.23.0 | Passed | Passed | Corpus coverage present | Backup manifest verification coverage added | CLI verify tests added | Adds pre-restore checksum, size, and record-count verification |

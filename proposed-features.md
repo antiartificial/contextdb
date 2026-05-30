@@ -157,6 +157,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Restore promotion checklist | Implemented | Rehearsal reports include `rehearsed_at`, `target_namespace`, and a shell-quoted `recommended_import_command` for the promotion step |
 
+## Completed In v0.26.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Restore promotion audit event | Implemented | `contextdb snapshot import --promotion-report PATH --promotion-note TEXT` writes a JSON promotion receipt with import counts after a successful real import |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -189,6 +195,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup manifest verify | Catches mismatched or truncated artifacts before restore | Completed in v0.23.0 with `contextdb snapshot verify --manifest --in` |
 | Restore rehearsal command | Collapses verify and dry-run restore into one operator preflight | Completed in v0.24.0 with `contextdb snapshot rehearse --manifest --in --namespace` |
 | Restore promotion checklist | Makes the post-rehearsal import step explicit | Completed in v0.25.0 with rehearsal timestamp, target namespace, and recommended import command fields |
+| Restore promotion audit event | Leaves a receipt for actual restore promotions | Completed in v0.26.0 with `contextdb snapshot import --promotion-report --promotion-note` |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -375,7 +382,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Restore promotion audit event | Rehearsal now recommends the import command, but actual promotions are not logged as artifacts | Add optional `--promotion-note`/`--promotion-report` on snapshot import to write a promotion JSON receipt |
+| Restore promotion audit event | Rehearsal now recommends the import command, but actual promotions are not logged as artifacts | Completed in v0.26.0 with optional promotion receipts on snapshot import |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.26.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Promotion receipt verification | Promotion receipts exist, but operators need to compare them with the rehearsal/import artifacts | Add `contextdb snapshot receipt verify --promotion-report PATH --manifest PATH` or a receipt section in `snapshot verify` |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |

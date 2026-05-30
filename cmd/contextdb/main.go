@@ -191,7 +191,13 @@ func runSnapshotImport(args []string) {
 	inPath := fs.String("in", "-", "input NDJSON file, or - for stdin")
 	dryRun := fs.Bool("dry-run", false, "validate the snapshot without writing")
 	reportOut := fs.Bool("report", false, "print a JSON import report")
+	promotionNote := fs.String("promotion-note", "", "operator note to include in the promotion receipt")
+	promotionReport := fs.String("promotion-report", "", "JSON promotion receipt to write after successful import")
 	_ = fs.Parse(args)
+	if *dryRun && strings.TrimSpace(*promotionReport) != "" {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot import: --promotion-report requires a real import, not --dry-run")
+		os.Exit(2)
+	}
 
 	in, closeIn, err := inputReader(*inPath)
 	if err != nil {
@@ -211,6 +217,18 @@ func runSnapshotImport(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
 		os.Exit(1)
+	}
+	if !*dryRun {
+		if err := writeSnapshotPromotionReceipt(*promotionReport, snapshotPromotionReceiptOptions{
+			Namespace:  *namespace,
+			BackupPath: *inPath,
+			Note:       *promotionNote,
+			ImportedAt: time.Now(),
+			Report:     report,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	if *reportOut {
 		writeIndentedJSON(report)
@@ -380,6 +398,24 @@ type snapshotRehearsalReport struct {
 	Restore                  client.SnapshotReport        `json:"restore"`
 }
 
+type snapshotPromotionReceiptOptions struct {
+	Namespace  string
+	BackupPath string
+	Note       string
+	ImportedAt time.Time
+	Report     client.SnapshotReport
+}
+
+type snapshotPromotionReceipt struct {
+	SchemaVersion    int                   `json:"schema_version"`
+	Namespace        string                `json:"namespace"`
+	BackupFile       string                `json:"backup_file"`
+	PromotedAt       string                `json:"promoted_at"`
+	ContextDBVersion string                `json:"contextdb_version"`
+	PromotionNote    string                `json:"promotion_note,omitempty"`
+	ImportReport     client.SnapshotReport `json:"import_report"`
+}
+
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -395,6 +431,32 @@ func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOpt
 	}
 	data = append(data, '\n')
 	return os.WriteFile(path, data, 0o644)
+}
+
+func writeSnapshotPromotionReceipt(path string, opts snapshotPromotionReceiptOptions) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	receipt := buildSnapshotPromotionReceipt(opts)
+	data, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode promotion receipt: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func buildSnapshotPromotionReceipt(opts snapshotPromotionReceiptOptions) snapshotPromotionReceipt {
+	return snapshotPromotionReceipt{
+		SchemaVersion:    1,
+		Namespace:        opts.Namespace,
+		BackupFile:       strings.TrimSpace(opts.BackupPath),
+		PromotedAt:       opts.ImportedAt.UTC().Format(time.RFC3339),
+		ContextDBVersion: buildinfo.Version,
+		PromotionNote:    strings.TrimSpace(opts.Note),
+		ImportReport:     opts.Report,
+	}
 }
 
 func buildSnapshotArtifactManifest(opts snapshotArtifactManifestOptions) (snapshotArtifactManifest, error) {

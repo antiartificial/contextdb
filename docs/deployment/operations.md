@@ -90,7 +90,12 @@ Restore into a namespace:
 
 ```bash
 CONTEXTDB_DATA_DIR=/var/lib/contextdb \
-  contextdb snapshot import --namespace my-app --in my-app.contextdb.ndjson --report
+  contextdb snapshot import \
+    --namespace my-app \
+    --in my-app.contextdb.ndjson \
+    --report \
+    --promotion-note "promoted after rehearsal" \
+    --promotion-report my-app.contextdb.promotion.json
 ```
 
 The report includes processed line, node, edge, source, vector, namespace override, and node diff counts (`new_nodes`, `changed_nodes`, `unchanged_nodes`). Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
@@ -119,6 +124,8 @@ contextdb snapshot rehearse \
 ```
 
 The rehearsal report includes the verification result plus the same dry-run restore counts returned by `contextdb snapshot import --dry-run --report`. It also records `rehearsed_at`, `target_namespace`, and a shell-quoted `recommended_import_command` for the promotion step.
+
+For real imports, `--promotion-report` writes a JSON receipt only after the import succeeds. The receipt includes `promoted_at`, `namespace`, `backup_file`, `contextdb_version`, the optional `promotion_note`, and the full import report.
 
 For a complete scheduled workflow that pairs export, restore preview, marker checks, launchd/systemd timers, and Norn drift checks, see the [Backup Runbook](backup-runbook).
 

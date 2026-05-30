@@ -262,6 +262,52 @@ func TestRecommendedSnapshotImportCommandQuotesValues(t *testing.T) {
 	is.Equal(command, "contextdb snapshot import --namespace 'restore preview' --in '/tmp/aaron'\"'\"'s backup.ndjson' --report")
 }
 
+func TestBuildSnapshotPromotionReceipt(t *testing.T) {
+	is := is.New(t)
+	at := time.Date(2026, 5, 30, 18, 30, 0, 0, time.FixedZone("test", -5*60*60))
+
+	receipt := buildSnapshotPromotionReceipt(snapshotPromotionReceiptOptions{
+		Namespace:  "prod",
+		BackupPath: " backup.ndjson ",
+		Note:       " promoted after rehearsal ",
+		ImportedAt: at,
+		Report: client.SnapshotReport{
+			Namespace: "prod",
+			Nodes:     3,
+			NewNodes:  2,
+		},
+	})
+
+	is.Equal(receipt.SchemaVersion, 1)
+	is.Equal(receipt.Namespace, "prod")
+	is.Equal(receipt.BackupFile, "backup.ndjson")
+	is.Equal(receipt.PromotedAt, "2026-05-30T23:30:00Z")
+	is.Equal(receipt.ContextDBVersion, buildinfo.Version)
+	is.Equal(receipt.PromotionNote, "promoted after rehearsal")
+	is.Equal(receipt.ImportReport.Nodes, 3)
+	is.Equal(receipt.ImportReport.NewNodes, 2)
+}
+
+func TestWriteSnapshotPromotionReceipt(t *testing.T) {
+	is := is.New(t)
+	path := filepath.Join(t.TempDir(), "promotion.json")
+
+	err := writeSnapshotPromotionReceipt(path, snapshotPromotionReceiptOptions{
+		Namespace:  "prod",
+		BackupPath: "backup.ndjson",
+		ImportedAt: time.Date(2026, 5, 30, 23, 30, 0, 0, time.UTC),
+		Report:     client.SnapshotReport{Namespace: "prod", Nodes: 1},
+	})
+
+	is.NoErr(err)
+	data, err := os.ReadFile(path)
+	is.NoErr(err)
+	var receipt snapshotPromotionReceipt
+	is.NoErr(json.Unmarshal(data, &receipt))
+	is.Equal(receipt.Namespace, "prod")
+	is.Equal(receipt.ImportReport.Nodes, 1)
+}
+
 func TestBuildNornDriftReportMatches(t *testing.T) {
 	is := is.New(t)
 
