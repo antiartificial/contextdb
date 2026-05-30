@@ -238,6 +238,60 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	feedbackEventType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "FeedbackEvent",
+		Fields: graphql.Fields{
+			"eventId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.EventID.String(), nil
+			}},
+			"namespace": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.Namespace, nil
+			}},
+			"nodeId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.NodeID.String(), nil
+			}},
+			"nodeVersion": &graphql.Field{Type: graphql.Int, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return int(event.NodeVersion), nil
+			}},
+			"action": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.Action, nil
+			}},
+			"confidence": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.Confidence, nil
+			}},
+			"utility": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.Utility, nil
+			}},
+			"sourceId": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.SourceID, nil
+			}},
+			"sourceCredibility": &graphql.Field{Type: graphql.Float, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.SourceCredibility, nil
+			}},
+			"reason": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.Reason, nil
+			}},
+			"quality": &graphql.Field{Type: graphql.Int, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.Quality, nil
+			}},
+			"txTime": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				event, _ := p.Source.(client.FeedbackEvent)
+				return event.TxTime, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -583,6 +637,15 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				Type:    graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(migrationInfoType))),
 				Resolve: s.resolveMigrations,
 			},
+			"feedbackEvents": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(feedbackEventType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveFeedbackEvents,
+			},
 		},
 	})
 
@@ -717,6 +780,17 @@ func (s *GraphQLServer) resolveFeatures(p graphql.ResolveParams) (interface{}, e
 
 func (s *GraphQLServer) resolveMigrations(p graphql.ResolveParams) (interface{}, error) {
 	return postgres.AvailableMigrations(), nil
+}
+
+func (s *GraphQLServer) resolveFeedbackEvents(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.FeedbackEvents(p.Context, after)
 }
 
 func (s *GraphQLServer) resolveFeedbackMutation(action string) graphql.FieldResolveFn {

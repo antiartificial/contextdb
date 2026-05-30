@@ -32,6 +32,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -511,6 +512,22 @@ type FeedbackResult struct {
 	Reason            string
 }
 
+// FeedbackEvent is an auditable record of validate/refute/useful/stale feedback.
+type FeedbackEvent struct {
+	EventID           uuid.UUID `json:"event_id,omitempty"`
+	Namespace         string    `json:"namespace"`
+	NodeID            uuid.UUID `json:"node_id"`
+	NodeVersion       uint64    `json:"node_version,omitempty"`
+	Action            string    `json:"action"`
+	Confidence        float64   `json:"confidence"`
+	Utility           float64   `json:"utility"`
+	SourceID          string    `json:"source_id,omitempty"`
+	SourceCredibility float64   `json:"source_credibility,omitempty"`
+	Reason            string    `json:"reason,omitempty"`
+	Quality           int       `json:"quality,omitempty"`
+	TxTime            time.Time `json:"tx_time"`
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -978,6 +995,33 @@ func (h *NamespaceHandle) MarkStale(ctx context.Context, nodeID uuid.UUID, reaso
 	})
 }
 
+// FeedbackEvents returns durable feedback audit events after the given time.
+func (h *NamespaceHandle) FeedbackEvents(ctx context.Context, after time.Time) ([]FeedbackEvent, error) {
+	events, err := h.db.log.SinceAll(ctx, h.cfg.ID, after)
+	if err != nil {
+		return nil, fmt.Errorf("feedback events: %w", err)
+	}
+	out := make([]FeedbackEvent, 0, len(events))
+	for _, event := range events {
+		if event.Type != store.EventFeedback {
+			continue
+		}
+		var feedback FeedbackEvent
+		if err := json.Unmarshal(event.Payload, &feedback); err != nil {
+			return nil, fmt.Errorf("feedback events: decode %s: %w", event.ID, err)
+		}
+		feedback.EventID = event.ID
+		if feedback.Namespace == "" {
+			feedback.Namespace = event.Namespace
+		}
+		if feedback.TxTime.IsZero() {
+			feedback.TxTime = event.TxTime
+		}
+		out = append(out, feedback)
+	}
+	return out, nil
+}
+
 // Explain returns a narrative report explaining what is known about a node.
 func (h *NamespaceHandle) Explain(ctx context.Context, nodeID uuid.UUID) (*retrieval.NarrativeReport, error) {
 	formatter := retrieval.NewNarrativeFormatter(h.db.graph, h.db.vecs)
@@ -1246,7 +1290,42 @@ func (h *NamespaceHandle) applyFeedback(ctx context.Context, nodeID uuid.UUID, u
 	if err := h.db.graph.UpsertNode(ctx, *node); err != nil {
 		return FeedbackResult{}, fmt.Errorf("%s: upsert node: %w", update.action, err)
 	}
+	if latest, err := h.db.graph.GetNode(ctx, h.cfg.ID, nodeID); err == nil && latest != nil {
+		node = latest
+	}
+	if err := h.appendFeedbackEvent(ctx, node, result, update, now); err != nil {
+		return FeedbackResult{}, err
+	}
 	return result, nil
+}
+
+func (h *NamespaceHandle) appendFeedbackEvent(ctx context.Context, node *core.Node, result FeedbackResult, update feedbackUpdate, txTime time.Time) error {
+	feedback := FeedbackEvent{
+		Namespace:         h.cfg.ID,
+		NodeID:            result.NodeID,
+		NodeVersion:       node.Version,
+		Action:            result.Action,
+		Confidence:        result.Confidence,
+		Utility:           result.Utility,
+		SourceID:          result.SourceID,
+		SourceCredibility: result.SourceCredibility,
+		Reason:            result.Reason,
+		Quality:           update.quality,
+		TxTime:            txTime,
+	}
+	payload, err := json.Marshal(feedback)
+	if err != nil {
+		return fmt.Errorf("%s: marshal feedback event: %w", update.action, err)
+	}
+	if err := h.db.log.Append(ctx, store.Event{
+		Namespace: h.cfg.ID,
+		Type:      store.EventFeedback,
+		Payload:   payload,
+		TxTime:    txTime,
+	}); err != nil {
+		return fmt.Errorf("%s: append feedback event: %w", update.action, err)
+	}
+	return nil
 }
 
 func propertyFloat(props map[string]any, key string, fallback float64) float64 {

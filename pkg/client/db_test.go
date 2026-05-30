@@ -208,6 +208,7 @@ func TestNamespace_WriteDedupIsOptIn(t *testing.T) {
 func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
+	start := time.Now().Add(-time.Second)
 
 	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
 	defer db.Close()
@@ -247,6 +248,20 @@ func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is.True(node != nil)
 	is.Equal(node.Properties["refuted_reason"], "bad source")
 	is.True(node.Version >= 4)
+
+	events, err := ns.FeedbackEvents(ctx, start)
+	is.NoErr(err)
+	is.Equal(len(events), 3)
+	is.Equal(events[0].Action, "validated")
+	is.Equal(events[0].NodeID, written.NodeID)
+	is.Equal(events[0].SourceID, "docs")
+	is.True(events[0].SourceCredibility > 0.5)
+	is.True(events[0].NodeVersion >= 2)
+	is.True(!events[0].TxTime.IsZero())
+	is.Equal(events[1].Action, "useful")
+	is.Equal(events[1].Quality, 4)
+	is.Equal(events[2].Action, "refuted")
+	is.Equal(events[2].Reason, "bad source")
 }
 
 func TestNamespace_ExplainAndKnowledgeGaps(t *testing.T) {

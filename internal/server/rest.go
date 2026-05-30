@@ -56,6 +56,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/refute", s.handleRefuteClaim)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/useful", s.handleMarkUseful)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/stale", s.handleMarkStale)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/feedback/events", s.handleFeedbackEvents)
 
 	mux.HandleFunc("GET /v1/namespaces/{ns}/nodes/{id}/narrative", s.handleNarrative)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/gaps", s.handleKnowledgeGaps)
@@ -531,6 +532,32 @@ func (s *RESTServer) handleFeedback(w http.ResponseWriter, r *http.Request, acti
 	}
 
 	writeJSON(w, http.StatusOK, newFeedbackResponse(result))
+}
+
+func (s *RESTServer) handleFeedbackEvents(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var after time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
+			return
+		}
+		after = t
+	}
+
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	events, err := h.FeedbackEvents(r.Context(), after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"events": events})
 }
 
 func (s *RESTServer) handleNarrative(w http.ResponseWriter, r *http.Request) {

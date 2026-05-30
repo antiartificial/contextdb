@@ -258,6 +258,15 @@ stale, err := ns.MarkStale(ctx, nodeID, "superseded")
 
 Validation/refutation also update the asserting source when the node has a `source_id`.
 
+Feedback operations append durable audit events. Read them with:
+
+```go
+events, err := ns.FeedbackEvents(ctx, time.Now().Add(-24*time.Hour))
+for _, event := range events {
+    fmt.Printf("%s %s %s\n", event.TxTime, event.Action, event.NodeID)
+}
+```
+
 ## Narrative And Gaps
 
 ```go

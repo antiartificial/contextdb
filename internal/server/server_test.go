@@ -151,6 +151,20 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(feedbackResp["action"], "validated")
 	is.True(feedbackResp["source_credibility"].(float64) > 0.5)
 
+	reqEvents := httptest.NewRequest("GET", "/v1/namespaces/channel:general/feedback/events", nil)
+	wEvents := httptest.NewRecorder()
+	handler.ServeHTTP(wEvents, reqEvents)
+
+	is.Equal(wEvents.Code, http.StatusOK)
+	var eventsResp map[string]any
+	is.NoErr(json.Unmarshal(wEvents.Body.Bytes(), &eventsResp))
+	events := eventsResp["events"].([]any)
+	is.Equal(len(events), 1)
+	event := events[0].(map[string]any)
+	is.Equal(event["node_id"], nodeID)
+	is.Equal(event["action"], "validated")
+	is.Equal(event["source_id"], "moderator:alice")
+
 	req4 := httptest.NewRequest("GET", "/v1/namespaces/channel:general/nodes/"+nodeID+"/narrative", nil)
 	w4 := httptest.NewRecorder()
 	handler.ServeHTTP(w4, req4)
@@ -339,6 +353,12 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				totalNodes
 				gapsDetected
 			}
+			feedbackEvents(namespace: "graphql-test") {
+				nodeId
+				action
+				sourceId
+				sourceCredibility
+			}
 		}`,
 		"variables": map[string]any{"id": nodeID},
 	})
@@ -358,6 +378,12 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(narrative["claim"].(map[string]any)["text"], "Go uses goroutines for concurrency")
 	gaps := data["knowledgeGaps"].(map[string]any)
 	is.Equal(gaps["totalNodes"], float64(1))
+	events := data["feedbackEvents"].([]any)
+	is.Equal(len(events), 1)
+	event := events[0].(map[string]any)
+	is.Equal(event["nodeId"], nodeID)
+	is.Equal(event["action"], "validated")
+	is.Equal(event["sourceId"], "docs")
 }
 
 func TestGraphQLServer_Introspection(t *testing.T) {

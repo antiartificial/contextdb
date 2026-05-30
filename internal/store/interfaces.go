@@ -163,6 +163,7 @@ const (
 	EventEdgeInvalidate EventType = "edge_invalidate"
 	EventNodeRetract    EventType = "node_retract"
 	EventSourceUpdate   EventType = "source_update"
+	EventFeedback       EventType = "feedback"
 )
 
 // Event is a single append-only log record.

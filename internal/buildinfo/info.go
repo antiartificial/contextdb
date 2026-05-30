@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.4.1"
+	Version = "0.5.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.4.1",
+		ReleaseNotesPath: "/contextdb/releases/v0.5.0",
 	}
 }
 
@@ -55,6 +55,7 @@ func Features() []Feature {
 		{Name: "narrative-and-gaps", Status: "stable", Since: "v0.3.0", Description: "Narrative explanations and knowledge gap detection for inspectable retrieval."},
 		{Name: "feature-introspection", Status: "stable", Since: "v0.4.0", Description: "REST and GraphQL version, feature, and migration discovery endpoints."},
 		{Name: "doctor-sample-write", Status: "stable", Since: "v0.4.1", Description: "Opt-in doctor write/retrieve probe for live REST deployments."},
+		{Name: "feedback-event-log", Status: "stable", Since: "v0.5.0", Description: "Durable feedback audit events exposed through the Go SDK, REST, and GraphQL."},
 	}
 }
 

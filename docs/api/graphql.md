@@ -123,3 +123,21 @@ Available mutations:
 | `refuteClaim` | Sets claim confidence low and refutes the asserting source |
 | `markUseful` | Increases utility and updates SM-2 recall metadata |
 | `markStale` | Decreases confidence and utility |
+
+## Feedback Events
+
+```graphql
+query {
+  feedbackEvents(namespace: "my-app", after: "2026-05-30T00:00:00Z") {
+    eventId
+    nodeId
+    nodeVersion
+    action
+    sourceId
+    sourceCredibility
+    txTime
+  }
+}
+```
+
+Feedback events are durable audit records emitted by `validateClaim`, `refuteClaim`, `markUseful`, and `markStale`.

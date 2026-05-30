@@ -19,6 +19,7 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/refute` | Refute a claim |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/useful` | Mark a memory useful |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/stale` | Mark a node stale |
+| `GET` | `/v1/namespaces/{ns}/feedback/events` | List feedback audit events |
 | `GET` | `/v1/namespaces/{ns}/nodes/{id}/narrative` | Explain a claim with evidence |
 | `POST` | `/v1/namespaces/{ns}/gaps` | Detect knowledge gaps |
 | `GET` | `/v1/stats` | Runtime statistics |
@@ -193,9 +194,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.4.1",
+  "version": "0.5.0",
   "api_version": "v1",
-  "docs_version": "0.4.1",
+  "docs_version": "0.5.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -210,6 +211,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.4.1",
       "description": "Opt-in doctor write/retrieve probe for live REST deployments."
+    },
+    {
+      "name": "feedback-event-log",
+      "status": "stable",
+      "since": "v0.5.0",
+      "description": "Durable feedback audit events exposed through the Go SDK, REST, and GraphQL."
     }
   ],
   "migrations": [
@@ -217,7 +224,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.4.1"
+  "release_notes_path": "/contextdb/releases/v0.5.0"
 }
 ```
 
@@ -299,6 +306,37 @@ Available actions:
   "source_id": "docs-crawler",
   "source_credibility": 0.67,
   "reason": "verified externally"
+}
+```
+
+## Feedback Events
+
+Feedback operations append durable audit events. List them with:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/feedback/events?after=2026-05-30T00:00:00Z"
+```
+
+**Response:**
+
+```json
+{
+  "events": [
+    {
+      "event_id": "7ce69c7e-7f5b-4d23-86aa-a1b70f2fa111",
+      "namespace": "my-app",
+      "node_id": "550e8400-e29b-41d4-a716-446655440000",
+      "node_version": 2,
+      "action": "validated",
+      "confidence": 1,
+      "utility": 1,
+      "source_id": "docs-crawler",
+      "source_credibility": 0.67,
+      "reason": "verified externally",
+      "quality": 5,
+      "tx_time": "2026-05-30T16:45:00Z"
+    }
+  ]
 }
 ```
 
