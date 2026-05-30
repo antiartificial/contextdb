@@ -26,6 +26,10 @@ features:
     details: Conflicting claims detected at write time, tracked as graph edges, and scored during retrieval. The system knows what it disagrees about.
 ---
 
+::: tip Current release
+contextdb is currently `v0.3.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+:::
+
 <div class="stat-row">
   <div class="stat-box">
     <span class="stat-value">4</span>
