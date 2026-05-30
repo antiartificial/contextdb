@@ -117,7 +117,7 @@ func main() {
 
 func runSnapshot(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, verify, or rehearse")
+		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, verify, rehearse, or receipt")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -129,6 +129,8 @@ func runSnapshot(args []string) {
 		runSnapshotVerify(args[1:])
 	case "rehearse":
 		runSnapshotRehearse(args[1:])
+	case "receipt":
+		runSnapshotReceipt(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb snapshot: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -284,6 +286,42 @@ func runSnapshotRehearse(args []string) {
 	}
 }
 
+func runSnapshotReceipt(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot receipt: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runSnapshotReceiptVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot receipt: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotReceiptVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot receipt verify", flag.ExitOnError)
+	promotionReport := fs.String("promotion-report", "", "JSON promotion receipt to verify")
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to compare against")
+	reportOut := fs.Bool("report", false, "print a JSON receipt verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotPromotionReceipt(*promotionReport, *manifestPath)
+	if err != nil {
+		if *reportOut && (report.PromotionReport != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot receipt verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
 func openSnapshotDB() *client.DB {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := client.Open(client.Options{
@@ -416,6 +454,22 @@ type snapshotPromotionReceipt struct {
 	ImportReport     client.SnapshotReport `json:"import_report"`
 }
 
+type snapshotPromotionReceiptVerifyReport struct {
+	OK                 bool                   `json:"ok"`
+	PromotionReport    string                 `json:"promotion_report"`
+	Manifest           string                 `json:"manifest"`
+	ReceiptNamespace   string                 `json:"receipt_namespace"`
+	ImportNamespace    string                 `json:"import_namespace"`
+	ReceiptBackupFile  string                 `json:"receipt_backup_file"`
+	ManifestBackupFile string                 `json:"manifest_backup_file"`
+	ReceiptVersion     string                 `json:"receipt_contextdb_version"`
+	ManifestVersion    string                 `json:"manifest_contextdb_version"`
+	ImportedRecords    snapshotArtifactCounts `json:"imported_records"`
+	ManifestRecords    snapshotArtifactCounts `json:"manifest_records"`
+	PromotedAt         string                 `json:"promoted_at"`
+	ValidationErrors   []string               `json:"validation_errors,omitempty"`
+}
+
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -457,6 +511,75 @@ func buildSnapshotPromotionReceipt(opts snapshotPromotionReceiptOptions) snapsho
 		PromotionNote:    strings.TrimSpace(opts.Note),
 		ImportReport:     opts.Report,
 	}
+}
+
+func verifySnapshotPromotionReceipt(promotionReportPath, manifestPath string) (snapshotPromotionReceiptVerifyReport, error) {
+	promotionReportPath = strings.TrimSpace(promotionReportPath)
+	manifestPath = strings.TrimSpace(manifestPath)
+	if promotionReportPath == "" {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("--promotion-report is required")
+	}
+	if manifestPath == "" {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("--manifest is required")
+	}
+	receiptData, err := os.ReadFile(promotionReportPath)
+	if err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("read promotion receipt: %w", err)
+	}
+	var receipt snapshotPromotionReceipt
+	if err := json.Unmarshal(receiptData, &receipt); err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("decode promotion receipt: %w", err)
+	}
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("read artifact manifest: %w", err)
+	}
+	var manifest snapshotArtifactManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("decode artifact manifest: %w", err)
+	}
+	importedRecords := snapshotArtifactCounts{
+		Lines:   receipt.ImportReport.Lines,
+		Nodes:   receipt.ImportReport.Nodes,
+		Edges:   receipt.ImportReport.Edges,
+		Sources: receipt.ImportReport.Sources,
+	}
+	report := snapshotPromotionReceiptVerifyReport{
+		PromotionReport:    promotionReportPath,
+		Manifest:           manifestPath,
+		ReceiptNamespace:   receipt.Namespace,
+		ImportNamespace:    receipt.ImportReport.Namespace,
+		ReceiptBackupFile:  receipt.BackupFile,
+		ManifestBackupFile: manifest.BackupFile,
+		ReceiptVersion:     receipt.ContextDBVersion,
+		ManifestVersion:    manifest.ContextDBVersion,
+		ImportedRecords:    importedRecords,
+		ManifestRecords:    manifest.Records,
+		PromotedAt:         receipt.PromotedAt,
+	}
+	if receipt.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported receipt schema_version %d", receipt.SchemaVersion))
+	}
+	if manifest.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported manifest schema_version %d", manifest.SchemaVersion))
+	}
+	if strings.TrimSpace(receipt.Namespace) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt namespace is empty")
+	}
+	if receipt.Namespace != receipt.ImportReport.Namespace {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt namespace does not match import report namespace")
+	}
+	if filepath.Base(strings.TrimSpace(receipt.BackupFile)) != strings.TrimSpace(manifest.BackupFile) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt backup_file does not match manifest backup_file")
+	}
+	if importedRecords != manifest.Records {
+		report.ValidationErrors = append(report.ValidationErrors, "import report record counts do not match manifest record counts")
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("promotion receipt verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
 }
 
 func buildSnapshotArtifactManifest(opts snapshotArtifactManifestOptions) (snapshotArtifactManifest, error) {

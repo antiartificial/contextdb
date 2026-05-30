@@ -127,6 +127,17 @@ The rehearsal report includes the verification result plus the same dry-run rest
 
 For real imports, `--promotion-report` writes a JSON receipt only after the import succeeds. The receipt includes `promoted_at`, `namespace`, `backup_file`, `contextdb_version`, the optional `promotion_note`, and the full import report.
 
+Verify a promotion receipt against the original manifest:
+
+```bash
+contextdb snapshot receipt verify \
+  --promotion-report my-app.contextdb.promotion.json \
+  --manifest my-app.contextdb.manifest.json \
+  --report
+```
+
+Receipt verification compares schema versions, backup identity, import namespace consistency, and node/edge/source record counts.
+
 For a complete scheduled workflow that pairs export, restore preview, marker checks, launchd/systemd timers, and Norn drift checks, see the [Backup Runbook](backup-runbook).
 
 Future doctor slices should add deeper store/index consistency checks.

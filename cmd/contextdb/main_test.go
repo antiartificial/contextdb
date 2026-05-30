@@ -308,6 +308,78 @@ func TestWriteSnapshotPromotionReceipt(t *testing.T) {
 	is.Equal(receipt.ImportReport.Nodes, 1)
 }
 
+func TestVerifySnapshotPromotionReceipt(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "backup.manifest.json")
+	receiptPath := filepath.Join(dir, "promotion.json")
+	manifest := snapshotArtifactManifest{
+		SchemaVersion:    1,
+		Namespace:        "source",
+		BackupFile:       "backup.ndjson",
+		BackupBytes:      100,
+		ChecksumSHA256:   "abc",
+		CreatedAt:        "2026-05-30T23:00:00Z",
+		ContextDBVersion: buildinfo.Version,
+		Records:          snapshotArtifactCounts{Lines: 3, Nodes: 2, Edges: 1},
+	}
+	manifestData, err := json.Marshal(manifest)
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(manifestPath, manifestData, 0o644))
+	receipt := buildSnapshotPromotionReceipt(snapshotPromotionReceiptOptions{
+		Namespace:  "prod",
+		BackupPath: filepath.Join(dir, "backup.ndjson"),
+		ImportedAt: time.Date(2026, 5, 30, 23, 30, 0, 0, time.UTC),
+		Report: client.SnapshotReport{
+			Namespace: "prod",
+			Lines:     3,
+			Nodes:     2,
+			Edges:     1,
+		},
+	})
+	receiptData, err := json.Marshal(receipt)
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(receiptPath, receiptData, 0o644))
+
+	report, err := verifySnapshotPromotionReceipt(receiptPath, manifestPath)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.ReceiptNamespace, "prod")
+	is.Equal(report.ImportNamespace, "prod")
+	is.Equal(report.ImportedRecords.Nodes, 2)
+	is.Equal(report.ManifestRecords.Nodes, 2)
+}
+
+func TestVerifySnapshotPromotionReceiptRejectsRecordMismatch(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "backup.manifest.json")
+	receiptPath := filepath.Join(dir, "promotion.json")
+	manifestData, err := json.Marshal(snapshotArtifactManifest{
+		SchemaVersion:    1,
+		BackupFile:       "backup.ndjson",
+		ContextDBVersion: buildinfo.Version,
+		Records:          snapshotArtifactCounts{Lines: 2, Nodes: 2},
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(manifestPath, manifestData, 0o644))
+	receiptData, err := json.Marshal(buildSnapshotPromotionReceipt(snapshotPromotionReceiptOptions{
+		Namespace:  "prod",
+		BackupPath: filepath.Join(dir, "backup.ndjson"),
+		ImportedAt: time.Now(),
+		Report:     client.SnapshotReport{Namespace: "prod", Lines: 1, Nodes: 1},
+	}))
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(receiptPath, receiptData, 0o644))
+
+	report, err := verifySnapshotPromotionReceipt(receiptPath, manifestPath)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(len(report.ValidationErrors) > 0)
+}
+
 func TestBuildNornDriftReportMatches(t *testing.T) {
 	is := is.New(t)
 

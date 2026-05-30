@@ -163,6 +163,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Restore promotion audit event | Implemented | `contextdb snapshot import --promotion-report PATH --promotion-note TEXT` writes a JSON promotion receipt with import counts after a successful real import |
 
+## Completed In v0.27.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Promotion receipt verification | Implemented | `contextdb snapshot receipt verify --promotion-report PATH --manifest PATH` compares promotion receipts with artifact manifests for backup identity, namespace consistency, and record counts |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -196,6 +202,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Restore rehearsal command | Collapses verify and dry-run restore into one operator preflight | Completed in v0.24.0 with `contextdb snapshot rehearse --manifest --in --namespace` |
 | Restore promotion checklist | Makes the post-rehearsal import step explicit | Completed in v0.25.0 with rehearsal timestamp, target namespace, and recommended import command fields |
 | Restore promotion audit event | Leaves a receipt for actual restore promotions | Completed in v0.26.0 with `contextdb snapshot import --promotion-report --promotion-note` |
+| Promotion receipt verification | Confirms promotion receipts match exported artifacts | Completed in v0.27.0 with `contextdb snapshot receipt verify --promotion-report --manifest` |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -392,7 +399,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Promotion receipt verification | Promotion receipts exist, but operators need to compare them with the rehearsal/import artifacts | Add `contextdb snapshot receipt verify --promotion-report PATH --manifest PATH` or a receipt section in `snapshot verify` |
+| Promotion receipt verification | Promotion receipts exist, but operators need to compare them with the rehearsal/import artifacts | Completed in v0.27.0 with `contextdb snapshot receipt verify --promotion-report --manifest` |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.27.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Backup lifecycle bundle | Export, verify, rehearse, promote, and receipt verify now exist as separate commands | Add a documented `backup-lifecycle` script or CLI helper that runs the full chain and writes a final summary |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |

@@ -43,6 +43,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Restore rehearsal | Implemented | v0.24 | `operations`, `backup`, `audit` | `contextdb snapshot rehearse --manifest --in --namespace` verifies the artifact and returns dry-run restore counts in one preflight report |
 | Restore promotion checklist | Implemented | v0.25 | `operations`, `backup`, `audit` | Rehearsal reports include timestamp, target namespace, and a shell-quoted recommended import command |
 | Restore promotion receipt | Implemented | v0.26 | `operations`, `backup`, `audit` | `contextdb snapshot import --promotion-report --promotion-note` writes a JSON receipt with import counts after successful promotion |
+| Promotion receipt verify | Implemented | v0.27 | `operations`, `backup`, `audit` | `contextdb snapshot receipt verify --promotion-report --manifest` compares promotion receipts with artifact manifests |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |

@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.26.0",
+  "contextdb_version": "0.27.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -115,6 +115,17 @@ contextdb snapshot import \
 ```
 
 The promotion receipt is written only after import succeeds and includes the note, promotion timestamp, contextdb version, and import counts.
+
+Verify the receipt against the artifact manifest:
+
+```bash
+contextdb snapshot receipt verify \
+  --promotion-report "${backup%.ndjson}.promotion.json" \
+  --manifest "$manifest" \
+  --report
+```
+
+Receipt verification confirms the promoted import counts still line up with the exported artifact metadata.
 
 ## launchd
 

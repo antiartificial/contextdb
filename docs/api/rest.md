@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.26.0",
+  "version": "0.27.0",
   "api_version": "v1",
-  "docs_version": "0.26.0",
+  "docs_version": "0.27.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -355,6 +355,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.26.0",
       "description": "Snapshot import can write a JSON promotion receipt with operator note and import counts."
+    },
+    {
+      "name": "promotion-receipt-verify",
+      "status": "stable",
+      "since": "v0.27.0",
+      "description": "Snapshot receipt verification compares promotion receipts against artifact manifests."
     }
   ],
   "migrations": [
@@ -362,7 +368,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.26.0"
+  "release_notes_path": "/contextdb/releases/v0.27.0"
 }
 ```
 
