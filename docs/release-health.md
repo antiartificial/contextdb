@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.22.0 | Passed | Passed | Corpus coverage present | Backup artifact manifest coverage added | CLI manifest tests added | Adds checksumed JSON sidecars for snapshot export artifacts |
 | v0.21.0 | Passed | Passed | Corpus coverage present | Backup runbook documents restore preview and marker checks | Feature metadata docs updated | Adds scheduled backup runbook for launchd, systemd, doctor, and Norn pairing |
 | v0.20.0 | Passed | Passed | Corpus coverage present | Snapshot diff preview coverage added | Client snapshot diff report tests added | Adds new, changed, and unchanged node counts for snapshot restore reports |
 | v0.19.0 | Passed | Passed | Corpus coverage present | Snapshot marker coverage added | CLI backup marker test added | Adds export-side backup marker for doctor readiness |

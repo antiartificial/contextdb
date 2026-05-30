@@ -19,11 +19,13 @@ export CONTEXTDB_REST_URL=http://localhost:7701
 
 mkdir -p "$CONTEXTDB_BACKUP_DIR"
 backup="$CONTEXTDB_BACKUP_DIR/${CONTEXTDB_NAMESPACE}-$(date -u +%Y%m%dT%H%M%SZ).ndjson"
+manifest="${backup%.ndjson}.manifest.json"
 
 contextdb snapshot export \
   --namespace "$CONTEXTDB_NAMESPACE" \
   --out "$backup" \
-  --backup-marker "$CONTEXTDB_BACKUP_MARKER"
+  --backup-marker "$CONTEXTDB_BACKUP_MARKER" \
+  --manifest "$manifest"
 
 contextdb snapshot import \
   --namespace "${CONTEXTDB_NAMESPACE}-restore-preview" \
@@ -37,7 +39,7 @@ contextdb doctor \
   --max-backup-age 24h
 ```
 
-The marker is written only after export succeeds. The dry-run restore report should show the expected record counts and node diff counts before the backup is considered ready for retention or off-host copy.
+The marker and artifact manifest are written only after export succeeds. The dry-run restore report should show the expected record counts and node diff counts before the backup is considered ready for retention or off-host copy.
 
 ## Promotion Check
 
@@ -52,6 +54,31 @@ contextdb snapshot import \
 ```
 
 `new_nodes`, `changed_nodes`, and `unchanged_nodes` show whether the backup would add, replace, or leave nodes untouched in the chosen target namespace.
+
+## Artifact Manifest
+
+When `--manifest` is set, export writes a JSON sidecar next to the backup:
+
+```json
+{
+  "schema_version": 1,
+  "namespace": "my-app",
+  "backup_file": "my-app-20260530T233000Z.ndjson",
+  "backup_bytes": 12345,
+  "checksum_sha256": "...",
+  "created_at": "2026-05-30T23:30:00Z",
+  "contextdb_version": "0.22.0",
+  "backup_marker": "/var/lib/contextdb/.last-backup",
+  "records": {
+    "lines": 42,
+    "nodes": 31,
+    "edges": 8,
+    "sources": 3
+  }
+}
+```
+
+Keep the manifest with the NDJSON file when copying backups off-host. It gives scripts a stable checksum and enough counts to detect truncated or mismatched artifacts before a restore preview.
 
 ## launchd
 

@@ -66,7 +66,8 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
   contextdb snapshot export \
     --namespace my-app \
     --out my-app.contextdb.ndjson \
-    --backup-marker /var/lib/contextdb/.last-backup
+    --backup-marker /var/lib/contextdb/.last-backup \
+    --manifest my-app.contextdb.manifest.json
 ```
 
 Use seed IDs for a filtered subgraph export:
@@ -94,7 +95,7 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 
 The report includes processed line, node, edge, source, vector, namespace override, and node diff counts (`new_nodes`, `changed_nodes`, `unchanged_nodes`). Imports override the snapshot record namespace with the `--namespace` value, so the same backup can be restored into a preview namespace before replacing production data.
 
-The export marker is written only after the snapshot stream completes successfully. Point `contextdb doctor --backup-marker` at the same marker file to include backup freshness in readiness checks.
+The export marker and optional artifact manifest are written only after the snapshot stream completes successfully. The manifest records the namespace, contextdb version, backup filename, byte size, SHA-256 checksum, marker path, and node/edge/source record counts. Point `contextdb doctor --backup-marker` at the same marker file to include backup freshness in readiness checks.
 
 For a complete scheduled workflow that pairs export, restore preview, marker checks, launchd/systemd timers, and Norn drift checks, see the [Backup Runbook](backup-runbook).
 

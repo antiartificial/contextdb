@@ -16,7 +16,11 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -26,6 +30,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -133,6 +138,7 @@ func runSnapshotExport(args []string) {
 	seedRaw := fs.String("seeds", "", "comma-separated seed node IDs for filtered export")
 	maxDepth := fs.Int("max-depth", 10, "maximum graph depth for seeded exports")
 	backupMarker := fs.String("backup-marker", "", "marker file to write after successful export")
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to write after successful export")
 	_ = fs.Parse(args)
 
 	db := openSnapshotDB()
@@ -159,7 +165,17 @@ func runSnapshotExport(args []string) {
 		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
 		os.Exit(1)
 	}
-	if err := writeBackupMarker(*backupMarker, time.Now()); err != nil {
+	exportedAt := time.Now()
+	if err := writeBackupMarker(*backupMarker, exportedAt); err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(1)
+	}
+	if err := writeSnapshotArtifactManifest(*manifestPath, snapshotArtifactManifestOptions{
+		Namespace:    *namespace,
+		BackupPath:   *outPath,
+		BackupMarker: *backupMarker,
+		CreatedAt:    exportedAt,
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
 		os.Exit(1)
 	}
@@ -259,6 +275,109 @@ func writeBackupMarker(path string, at time.Time) error {
 		return nil
 	}
 	return os.WriteFile(path, []byte(at.UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+type snapshotArtifactManifestOptions struct {
+	Namespace    string
+	BackupPath   string
+	BackupMarker string
+	CreatedAt    time.Time
+}
+
+type snapshotArtifactManifest struct {
+	SchemaVersion    int                    `json:"schema_version"`
+	Namespace        string                 `json:"namespace"`
+	BackupFile       string                 `json:"backup_file"`
+	BackupBytes      int64                  `json:"backup_bytes"`
+	ChecksumSHA256   string                 `json:"checksum_sha256"`
+	CreatedAt        string                 `json:"created_at"`
+	ContextDBVersion string                 `json:"contextdb_version"`
+	BackupMarker     string                 `json:"backup_marker,omitempty"`
+	Records          snapshotArtifactCounts `json:"records"`
+}
+
+type snapshotArtifactCounts struct {
+	Lines   int `json:"lines"`
+	Nodes   int `json:"nodes"`
+	Edges   int `json:"edges"`
+	Sources int `json:"sources"`
+}
+
+func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	manifest, err := buildSnapshotArtifactManifest(opts)
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode artifact manifest: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func buildSnapshotArtifactManifest(opts snapshotArtifactManifestOptions) (snapshotArtifactManifest, error) {
+	backupPath := strings.TrimSpace(opts.BackupPath)
+	if backupPath == "" || backupPath == "-" {
+		return snapshotArtifactManifest{}, fmt.Errorf("--manifest requires --out to be a file path")
+	}
+	data, err := os.ReadFile(backupPath)
+	if err != nil {
+		return snapshotArtifactManifest{}, fmt.Errorf("read backup for artifact manifest: %w", err)
+	}
+	counts, err := countSnapshotArtifactRecords(data)
+	if err != nil {
+		return snapshotArtifactManifest{}, err
+	}
+	sum := sha256.Sum256(data)
+	return snapshotArtifactManifest{
+		SchemaVersion:    1,
+		Namespace:        opts.Namespace,
+		BackupFile:       filepath.Base(backupPath),
+		BackupBytes:      int64(len(data)),
+		ChecksumSHA256:   hex.EncodeToString(sum[:]),
+		CreatedAt:        opts.CreatedAt.UTC().Format(time.RFC3339),
+		ContextDBVersion: buildinfo.Version,
+		BackupMarker:     strings.TrimSpace(opts.BackupMarker),
+		Records:          counts,
+	}, nil
+}
+
+func countSnapshotArtifactRecords(data []byte) (snapshotArtifactCounts, error) {
+	var counts snapshotArtifactCounts
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var rec struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			return counts, fmt.Errorf("count artifact manifest record line %d: %w", counts.Lines+1, err)
+		}
+		counts.Lines++
+		switch rec.Type {
+		case "node":
+			counts.Nodes++
+		case "edge":
+			counts.Edges++
+		case "source":
+			counts.Sources++
+		default:
+			return counts, fmt.Errorf("count artifact manifest record line %d: unknown record type %q", counts.Lines, rec.Type)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return counts, fmt.Errorf("count artifact manifest records: %w", err)
+	}
+	return counts, nil
 }
 
 type nornPorts struct {

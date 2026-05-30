@@ -113,6 +113,50 @@ func TestWriteBackupMarker(t *testing.T) {
 	is.Equal(string(data), "2026-05-30T23:30:00Z\n")
 }
 
+func TestBuildSnapshotArtifactManifest(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "my-app-20260530T233000Z.ndjson")
+	data := []byte(`{"type":"node","data":{"id":"550e8400-e29b-41d4-a716-446655440000"}}
+{"type":"edge","data":{"id":"660e8400-e29b-41d4-a716-446655440000"}}
+{"type":"source","data":{"id":"docs"}}
+`)
+	is.NoErr(os.WriteFile(backup, data, 0o644))
+	at := time.Date(2026, 5, 30, 18, 30, 0, 0, time.FixedZone("test", -5*60*60))
+
+	manifest, err := buildSnapshotArtifactManifest(snapshotArtifactManifestOptions{
+		Namespace:    "my-app",
+		BackupPath:   backup,
+		BackupMarker: filepath.Join(dir, ".last-backup"),
+		CreatedAt:    at,
+	})
+
+	is.NoErr(err)
+	is.Equal(manifest.SchemaVersion, 1)
+	is.Equal(manifest.Namespace, "my-app")
+	is.Equal(manifest.BackupFile, "my-app-20260530T233000Z.ndjson")
+	is.Equal(manifest.BackupBytes, int64(len(data)))
+	is.Equal(manifest.ChecksumSHA256, "0094fb7d1c81b4f5d561d1f90010f07a2abb51dbd6b7506594e0223154d23012")
+	is.Equal(manifest.CreatedAt, "2026-05-30T23:30:00Z")
+	is.Equal(manifest.ContextDBVersion, buildinfo.Version)
+	is.Equal(manifest.Records.Lines, 3)
+	is.Equal(manifest.Records.Nodes, 1)
+	is.Equal(manifest.Records.Edges, 1)
+	is.Equal(manifest.Records.Sources, 1)
+}
+
+func TestBuildSnapshotArtifactManifestRequiresFileOutput(t *testing.T) {
+	is := is.New(t)
+
+	_, err := buildSnapshotArtifactManifest(snapshotArtifactManifestOptions{
+		Namespace:  "my-app",
+		BackupPath: "-",
+		CreatedAt:  time.Now(),
+	})
+
+	is.True(err != nil)
+}
+
 func TestBuildNornDriftReportMatches(t *testing.T) {
 	is := is.New(t)
 
