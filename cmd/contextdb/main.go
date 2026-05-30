@@ -16,18 +16,28 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	"github.com/antiartificial/contextdb/internal/doctor"
 	"github.com/antiartificial/contextdb/internal/federation"
 	"github.com/antiartificial/contextdb/internal/server"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "doctor" {
+		runDoctor(os.Args[2:])
+		return
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: parseLogLevel(getenv("CONTEXTDB_LOG_LEVEL", "info")),
 	}))
@@ -81,6 +91,27 @@ func main() {
 
 	logger.Info("shutting down...")
 	srv.Stop()
+}
+
+func runDoctor(args []string) {
+	fs := flag.NewFlagSet("contextdb doctor", flag.ExitOnError)
+	baseURL := fs.String("url", getenv("CONTEXTDB_REST_URL", "http://127.0.0.1:7701"), "contextdb REST base URL")
+	_ = fs.Parse(args)
+
+	report, err := doctor.Run(context.Background(), doctor.Options{BaseURL: *baseURL})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb doctor: %v\n", err)
+		os.Exit(2)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb doctor: encode report: %v\n", err)
+		os.Exit(2)
+	}
+	if !report.OK {
+		os.Exit(1)
+	}
 }
 
 func getenv(key, fallback string) string {

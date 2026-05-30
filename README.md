@@ -239,6 +239,8 @@ diff, _ := retrieval.ComputeBeliefDiff(ctx, graph, "ops", nil)
 
 **[Snapshot/restore](docs/api/go-sdk.md#export--import)** -- NDJSON export and import per namespace, including full version history. *Typical vector DBs: no portability.*
 
+**[Doctor](docs/deployment/operations.md#doctor)** -- `contextdb doctor` checks live REST health, version, feature, and migration metadata. *Typical vector DBs: health endpoints rarely expose API compatibility.*
+
 **[Admin UI](docs/deployment/scaled.md)** -- Built-in dashboard on the observe port with stats, metrics links, and [time-travel queries](docs/examples.md#time-travel-admin-api). *Typical vector DBs: external tooling.*
 
 ## Scoring function

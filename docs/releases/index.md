@@ -8,7 +8,7 @@ Release notes are the high-level map of what changed, why it matters, and which 
 
 | Release | Date | Theme |
 |:--------|:-----|:------|
-| [v0.4.0](v0.4.0) | 2026-05-30 | Version introspection, durability coverage, ranking golden tests, and API contracts |
+| [v0.4.0](v0.4.0) | 2026-05-30 | Version introspection, doctor checks, durability coverage, ranking golden tests, and API contracts |
 | [v0.3.0](v0.3.0) | 2026-05-29 | Graph inspection, feedback loops, explainability, and non-breaking dedup |
 | v0.2.0 | 2026-03-30 | Query optimization capabilities |
 | v0.1.0 | 2026-03-29 | Initial tagged release |

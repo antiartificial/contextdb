@@ -80,6 +80,7 @@ export default withMermaid(
             items: [
               { text: 'Embedded Mode', link: '/deployment/embedded' },
               { text: 'Docker', link: '/deployment/docker' },
+              { text: 'Operations', link: '/deployment/operations' },
               { text: 'Mini/Norn', link: '/deployment/norn' },
               { text: 'Kubernetes', link: '/deployment/kubernetes' },
               { text: 'Scaled Deployment', link: '/deployment/scaled' },

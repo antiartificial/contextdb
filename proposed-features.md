@@ -7,6 +7,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Feature | Status | Evidence |
 |:--------|:-------|:---------|
 | Feature/version introspection | Implemented | REST `/v1/version`, `/v1/features`, `/v1/migrations`; GraphQL `version`, `features`, `migrations` |
+| `contextdb doctor` | First slice implemented | Non-mutating CLI checks live REST ping, version, features, and migrations |
 | Restart durability test | Implemented | Badger-backed embedded restart test covers nodes, vectors, history, feedback, and dedup |
 | Ranking golden tests | Implemented | Belief-system and agent-memory score ordering fixtures |
 | API contract test | Implemented | gRPC write/retrieve/feedback contract and REST invalid-node-ID failure path |
@@ -34,7 +35,7 @@ This is the working backlog for features that would make contextdb more useful, 
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
-| `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | Should run locally and against live deployments |
+| `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | First non-mutating live checks completed in v0.4.0; sample write/retrieve and index checks remain |
 | Release health page | Makes release confidence visible | Document unit, integration, durability, ranking, and API parity status per release |
 | Backup/restore command | Productizes snapshot import/export | Include dry-run validation and namespace filters |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
@@ -59,7 +60,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs next | First useful slice |
 |:--------|:--------------------|:-------------------|
-| `contextdb doctor` | The server can now report version/features/migrations, so a CLI checker can verify live deployments end to end | Check `/v1/version`, `/v1/ping`, sample write/retrieve, and migration expectations |
+| `contextdb doctor --sample-write` | The first doctor slice is non-mutating; an opt-in probe can validate write/read/index behavior | Write a tagged node in `_doctor`, retrieve it by vector, then report the persisted node ID |
 | Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, score breakdowns, sources, edges, and narrative reports |
 | Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
 | Feedback event log | Feedback currently mutates node/source state; explicit event records would make audits and timelines stronger | Append durable events for validate/refute/useful/stale while preserving current node updates |
