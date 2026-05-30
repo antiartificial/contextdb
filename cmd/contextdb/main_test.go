@@ -13,6 +13,7 @@ import (
 	"github.com/matryer/is"
 
 	"github.com/antiartificial/contextdb/internal/buildinfo"
+	"github.com/antiartificial/contextdb/pkg/client"
 )
 
 func TestBuildNornManifestEntry(t *testing.T) {
@@ -209,6 +210,45 @@ func TestVerifySnapshotArtifactManifestRejectsChecksumMismatch(t *testing.T) {
 	is.True(err != nil)
 	is.True(!report.OK)
 	is.True(len(report.ValidationErrors) > 0)
+}
+
+func TestRehearseSnapshotRestore(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	src := client.MustOpen(client.Options{})
+	defer src.Close()
+	dst := client.MustOpen(client.Options{})
+	defer dst.Close()
+	ns := src.Namespace("my-app", "general")
+	_, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "restore rehearsal checks backup before dry-run import",
+		SourceID:   "test",
+		Confidence: 0.9,
+		Vector:     []float32{0.1, 0.2, 0.3},
+	})
+	is.NoErr(err)
+	backup := filepath.Join(dir, "my-app.ndjson")
+	manifestPath := filepath.Join(dir, "my-app.manifest.json")
+	out, err := os.Create(backup)
+	is.NoErr(err)
+	is.NoErr(src.ExportSnapshot(ctx, "my-app", out))
+	is.NoErr(out.Close())
+	is.NoErr(writeSnapshotArtifactManifest(manifestPath, snapshotArtifactManifestOptions{
+		Namespace:  "my-app",
+		BackupPath: backup,
+		CreatedAt:  time.Now(),
+	}))
+
+	report, err := rehearseSnapshotRestore(ctx, dst, "restore-preview", manifestPath, "")
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.Verification.OK)
+	is.Equal(report.Namespace, "restore-preview")
+	is.Equal(report.Restore.DryRun, true)
+	is.True(report.Restore.Nodes > 0)
+	is.True(report.Restore.NewNodes > 0)
 }
 
 func TestBuildNornDriftReportMatches(t *testing.T) {

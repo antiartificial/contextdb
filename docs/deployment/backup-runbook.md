@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.23.0",
+  "contextdb_version": "0.24.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -90,6 +90,18 @@ contextdb snapshot verify \
 ```
 
 If `--in` is omitted, verify looks for the manifest's `backup_file` beside the manifest. A mismatch in size, checksum, or record counts exits non-zero.
+
+Use rehearsal when the next question is "would this restore cleanly?":
+
+```bash
+contextdb snapshot rehearse \
+  --manifest "$manifest" \
+  --in "$backup" \
+  --namespace "${CONTEXTDB_NAMESPACE}-restore-preview" \
+  --report
+```
+
+Rehearsal first verifies the artifact manifest, then runs the same dry-run import report used for restore previews.
 
 ## launchd
 

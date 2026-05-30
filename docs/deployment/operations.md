@@ -108,6 +108,18 @@ contextdb snapshot verify \
 
 The verify command recomputes the backup byte size, SHA-256 checksum, and node/edge/source record counts. It exits non-zero when the artifact does not match the manifest.
 
+Rehearse a restore when you want artifact verification and dry-run import counts in one report:
+
+```bash
+contextdb snapshot rehearse \
+  --manifest my-app.contextdb.manifest.json \
+  --in my-app.contextdb.ndjson \
+  --namespace my-app-restore-preview \
+  --report
+```
+
+The rehearsal report includes the verification result plus the same dry-run restore counts returned by `contextdb snapshot import --dry-run --report`.
+
 For a complete scheduled workflow that pairs export, restore preview, marker checks, launchd/systemd timers, and Norn drift checks, see the [Backup Runbook](backup-runbook).
 
 Future doctor slices should add deeper store/index consistency checks.

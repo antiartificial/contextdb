@@ -117,7 +117,7 @@ func main() {
 
 func runSnapshot(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, or verify")
+		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, verify, or rehearse")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -127,6 +127,8 @@ func runSnapshot(args []string) {
 		runSnapshotImport(args[1:])
 	case "verify":
 		runSnapshotVerify(args[1:])
+	case "rehearse":
+		runSnapshotRehearse(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb snapshot: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -230,6 +232,31 @@ func runSnapshotVerify(args []string) {
 			writeIndentedJSON(report)
 		}
 		fmt.Fprintf(os.Stderr, "contextdb snapshot verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotRehearse(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot rehearse", flag.ExitOnError)
+	namespace := fs.String("namespace", "restore-preview", "namespace to dry-run the import into")
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to verify")
+	inPath := fs.String("in", "", "input NDJSON file, defaults to manifest backup_file beside manifest")
+	reportOut := fs.Bool("report", false, "print a JSON rehearsal report")
+	_ = fs.Parse(args)
+
+	db := openSnapshotDB()
+	defer db.Close()
+	report, err := rehearseSnapshotRestore(context.Background(), db, *namespace, *manifestPath, *inPath)
+	if err != nil {
+		if *reportOut && (report.Verification.Manifest != "" || len(report.Verification.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot rehearse: %v\n", err)
 		os.Exit(1)
 	}
 	if *reportOut {
@@ -343,6 +370,13 @@ type snapshotArtifactVerifyReport struct {
 	ValidationErrors []string               `json:"validation_errors,omitempty"`
 }
 
+type snapshotRehearsalReport struct {
+	OK           bool                         `json:"ok"`
+	Namespace    string                       `json:"namespace"`
+	Verification snapshotArtifactVerifyReport `json:"verification"`
+	Restore      client.SnapshotReport        `json:"restore"`
+}
+
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -445,6 +479,29 @@ func verifySnapshotArtifactManifest(manifestPath, backupPath string) (snapshotAr
 	report.OK = len(report.ValidationErrors) == 0
 	if !report.OK {
 		return report, fmt.Errorf("artifact manifest verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func rehearseSnapshotRestore(ctx context.Context, db *client.DB, namespace, manifestPath, backupPath string) (snapshotRehearsalReport, error) {
+	verifyReport, err := verifySnapshotArtifactManifest(manifestPath, backupPath)
+	report := snapshotRehearsalReport{
+		Namespace:    namespace,
+		Verification: verifyReport,
+	}
+	if err != nil {
+		return report, err
+	}
+	in, closeIn, err := inputReader(verifyReport.BackupFile)
+	if err != nil {
+		return report, err
+	}
+	defer closeIn()
+	restoreReport, err := db.ValidateSnapshotReport(ctx, namespace, in)
+	report.Restore = restoreReport
+	report.OK = err == nil
+	if err != nil {
+		return report, err
 	}
 	return report, nil
 }

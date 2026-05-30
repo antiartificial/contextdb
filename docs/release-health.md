@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.24.0 | Passed | Passed | Corpus coverage present | Restore rehearsal coverage added | CLI rehearsal tests added | Adds combined artifact verification and dry-run restore preflight |
 | v0.23.0 | Passed | Passed | Corpus coverage present | Backup manifest verification coverage added | CLI verify tests added | Adds pre-restore checksum, size, and record-count verification |
 | v0.22.0 | Passed | Passed | Corpus coverage present | Backup artifact manifest coverage added | CLI manifest tests added | Adds checksummed JSON sidecars for snapshot export artifacts |
 | v0.21.0 | Passed | Passed | Corpus coverage present | Backup runbook documents restore preview and marker checks | Feature metadata docs updated | Adds scheduled backup runbook for launchd, systemd, doctor, and Norn pairing |
