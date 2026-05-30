@@ -68,4 +68,4 @@ db := client.MustOpen(client.Options{
 
 ## Release Notes
 
-The current non-breaking release is `v1.2.0`. Deduplication is opt-in via `WriteRequest.Dedup`, `Options.DedupWrites`, REST `dedup`, or `CONTEXTDB_DEDUP_WRITES=true`, so existing writers continue creating distinct nodes by default.
+The current pre-1.0 release is `v0.3.0`. Deduplication is opt-in via `WriteRequest.Dedup`, `Options.DedupWrites`, REST `dedup`, or `CONTEXTDB_DEDUP_WRITES=true`, so existing writers continue creating distinct nodes by default.
