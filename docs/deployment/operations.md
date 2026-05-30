@@ -96,4 +96,6 @@ The report includes processed line, node, edge, source, vector, namespace overri
 
 The export marker is written only after the snapshot stream completes successfully. Point `contextdb doctor --backup-marker` at the same marker file to include backup freshness in readiness checks.
 
+For a complete scheduled workflow that pairs export, restore preview, marker checks, launchd/systemd timers, and Norn drift checks, see the [Backup Runbook](backup-runbook).
+
 Future doctor slices should add deeper store/index consistency checks.

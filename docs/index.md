@@ -27,7 +27,7 @@ features:
 ---
 
 ::: tip Current release
-contextdb is currently `v0.20.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+contextdb is currently `v0.21.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 :::
 
 <div class="stat-row">
@@ -205,6 +205,7 @@ All weights are normalised at query time. You supply `alpha` (decay rate) and th
 | [Background workers](architecture/background-workers) | Memory consolidation and active recall |
 | [RBAC](concepts/rbac) | Token-based read/write/admin permissions per tenant |
 | [Snapshot/restore](api/go-sdk#export--import) | NDJSON namespace export and import |
+| [Backup runbook](deployment/backup-runbook) | Scheduled export, restore preview, backup marker, doctor, and Norn check flow |
 | [Python SDK](api/python-sdk) | REST client for Python applications |
 | [TypeScript SDK](api/typescript-sdk) | REST client for TypeScript/Node.js applications |
 | [Scaled deployment](deployment/scaled) | Qdrant + Redis + Postgres for high throughput |

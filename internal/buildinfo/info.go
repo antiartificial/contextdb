@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.20.0"
+	Version = "0.21.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.20.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.21.0",
 	}
 }
 
@@ -72,6 +72,7 @@ func Features() []Feature {
 		{Name: "snapshot-restore-report", Status: "stable", Since: "v0.18.0", Description: "Snapshot dry-run and import reports summarize processed lines, records, vectors, and namespace overrides."},
 		{Name: "snapshot-backup-marker", Status: "stable", Since: "v0.19.0", Description: "Snapshot export can write a backup marker after a successful backup for doctor readiness checks."},
 		{Name: "snapshot-diff-preview", Status: "stable", Since: "v0.20.0", Description: "Snapshot restore reports include new, changed, and unchanged node counts for previewing imports."},
+		{Name: "backup-runbook", Status: "stable", Since: "v0.21.0", Description: "Documented backup workflow for scheduled snapshot export, restore preview, marker checks, and Norn pairing."},
 	}
 }
 

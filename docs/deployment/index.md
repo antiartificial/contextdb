@@ -11,6 +11,7 @@ Run contextdb embedded, in Docker, on Kubernetes, on the internal Mini/Norn depl
 | [Embedded](embedded) | Local development, sidecars, CLIs, tests |
 | [Docker](docker) | Single-node server with simple persistence |
 | [Operations](operations) | Live health checks and operational commands |
+| [Backup Runbook](backup-runbook) | Scheduled snapshot export, restore preview, backup marker, and doctor verification |
 | [Mini/Norn](norn) | Internal live instance on Aaron's Mac mini |
 | [Kubernetes](kubernetes) | Container orchestration and ingress |
 | [Scaled](scaled) | Qdrant + Redis + Postgres production topology |

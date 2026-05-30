@@ -5,9 +5,9 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.20.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.20.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.21.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.21.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
-**Current release:** `v0.20.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+**Current release:** `v0.21.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
 
 ## What & Why
@@ -240,6 +240,8 @@ diff, _ := retrieval.ComputeBeliefDiff(ctx, graph, "ops", nil)
 **[RBAC](docs/concepts/rbac.md)** -- Token-based `tenant:permissions:secret` controlling read/write/admin per namespace. *Typical vector DBs: no access control.*
 
 **[Snapshot/restore](docs/deployment/operations.md#snapshot-backup-and-restore)** -- NDJSON export and import per namespace through the Go client and `contextdb snapshot`, including dry-run restore validation. *Typical vector DBs: no portability.*
+
+**[Backup runbook](docs/deployment/backup-runbook.md)** -- Scheduled export, restore preview, backup marker, doctor verification, and Norn drift checks for live deployments. *Typical vector DBs: backup confidence is usually left to external glue.*
 
 **[Doctor](docs/deployment/operations.md#doctor)** -- `contextdb doctor` checks live REST health, version, feature, migration, backup marker, and optional sample write/retrieve readiness. *Typical vector DBs: health endpoints rarely expose API compatibility.*
 
