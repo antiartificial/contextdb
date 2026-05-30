@@ -196,8 +196,25 @@ func (v *VectorIndex) Load() error {
 	defer v.mu.Unlock()
 
 	return v.db.View(func(txn *badgerdb.Txn) error {
-		prefix := []byte(prefixVec)
 		opts := badgerdb.DefaultIteratorOptions
+
+		nodePrefix := []byte(prefixNodeLatest)
+		opts.Prefix = nodePrefix
+		nodeIt := txn.NewIterator(opts)
+		for nodeIt.Seek(nodePrefix); nodeIt.ValidForPrefix(nodePrefix); nodeIt.Next() {
+			var node core.Node
+			if err := nodeIt.Item().Value(func(val []byte) error {
+				return json.Unmarshal(val, &node)
+			}); err != nil {
+				continue
+			}
+			if node.ID != uuid.Nil {
+				v.nodes[node.ID] = node
+			}
+		}
+		nodeIt.Close()
+
+		prefix := []byte(prefixVec)
 		opts.Prefix = prefix
 		it := txn.NewIterator(opts)
 		defer it.Close()
@@ -228,11 +245,11 @@ func (v *VectorIndex) getOrCreateGraph(ns string) *hnswGraph {
 // ─── HNSW implementation ────────────────────────────────────────────────────
 
 type hnswNode struct {
-	id       uuid.UUID
-	nodeID   *uuid.UUID
-	vector   []float32
-	level    int
-	friends  [][]uuid.UUID // friends[level] = neighbor IDs at that level
+	id      uuid.UUID
+	nodeID  *uuid.UUID
+	vector  []float32
+	level   int
+	friends [][]uuid.UUID // friends[level] = neighbor IDs at that level
 }
 
 type hnswGraph struct {
@@ -250,7 +267,7 @@ type searchCandidate struct {
 
 func newHNSWGraph() *hnswGraph {
 	return &hnswGraph{
-		nodes:    make(map[uuid.UUID]*hnswNode),
+		nodes:     make(map[uuid.UUID]*hnswNode),
 		levelMult: 1.0 / math.Log(16), // 1/ln(M)
 	}
 }

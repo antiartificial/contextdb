@@ -2,16 +2,41 @@ package server_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/matryer/is"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/antiartificial/contextdb/internal/server"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
+
+func startGRPCTestServer(t *testing.T, db *client.DB) string {
+	t.Helper()
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := grpc.NewServer(server.FormatGRPCCodec())
+	server.NewGRPCService(db).Register(srv)
+
+	go func() {
+		if err := srv.Serve(lis); err != nil {
+			t.Logf("gRPC test server stopped: %v", err)
+		}
+	}()
+	t.Cleanup(func() { srv.GracefulStop() })
+
+	return lis.Addr().String()
+}
 
 func TestRESTServer_Ping(t *testing.T) {
 	is := is.New(t)
@@ -111,6 +136,79 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	var gapResp map[string]any
 	is.NoErr(json.Unmarshal(w5.Body.Bytes(), &gapResp))
 	is.Equal(gapResp["total_nodes"], float64(1))
+}
+
+func TestRESTServer_InvalidFeedbackNodeIDReturnsBadRequest(t *testing.T) {
+	is := is.New(t)
+
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	srv := server.NewRESTServer(db)
+	handler := srv.Handler()
+
+	feedbackBody, _ := json.Marshal(map[string]any{"reason": "bad id"})
+	req := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/not-a-uuid/validate", bytes.NewReader(feedbackBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusBadRequest)
+}
+
+func TestGRPCService_WriteRetrieveFeedbackContract(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	addr := startGRPCTestServer(t, db)
+	conn, err := grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.ForceCodec(server.GRPCCodec{})),
+	)
+	is.NoErr(err)
+	defer conn.Close()
+
+	var writeResp server.GRPCWriteResponse
+	err = conn.Invoke(ctx, "/contextdb.v1.ContextDB/Write", &server.GRPCWriteRequest{
+		Namespace:     "grpc-contract",
+		NamespaceMode: "general",
+		Content:       "gRPC contract returns score breakdown",
+		SourceID:      "docs",
+		Labels:        []string{"Fact"},
+		Vector:        []float32{0.9, 0.1, 0.0, 0.0},
+		Confidence:    0.7,
+	}, &writeResp)
+	is.NoErr(err)
+	is.True(writeResp.Admitted)
+	is.True(writeResp.NodeID != "")
+
+	var retrieveResp server.GRPCRetrieveResponse
+	err = conn.Invoke(ctx, "/contextdb.v1.ContextDB/Retrieve", &server.GRPCRetrieveRequest{
+		Namespace: "grpc-contract",
+		Vector:    []float32{0.9, 0.1, 0.0, 0.0},
+		TopK:      3,
+	}, &retrieveResp)
+	is.NoErr(err)
+	is.True(len(retrieveResp.Results) > 0)
+	is.Equal(retrieveResp.Results[0].ID, writeResp.NodeID)
+	is.True(retrieveResp.Results[0].Score > 0)
+	is.True(retrieveResp.Results[0].ScoreBreakdown.Similarity > 0)
+
+	var feedbackResp server.GRPCFeedbackResponse
+	err = conn.Invoke(ctx, "/contextdb.v1.ContextDB/ValidateClaim", &server.GRPCFeedbackRequest{
+		Namespace:     "grpc-contract",
+		NamespaceMode: "general",
+		NodeID:        writeResp.NodeID,
+		Reason:        "verified through gRPC contract test",
+	}, &feedbackResp)
+	is.NoErr(err)
+	is.Equal(feedbackResp.Action, "validated")
+	is.Equal(feedbackResp.NodeID, writeResp.NodeID)
+	is.Equal(feedbackResp.SourceID, "docs")
+	is.True(feedbackResp.SourceCredibility > 0.5)
 }
 
 func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {

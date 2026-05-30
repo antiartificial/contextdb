@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/matryer/is"
 
 	"github.com/antiartificial/contextdb/internal/namespace"
@@ -278,6 +279,95 @@ func TestNamespace_ExplainAndKnowledgeGaps(t *testing.T) {
 	is.True(gaps != nil)
 	is.Equal(gaps.Namespace, "test:explain")
 	is.Equal(gaps.TotalNodes, 1)
+}
+
+func TestNamespace_PersistentEmbeddedRestartPreservesCoreData(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	nsName := "test:restart"
+
+	var nodeID uuid.UUID
+	var expectedVersion uint64
+	{
+		db := client.MustOpen(client.Options{
+			Mode:        client.ModeEmbedded,
+			DataDir:     dir,
+			DedupWrites: true,
+		})
+		ns := db.Namespace(nsName, namespace.ModeGeneral)
+
+		written, err := ns.Write(ctx, client.WriteRequest{
+			Content:    "Restart durability keeps nodes, vectors, and feedback",
+			SourceID:   "docs",
+			Labels:     []string{"Fact"},
+			Vector:     vec8(0),
+			Confidence: 0.6,
+		})
+		is.NoErr(err)
+		is.True(written.Admitted)
+		nodeID = written.NodeID
+
+		validated, err := ns.ValidateClaim(ctx, written.NodeID)
+		is.NoErr(err)
+		is.Equal(validated.Action, "validated")
+
+		duplicate, err := ns.Write(ctx, client.WriteRequest{
+			Content:  "restart durability keeps nodes vectors and feedback",
+			SourceID: "docs",
+			Labels:   []string{"Fact"},
+			Vector:   vec8(0),
+		})
+		is.NoErr(err)
+		is.True(duplicate.Admitted)
+		is.Equal(duplicate.NodeID, written.NodeID)
+		is.Equal(duplicate.Reason, "deduplicated")
+
+		node, err := ns.GetNode(ctx, written.NodeID)
+		is.NoErr(err)
+		is.True(node != nil)
+		expectedVersion = node.Version
+		is.True(expectedVersion >= 2)
+		is.NoErr(db.Close())
+	}
+
+	db := client.MustOpen(client.Options{
+		Mode:        client.ModeEmbedded,
+		DataDir:     dir,
+		DedupWrites: true,
+	})
+	defer db.Close()
+	ns := db.Namespace(nsName, namespace.ModeGeneral)
+
+	node, err := ns.GetNode(ctx, nodeID)
+	is.NoErr(err)
+	is.True(node != nil)
+	is.Equal(node.Properties["text"], "Restart durability keeps nodes, vectors, and feedback")
+	is.Equal(node.Properties["source_id"], "docs")
+	is.True(node.Fingerprint != "")
+	is.Equal(node.Version, expectedVersion)
+
+	history, err := ns.History(ctx, nodeID)
+	is.NoErr(err)
+	is.True(len(history) >= 2)
+
+	results, err := ns.Retrieve(ctx, client.RetrieveRequest{Vector: vec8(0), TopK: 3})
+	is.NoErr(err)
+	is.True(len(results) > 0)
+	is.Equal(results[0].Node.ID, nodeID)
+	is.True(results[0].Score > 0)
+	is.True(results[0].Breakdown.Similarity > 0)
+
+	duplicate, err := ns.Write(ctx, client.WriteRequest{
+		Content:  "restart durability keeps nodes vectors and feedback",
+		SourceID: "docs",
+		Labels:   []string{"Fact"},
+		Vector:   vec8(0),
+	})
+	is.NoErr(err)
+	is.True(duplicate.Admitted)
+	is.Equal(duplicate.NodeID, nodeID)
+	is.Equal(duplicate.Reason, "deduplicated")
 }
 
 // ─── Retrieve ─────────────────────────────────────────────────────────────────

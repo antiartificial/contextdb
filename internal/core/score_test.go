@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"sort"
 	"testing"
 	"time"
 
@@ -199,6 +200,114 @@ func TestScoreNode_ProvenanceAttenuation(t *testing.T) {
 	if derived.Score >= direct.Score {
 		t.Errorf("derived (%v) should score lower than direct (%v)", derived.Score, direct.Score)
 	}
+}
+
+func TestScoreNode_RankingGoldenByNamespaceMode(t *testing.T) {
+	asOf := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	candidates := []goldenCandidate{
+		{
+			name:       "trusted-moderate-match",
+			similarity: 0.72,
+			utility:    0.30,
+			node:       freshNode(asOf.Add(-12*time.Hour), 0.95),
+		},
+		{
+			name:       "poison-near-match",
+			similarity: 0.98,
+			utility:    0.30,
+			node:       freshNode(asOf.Add(-5*time.Minute), 0.05),
+		},
+		{
+			name:       "useful-memory",
+			similarity: 0.68,
+			utility:    1.00,
+			node:       freshNode(asOf.Add(-3*time.Hour), 0.65),
+		},
+		{
+			name:       "fresh-balanced",
+			similarity: 0.74,
+			utility:    0.40,
+			node:       freshNode(asOf.Add(-5*time.Minute), 0.60),
+		},
+		{
+			name:       "old-established",
+			similarity: 0.80,
+			utility:    0.80,
+			node:       freshNode(asOf.Add(-240*time.Hour), 0.90),
+		},
+	}
+
+	tests := []struct {
+		name string
+		p    core.ScoreParams
+		want []string
+	}{
+		{
+			name: "belief system ranks trust over near-match poison",
+			p:    core.BeliefSystemParams(),
+			want: []string{
+				"trusted-moderate-match",
+				"useful-memory",
+				"fresh-balanced",
+				"old-established",
+				"poison-near-match",
+			},
+		},
+		{
+			name: "agent memory ranks utility and freshness first",
+			p:    core.AgentMemoryParams(),
+			want: []string{
+				"useful-memory",
+				"fresh-balanced",
+				"poison-near-match",
+				"trusted-moderate-match",
+				"old-established",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.p.AsOf = asOf
+			got := rankGoldenCandidates(candidates, tt.p)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %d ranked candidates, want %d", len(got), len(tt.want))
+			}
+			for i := range tt.want {
+				if got[i].name != tt.want[i] {
+					t.Fatalf("rank %d = %q (score %.6f), want %q; full order=%v",
+						i+1, got[i].name, got[i].score, tt.want[i], goldenNames(got))
+				}
+			}
+		})
+	}
+}
+
+type goldenCandidate struct {
+	name       string
+	node       core.Node
+	similarity float64
+	utility    float64
+	score      float64
+}
+
+func rankGoldenCandidates(candidates []goldenCandidate, p core.ScoreParams) []goldenCandidate {
+	out := append([]goldenCandidate(nil), candidates...)
+	for i := range out {
+		out[i].score = core.ScoreNode(out[i].node, out[i].similarity, out[i].utility, p).Score
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].score > out[j].score
+	})
+	return out
+}
+
+func goldenNames(candidates []goldenCandidate) []string {
+	names := make([]string, len(candidates))
+	for i, c := range candidates {
+		names[i] = c.name
+	}
+	return names
 }
 
 func abs64(v float64) float64 {
