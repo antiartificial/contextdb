@@ -9,7 +9,7 @@ Get contextdb running in under a minute.
 ## Install
 
 ```bash
-go get github.com/antiartificial/contextdb@v0.11.1
+go get github.com/antiartificial/contextdb@v0.11.2
 ```
 
 ## Embedded mode (zero dependencies)

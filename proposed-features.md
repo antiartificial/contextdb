@@ -67,6 +67,12 @@ This is the working backlog for features that would make contextdb more useful, 
 | Representative corpus ranking tests | Implemented | `TestRepresentativeCorpusRankingGolden` covers poisoning resistance, temporal memory, procedural memory, and general RAG queries over the synthetic corpus |
 | Ranking candidate-pool hardening | Implemented | Hybrid retrieval now rescans at least 50 vector candidates before final score fusion, so crowded near-match topics cannot hide stronger claims before scoring |
 
+## Completed In v0.11.2
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Release health page | Implemented | `docs/release-health.md` lists unit, docs-build, ranking, durability, API contract, and race/soak gates by release |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -92,7 +98,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
 | `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | Non-mutating checks completed in v0.4.0; opt-in sample write/retrieve probe completed in v0.4.1; deeper store/index checks remain |
-| Release health page | Makes release confidence visible | Document unit, integration, durability, ranking, and API parity status per release |
+| Release health page | Makes release confidence visible | Completed in v0.11.2; next step is generating gate status from CI artifacts |
 | Backup/restore command | Productizes snapshot import/export | Include dry-run validation and namespace filters |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
@@ -117,7 +123,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs next | First useful slice |
 |:--------|:--------------------|:-------------------|
 | Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, explain-rank comparisons, sources, edges, and narrative reports |
-| Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
+| Release health page | The release process now has concrete test categories to report | Completed in v0.11.2; next step is generated CI-backed status |
 | Explain-rank graph evidence | The first explain-rank slice covers score deltas; graph-aware evidence makes explanations deeper | Support-chain evidence completed in v0.11.0; source trust context and contradiction path summaries remain useful next steps |
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks make it more operationally complete | Completed in v0.10.0; deeper store/index consistency checks remain |
 | Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Add assigned/resolved/snoozed metadata and an append-only review decision log |
@@ -134,4 +140,14 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Corpus authoring guide | Representative tests will age better if adding a scenario is low-friction | Document how to add fixtures, labelled queries, and expected rank cutoffs |
 | Review workflow persistence | Derived review tasks are useful, but operators need durable decisions around them | Add append-only review decisions with assigned, resolved, snoozed, and note fields |
 | Trust anomaly review tasks | Source timelines exist, and sudden credibility drops should become actionable | Generate review queue items when a source crosses configured trust thresholds or accumulates repeated refutations |
-| Release health page | The project now has meaningful release gates to summarize | Add a docs page with unit, corpus ranking, durability, API contract, docs-build, and optional race/soak status by release |
+| Release health page | The project now has meaningful release gates to summarize | Completed in v0.11.2; next step is generated CI-backed status by release |
+
+## Fresh Brainstorm After v0.11.2
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| CI-backed release health | The health page is useful, but hand-written status can drift | Generate release-health data from test commands, GitHub Actions, or release artifacts |
+| Ranking eval snapshots | Corpus tests protect expected ordering; snapshots would explain score movement | Emit JSON and markdown reports with top-k, MRR, and score breakdowns for each corpus query |
+| Candidate-pool telemetry | Wider candidate pools improve quality but should be observable | Add retrieval counters for vector candidates fetched, fused candidates scored, and final top-k size |
+| Review workflow persistence | Derived review tasks still need durable triage state | Add append-only review decisions with assigned, resolved, snoozed, and note fields |
+| Trust anomaly review tasks | Source trust timelines should become actionable when credibility shifts sharply | Generate review queue items when source credibility crosses configured thresholds |
