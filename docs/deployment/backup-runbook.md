@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.28.0",
+  "contextdb_version": "0.29.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -203,6 +203,16 @@ JSON
 ```
 
 Use `PROMOTE=1` only after reviewing the rehearsal report. Without it, the script is a backup and preflight workflow that does not write restored records.
+
+Verify the lifecycle summary before archiving or handing artifacts to another operator:
+
+```bash
+contextdb snapshot lifecycle verify \
+  --summary "$summary" \
+  --report
+```
+
+Lifecycle verification checks that the backup, manifest, and rehearsal files exist and agree. When `promoted` is true, it also requires the promotion receipt and receipt-check report, then compares the promotion receipt back to the manifest. A failed check exits non-zero and reports the missing or inconsistent artifact.
 
 ## launchd
 

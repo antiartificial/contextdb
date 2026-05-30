@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.28.0"
+	Version = "0.29.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.28.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.29.0",
 	}
 }
 
@@ -80,6 +80,7 @@ func Features() []Feature {
 		{Name: "restore-promotion-receipt", Status: "stable", Since: "v0.26.0", Description: "Snapshot import can write a JSON promotion receipt with operator note and import counts."},
 		{Name: "promotion-receipt-verify", Status: "stable", Since: "v0.27.0", Description: "Snapshot receipt verification compares promotion receipts against artifact manifests."},
 		{Name: "backup-lifecycle-bundle", Status: "stable", Since: "v0.28.0", Description: "Backup runbook includes a guarded lifecycle script for export, verify, rehearse, optional promote, receipt verify, and summary output."},
+		{Name: "lifecycle-summary-verify", Status: "stable", Since: "v0.29.0", Description: "Snapshot lifecycle verification checks a lifecycle summary and its referenced backup, manifest, rehearsal, promotion, and receipt-check artifacts."},
 	}
 }
 

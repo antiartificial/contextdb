@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.28.0",
+  "version": "0.29.0",
   "api_version": "v1",
-  "docs_version": "0.28.0",
+  "docs_version": "0.29.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -367,6 +367,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.28.0",
       "description": "Backup runbook includes a guarded lifecycle script for export, verify, rehearse, optional promote, receipt verify, and summary output."
+    },
+    {
+      "name": "lifecycle-summary-verify",
+      "status": "stable",
+      "since": "v0.29.0",
+      "description": "Snapshot lifecycle verification checks a lifecycle summary and its referenced backup, manifest, rehearsal, promotion, and receipt-check artifacts."
     }
   ],
   "migrations": [
@@ -374,7 +380,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.28.0"
+  "release_notes_path": "/contextdb/releases/v0.29.0"
 }
 ```
 

@@ -380,6 +380,175 @@ func TestVerifySnapshotPromotionReceiptRejectsRecordMismatch(t *testing.T) {
 	is.True(len(report.ValidationErrors) > 0)
 }
 
+func TestVerifySnapshotLifecycleSummaryWithoutPromotion(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "backup.ndjson")
+	manifestPath := filepath.Join(dir, "backup.manifest.json")
+	rehearsalPath := filepath.Join(dir, "backup.rehearsal.json")
+	summaryPath := filepath.Join(dir, "backup.lifecycle.json")
+	data := []byte(`{"type":"node","data":{"id":"550e8400-e29b-41d4-a716-446655440000"}}
+`)
+	is.NoErr(os.WriteFile(backup, data, 0o644))
+	is.NoErr(writeSnapshotArtifactManifest(manifestPath, snapshotArtifactManifestOptions{
+		Namespace:  "prod",
+		BackupPath: backup,
+		CreatedAt:  time.Date(2026, 5, 30, 23, 30, 0, 0, time.UTC),
+	}))
+	rehearsalData, err := json.Marshal(snapshotRehearsalReport{
+		OK:              true,
+		Namespace:       "prod-restore-preview",
+		RehearsedAt:     "2026-05-30T23:31:00Z",
+		TargetNamespace: "prod-restore-preview",
+		Verification:    snapshotArtifactVerifyReport{OK: true},
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(rehearsalPath, rehearsalData, 0o644))
+	summaryData, err := json.Marshal(snapshotLifecycleSummary{
+		Namespace:    "prod",
+		CreatedAt:    "2026-05-30T23:32:00Z",
+		Backup:       backup,
+		Manifest:     manifestPath,
+		Rehearsal:    rehearsalPath,
+		Promotion:    filepath.Join(dir, "backup.promotion.json"),
+		ReceiptCheck: filepath.Join(dir, "backup.receipt-check.json"),
+		Promoted:     false,
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(summaryPath, summaryData, 0o644))
+
+	report, err := verifySnapshotLifecycleSummary(summaryPath)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.Namespace, "prod")
+	is.True(report.BackupExists)
+	is.True(report.ManifestOK)
+	is.True(report.RehearsalOK)
+	is.True(!report.PromotionOK)
+	is.Equal(len(report.ValidationErrors), 0)
+}
+
+func TestVerifySnapshotLifecycleSummaryWithPromotion(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "backup.ndjson")
+	manifestPath := filepath.Join(dir, "backup.manifest.json")
+	rehearsalPath := filepath.Join(dir, "backup.rehearsal.json")
+	promotionPath := filepath.Join(dir, "backup.promotion.json")
+	receiptCheckPath := filepath.Join(dir, "backup.receipt-check.json")
+	summaryPath := filepath.Join(dir, "backup.lifecycle.json")
+	data := []byte(`{"type":"node","data":{"id":"550e8400-e29b-41d4-a716-446655440000"}}
+{"type":"source","data":{"id":"docs"}}
+`)
+	is.NoErr(os.WriteFile(backup, data, 0o644))
+	is.NoErr(writeSnapshotArtifactManifest(manifestPath, snapshotArtifactManifestOptions{
+		Namespace:  "prod",
+		BackupPath: backup,
+		CreatedAt:  time.Date(2026, 5, 30, 23, 30, 0, 0, time.UTC),
+	}))
+	rehearsalData, err := json.Marshal(snapshotRehearsalReport{
+		OK:              true,
+		Namespace:       "prod-restore-preview",
+		RehearsedAt:     "2026-05-30T23:31:00Z",
+		TargetNamespace: "prod-restore-preview",
+		Verification:    snapshotArtifactVerifyReport{OK: true},
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(rehearsalPath, rehearsalData, 0o644))
+	receipt := buildSnapshotPromotionReceipt(snapshotPromotionReceiptOptions{
+		Namespace:  "prod",
+		BackupPath: backup,
+		ImportedAt: time.Date(2026, 5, 30, 23, 32, 0, 0, time.UTC),
+		Report: client.SnapshotReport{
+			Namespace: "prod",
+			Lines:     2,
+			Nodes:     1,
+			Sources:   1,
+		},
+	})
+	promotionData, err := json.Marshal(receipt)
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(promotionPath, promotionData, 0o644))
+	receiptCheckData, err := json.Marshal(snapshotPromotionReceiptVerifyReport{OK: true})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(receiptCheckPath, receiptCheckData, 0o644))
+	summaryData, err := json.Marshal(snapshotLifecycleSummary{
+		Namespace:    "prod",
+		CreatedAt:    "2026-05-30T23:33:00Z",
+		Backup:       backup,
+		Manifest:     manifestPath,
+		Rehearsal:    rehearsalPath,
+		Promotion:    promotionPath,
+		ReceiptCheck: receiptCheckPath,
+		Promoted:     true,
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(summaryPath, summaryData, 0o644))
+
+	report, err := verifySnapshotLifecycleSummary(summaryPath)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.PromotionExists)
+	is.True(report.PromotionOK)
+	is.True(report.ReceiptCheckOK)
+}
+
+func TestVerifySnapshotLifecycleSummaryRejectsBadReceiptCheck(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "backup.ndjson")
+	manifestPath := filepath.Join(dir, "backup.manifest.json")
+	rehearsalPath := filepath.Join(dir, "backup.rehearsal.json")
+	promotionPath := filepath.Join(dir, "backup.promotion.json")
+	receiptCheckPath := filepath.Join(dir, "backup.receipt-check.json")
+	summaryPath := filepath.Join(dir, "backup.lifecycle.json")
+	is.NoErr(os.WriteFile(backup, []byte(`{"type":"node","data":{}}
+`), 0o644))
+	is.NoErr(writeSnapshotArtifactManifest(manifestPath, snapshotArtifactManifestOptions{
+		Namespace:  "prod",
+		BackupPath: backup,
+		CreatedAt:  time.Now(),
+	}))
+	rehearsalData, err := json.Marshal(snapshotRehearsalReport{OK: true, Verification: snapshotArtifactVerifyReport{OK: true}})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(rehearsalPath, rehearsalData, 0o644))
+	promotionData, err := json.Marshal(buildSnapshotPromotionReceipt(snapshotPromotionReceiptOptions{
+		Namespace:  "prod",
+		BackupPath: backup,
+		ImportedAt: time.Now(),
+		Report:     client.SnapshotReport{Namespace: "prod", Lines: 1, Nodes: 1},
+	}))
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(promotionPath, promotionData, 0o644))
+	receiptCheckData, err := json.Marshal(snapshotPromotionReceiptVerifyReport{
+		OK:               false,
+		ValidationErrors: []string{"record counts mismatch"},
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(receiptCheckPath, receiptCheckData, 0o644))
+	summaryData, err := json.Marshal(snapshotLifecycleSummary{
+		Namespace:    "prod",
+		CreatedAt:    "2026-05-30T23:33:00Z",
+		Backup:       backup,
+		Manifest:     manifestPath,
+		Rehearsal:    rehearsalPath,
+		Promotion:    promotionPath,
+		ReceiptCheck: receiptCheckPath,
+		Promoted:     true,
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(summaryPath, summaryData, 0o644))
+
+	report, err := verifySnapshotLifecycleSummary(summaryPath)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(!report.ReceiptCheckOK)
+	is.True(len(report.ValidationErrors) > 0)
+}
+
 func TestBuildNornDriftReportMatches(t *testing.T) {
 	is := is.New(t)
 

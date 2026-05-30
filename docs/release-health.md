@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.29.0 | Passed | Passed | Corpus coverage present | Lifecycle verification coverage added | CLI lifecycle verification tests added | Adds lifecycle summary verification for backup artifact bundles |
 | v0.28.0 | Passed | Passed | Corpus coverage present | Backup lifecycle runbook coverage added | Docs lifecycle script verified by docs build | Adds guarded full-chain backup lifecycle workflow |
 | v0.27.0 | Passed | Passed | Corpus coverage present | Promotion receipt verification coverage added | CLI receipt verification tests added | Adds receipt-to-manifest verification for restore promotion artifacts |
 | v0.26.0 | Passed | Passed | Corpus coverage present | Restore promotion receipt coverage added | CLI import receipt tests added | Adds promotion JSON receipts for snapshot imports |

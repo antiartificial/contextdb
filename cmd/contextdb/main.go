@@ -117,7 +117,7 @@ func main() {
 
 func runSnapshot(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, verify, rehearse, or receipt")
+		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, verify, rehearse, receipt, or lifecycle")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -131,6 +131,8 @@ func runSnapshot(args []string) {
 		runSnapshotRehearse(args[1:])
 	case "receipt":
 		runSnapshotReceipt(args[1:])
+	case "lifecycle":
+		runSnapshotLifecycle(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb snapshot: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -322,6 +324,41 @@ func runSnapshotReceiptVerify(args []string) {
 	}
 }
 
+func runSnapshotLifecycle(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runSnapshotLifecycleVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotLifecycleVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle verify", flag.ExitOnError)
+	summaryPath := fs.String("summary", "", "JSON lifecycle summary to verify")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotLifecycleSummary(*summaryPath)
+	if err != nil {
+		if *reportOut && (report.Summary != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
 func openSnapshotDB() *client.DB {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := client.Open(client.Options{
@@ -470,6 +507,39 @@ type snapshotPromotionReceiptVerifyReport struct {
 	ValidationErrors   []string               `json:"validation_errors,omitempty"`
 }
 
+type snapshotLifecycleSummary struct {
+	Namespace    string `json:"namespace"`
+	CreatedAt    string `json:"created_at"`
+	Backup       string `json:"backup"`
+	Manifest     string `json:"manifest"`
+	Rehearsal    string `json:"rehearsal"`
+	Promotion    string `json:"promotion"`
+	ReceiptCheck string `json:"receipt_check"`
+	Promoted     bool   `json:"promoted"`
+}
+
+type snapshotLifecycleVerifyReport struct {
+	OK               bool     `json:"ok"`
+	Summary          string   `json:"summary"`
+	Namespace        string   `json:"namespace"`
+	CreatedAt        string   `json:"created_at"`
+	Promoted         bool     `json:"promoted"`
+	Backup           string   `json:"backup"`
+	BackupExists     bool     `json:"backup_exists"`
+	Manifest         string   `json:"manifest"`
+	ManifestExists   bool     `json:"manifest_exists"`
+	ManifestOK       bool     `json:"manifest_ok"`
+	Rehearsal        string   `json:"rehearsal"`
+	RehearsalExists  bool     `json:"rehearsal_exists"`
+	RehearsalOK      bool     `json:"rehearsal_ok"`
+	Promotion        string   `json:"promotion,omitempty"`
+	PromotionExists  bool     `json:"promotion_exists"`
+	PromotionOK      bool     `json:"promotion_ok"`
+	ReceiptCheck     string   `json:"receipt_check,omitempty"`
+	ReceiptCheckOK   bool     `json:"receipt_check_ok"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
+}
+
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -580,6 +650,140 @@ func verifySnapshotPromotionReceipt(promotionReportPath, manifestPath string) (s
 		return report, fmt.Errorf("promotion receipt verification failed: %s", strings.Join(report.ValidationErrors, "; "))
 	}
 	return report, nil
+}
+
+func verifySnapshotLifecycleSummary(summaryPath string) (snapshotLifecycleVerifyReport, error) {
+	summaryPath = strings.TrimSpace(summaryPath)
+	if summaryPath == "" {
+		return snapshotLifecycleVerifyReport{}, fmt.Errorf("--summary is required")
+	}
+	summaryData, err := os.ReadFile(summaryPath)
+	if err != nil {
+		return snapshotLifecycleVerifyReport{}, fmt.Errorf("read lifecycle summary: %w", err)
+	}
+	var summary snapshotLifecycleSummary
+	if err := json.Unmarshal(summaryData, &summary); err != nil {
+		return snapshotLifecycleVerifyReport{}, fmt.Errorf("decode lifecycle summary: %w", err)
+	}
+	baseDir := filepath.Dir(summaryPath)
+	backupPath := resolveLifecycleSummaryPath(baseDir, summary.Backup)
+	manifestPath := resolveLifecycleSummaryPath(baseDir, summary.Manifest)
+	rehearsalPath := resolveLifecycleSummaryPath(baseDir, summary.Rehearsal)
+	promotionPath := resolveLifecycleSummaryPath(baseDir, summary.Promotion)
+	receiptCheckPath := resolveLifecycleSummaryPath(baseDir, summary.ReceiptCheck)
+	report := snapshotLifecycleVerifyReport{
+		Summary:      summaryPath,
+		Namespace:    summary.Namespace,
+		CreatedAt:    summary.CreatedAt,
+		Promoted:     summary.Promoted,
+		Backup:       backupPath,
+		Manifest:     manifestPath,
+		Rehearsal:    rehearsalPath,
+		Promotion:    promotionPath,
+		ReceiptCheck: receiptCheckPath,
+	}
+	if strings.TrimSpace(summary.Namespace) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "namespace is empty")
+	}
+	if strings.TrimSpace(summary.CreatedAt) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "created_at is empty")
+	}
+	report.BackupExists = lifecycleFileExists(backupPath)
+	if !report.BackupExists {
+		report.ValidationErrors = append(report.ValidationErrors, "backup file is missing")
+	}
+	report.ManifestExists = lifecycleFileExists(manifestPath)
+	if !report.ManifestExists {
+		report.ValidationErrors = append(report.ValidationErrors, "manifest file is missing")
+	}
+	if report.BackupExists && report.ManifestExists {
+		manifestReport, err := verifySnapshotArtifactManifest(manifestPath, backupPath)
+		report.ManifestOK = manifestReport.OK
+		if err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		}
+		if manifestReport.OK && strings.TrimSpace(manifestReport.Manifest) != "" {
+			var manifest snapshotArtifactManifest
+			if err := readJSONFile(manifestPath, &manifest); err != nil {
+				report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode artifact manifest: %v", err))
+			} else if strings.TrimSpace(manifest.Namespace) != "" && manifest.Namespace != summary.Namespace {
+				report.ValidationErrors = append(report.ValidationErrors, "manifest namespace does not match lifecycle namespace")
+			}
+		}
+	}
+	report.RehearsalExists = lifecycleFileExists(rehearsalPath)
+	if !report.RehearsalExists {
+		report.ValidationErrors = append(report.ValidationErrors, "rehearsal report is missing")
+	} else {
+		var rehearsal snapshotRehearsalReport
+		if err := readJSONFile(rehearsalPath, &rehearsal); err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode rehearsal report: %v", err))
+		} else {
+			report.RehearsalOK = rehearsal.OK && rehearsal.Verification.OK
+			if !report.RehearsalOK {
+				report.ValidationErrors = append(report.ValidationErrors, "rehearsal report is not ok")
+			}
+		}
+	}
+	if summary.Promoted {
+		report.PromotionExists = lifecycleFileExists(promotionPath)
+		if !report.PromotionExists {
+			report.ValidationErrors = append(report.ValidationErrors, "promotion receipt is missing")
+		}
+		report.ReceiptCheckOK = false
+		if !lifecycleFileExists(receiptCheckPath) {
+			report.ValidationErrors = append(report.ValidationErrors, "receipt verification report is missing")
+		} else {
+			var receiptCheck snapshotPromotionReceiptVerifyReport
+			if err := readJSONFile(receiptCheckPath, &receiptCheck); err != nil {
+				report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode receipt verification report: %v", err))
+			} else {
+				report.ReceiptCheckOK = receiptCheck.OK
+				if !receiptCheck.OK {
+					report.ValidationErrors = append(report.ValidationErrors, "receipt verification report is not ok")
+				}
+			}
+		}
+		if report.PromotionExists && report.ManifestExists {
+			promotionReport, err := verifySnapshotPromotionReceipt(promotionPath, manifestPath)
+			report.PromotionOK = promotionReport.OK
+			if err != nil {
+				report.ValidationErrors = append(report.ValidationErrors, err.Error())
+			}
+			if promotionReport.OK && promotionReport.ImportNamespace != summary.Namespace {
+				report.ValidationErrors = append(report.ValidationErrors, "promotion namespace does not match lifecycle namespace")
+			}
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("lifecycle summary verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func resolveLifecycleSummaryPath(baseDir, path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(baseDir, path)
+}
+
+func lifecycleFileExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func readJSONFile(path string, out any) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, out)
 }
 
 func buildSnapshotArtifactManifest(opts snapshotArtifactManifestOptions) (snapshotArtifactManifest, error) {
