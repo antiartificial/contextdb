@@ -18,6 +18,8 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/sources/label` | Label a source |
 | `GET` | `/v1/namespaces/{ns}/sources/{sourceID}/trust` | Source credibility timeline |
 | `GET` | `/v1/namespaces/{ns}/review/queue` | Claim review queue |
+| `GET` | `/v1/namespaces/{ns}/review/decisions` | Review workflow decision history |
+| `POST` | `/v1/namespaces/{ns}/review/decisions` | Record review assignment, snooze, or resolution |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/validate` | Validate a claim |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/refute` | Refute a claim |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/useful` | Mark a memory useful |
@@ -198,10 +200,10 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.11.2",
+  "version": "0.12.0",
   "api_version": "v1",
-  "docs_version": "0.11.2",
-  "compatibility": "non-breaking pre-1.0 patch release",
+  "docs_version": "0.12.0",
+  "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
     {
@@ -263,6 +265,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.11.2",
       "description": "Release gate summary for unit, docs, ranking, durability, API contract, and race/soak checks."
+    },
+    {
+      "name": "review-workflow-persistence",
+      "status": "stable",
+      "since": "v0.12.0",
+      "description": "Append-only review decisions for assignment, status, resolution notes, and re-check scheduling."
     }
   ],
   "migrations": [
@@ -270,7 +278,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.11.2"
+  "release_notes_path": "/contextdb/releases/v0.12.0"
 }
 ```
 
@@ -494,10 +502,37 @@ Query parameters:
       "action": "refuted",
       "created_at": "2026-05-30T16:45:00Z",
       "suggested_action": "review claim and decide whether to retract, supersede, or add counter-evidence",
-      "confidence": 0.05
+      "confidence": 0.05,
+      "status": "assigned",
+      "owner": "alice",
+      "decision": "needs_evidence",
+      "note": "check source logs",
+      "reviewed_at": "2026-05-30T17:10:00Z"
     }
   ]
 }
+```
+
+Record workflow state for a derived review item with:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/review/decisions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "review_id": "low_confidence:550e8400-e29b-41d4-a716-446655440000",
+    "status": "assigned",
+    "owner": "alice",
+    "decision": "needs_evidence",
+    "note": "check source logs"
+  }'
+```
+
+Supported statuses are `open`, `assigned`, `resolved`, and `snoozed`. Snoozed items require `recheck_at`; resolved items are hidden from the derived queue, and snoozed items are hidden until their re-check time.
+
+List the append-only decision log with:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/decisions?after=2026-05-30T00:00:00Z"
 ```
 
 ## Narrative Retrieval

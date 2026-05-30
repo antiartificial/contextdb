@@ -250,6 +250,34 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.True(len(items) > 0)
 	queueItem := items[0].(map[string]any)
 	is.True(queueItem["type"] != "")
+	reviewID := queueItem["id"].(string)
+
+	decisionBody, _ := json.Marshal(map[string]any{
+		"review_id": reviewID,
+		"status":    "assigned",
+		"owner":     "alice",
+		"decision":  "needs_evidence",
+		"note":      "check logs",
+	})
+	reqDecision := httptest.NewRequest("POST", "/v1/namespaces/channel:general/review/decisions", bytes.NewReader(decisionBody))
+	reqDecision.Header.Set("Content-Type", "application/json")
+	wDecision := httptest.NewRecorder()
+	handler.ServeHTTP(wDecision, reqDecision)
+	is.Equal(wDecision.Code, http.StatusOK)
+	var decisionResp map[string]any
+	is.NoErr(json.Unmarshal(wDecision.Body.Bytes(), &decisionResp))
+	is.Equal(decisionResp["review_id"], reviewID)
+	is.Equal(decisionResp["status"], "assigned")
+
+	reqDecisions := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/decisions", nil)
+	wDecisions := httptest.NewRecorder()
+	handler.ServeHTTP(wDecisions, reqDecisions)
+	is.Equal(wDecisions.Code, http.StatusOK)
+	var decisionsResp map[string]any
+	is.NoErr(json.Unmarshal(wDecisions.Body.Bytes(), &decisionsResp))
+	decisions := decisionsResp["decisions"].([]any)
+	is.Equal(len(decisions), 1)
+	is.Equal(decisions[0].(map[string]any)["owner"], "alice")
 
 	req4 := httptest.NewRequest("GET", "/v1/namespaces/channel:general/nodes/"+nodeID+"/narrative", nil)
 	w4 := httptest.NewRecorder()
@@ -476,6 +504,39 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(feedback["action"], "validated")
 	is.True(feedback["sourceCredibility"].(float64) > 0.5)
 
+	reviewID := "low_confidence:" + nodeID
+	reviewMutationBody, _ := json.Marshal(map[string]any{
+		"query": `mutation($reviewID: ID!) {
+			recordReviewDecision(
+				namespace: "graphql-test"
+				reviewId: $reviewID
+				status: "assigned"
+				owner: "alice"
+				decision: "needs_evidence"
+				note: "check source"
+			) {
+				reviewId
+				status
+				owner
+				decision
+			}
+		}`,
+		"variables": map[string]any{"reviewID": reviewID},
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(reviewMutationBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql review mutation errors: %v", errs)
+	}
+	reviewMutation := resp["data"].(map[string]any)["recordReviewDecision"].(map[string]any)
+	is.Equal(reviewMutation["reviewId"], reviewID)
+	is.Equal(reviewMutation["status"], "assigned")
+
 	queryBody, _ = json.Marshal(map[string]any{
 		"query": `query($id: ID!, $otherID: ID!) {
 			narrative(namespace: "graphql-test", nodeId: $id) {
@@ -508,9 +569,18 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				factors { factor delta }
 			}
 			reviewQueue(namespace: "graphql-test", lowConfidenceThreshold: 0.99) {
+				id
 				type
 				nodeId
+				status
+				owner
 				suggestedAction
+			}
+			reviewDecisions(namespace: "graphql-test") {
+				reviewId
+				status
+				owner
+				decision
 			}
 		}`,
 		"variables": map[string]any{"id": nodeID, "otherID": otherNodeID},
@@ -555,8 +625,24 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(rankEvidence["supportCount"], float64(1))
 	queue := data["reviewQueue"].([]any)
 	is.True(len(queue) > 0)
-	queueItem := queue[0].(map[string]any)
+	var queueItem map[string]any
+	for _, raw := range queue {
+		candidate := raw.(map[string]any)
+		if candidate["id"] == reviewID {
+			queueItem = candidate
+			break
+		}
+	}
+	is.True(queueItem != nil)
 	is.True(queueItem["type"] != "")
+	is.Equal(queueItem["id"], reviewID)
+	is.Equal(queueItem["status"], "assigned")
+	is.Equal(queueItem["owner"], "alice")
+	reviewDecisions := data["reviewDecisions"].([]any)
+	is.Equal(len(reviewDecisions), 1)
+	reviewDecision := reviewDecisions[0].(map[string]any)
+	is.Equal(reviewDecision["reviewId"], reviewID)
+	is.Equal(reviewDecision["decision"], "needs_evidence")
 }
 
 func TestGraphQLServer_Introspection(t *testing.T) {

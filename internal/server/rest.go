@@ -52,6 +52,8 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/namespaces/{ns}/sources/label", s.handleLabelSource)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/sources/{sourceID}/trust", s.handleSourceTrustTimeline)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/queue", s.handleReviewQueue)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/review/decisions", s.handleRecordReviewDecision)
 
 	// POST /v1/namespaces/{ns}/consensus/{claimID}
 	mux.HandleFunc("POST /v1/namespaces/{ns}/consensus/{claimID}", s.handleConsensus)
@@ -195,6 +197,16 @@ type feedbackRequest struct {
 	Quality int    `json:"quality,omitempty"`
 }
 
+type reviewDecisionRequest struct {
+	Mode      string     `json:"mode"`
+	ReviewID  string     `json:"review_id"`
+	Status    string     `json:"status"`
+	Owner     string     `json:"owner,omitempty"`
+	Decision  string     `json:"decision,omitempty"`
+	Note      string     `json:"note,omitempty"`
+	RecheckAt *time.Time `json:"recheck_at,omitempty"`
+}
+
 type gapRequest struct {
 	Mode       string  `json:"mode"`
 	TopK       int     `json:"top_k,omitempty"`
@@ -212,6 +224,10 @@ type acquisitionPlanRequest struct {
 
 type reviewQueueResponse struct {
 	Items []client.ReviewItem `json:"items"`
+}
+
+type reviewDecisionsResponse struct {
+	Decisions []client.ReviewDecision `json:"decisions"`
 }
 
 type feedbackResponse struct {
@@ -725,6 +741,65 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, reviewQueueResponse{Items: items})
+}
+
+func (s *RESTServer) handleReviewDecisions(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var after time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
+			return
+		}
+		after = t
+	}
+
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	decisions, err := h.ReviewDecisions(r.Context(), after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewDecisionsResponse{Decisions: decisions})
+}
+
+func (s *RESTServer) handleRecordReviewDecision(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var req reviewDecisionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var recheckAt time.Time
+	if req.RecheckAt != nil {
+		recheckAt = *req.RecheckAt
+	}
+
+	h := s.db.Namespace(ns, resolveMode(req.Mode))
+	decision, err := h.RecordReviewDecision(r.Context(), client.ReviewDecisionRequest{
+		ReviewID:  req.ReviewID,
+		Status:    req.Status,
+		Owner:     req.Owner,
+		Decision:  req.Decision,
+		Note:      req.Note,
+		RecheckAt: recheckAt,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, decision)
 }
 
 func (s *RESTServer) handleNarrative(w http.ResponseWriter, r *http.Request) {

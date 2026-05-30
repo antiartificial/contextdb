@@ -210,11 +210,50 @@ query {
     createdAt
     suggestedAction
     confidence
+    status
+    owner
+    decision
+    note
+    reviewedAt
   }
 }
 ```
 
 The queue derives review tasks from refuted and stale feedback, low-confidence active claims, and contradiction clusters.
+
+Record and inspect review workflow state with:
+
+```graphql
+mutation {
+  recordReviewDecision(
+    namespace: "my-app"
+    reviewId: "low_confidence:550e8400-e29b-41d4-a716-446655440000"
+    status: "assigned"
+    owner: "alice"
+    decision: "needs_evidence"
+    note: "check source logs"
+  ) {
+    reviewId
+    status
+    owner
+    decision
+  }
+}
+```
+
+```graphql
+query {
+  reviewDecisions(namespace: "my-app") {
+    reviewId
+    status
+    owner
+    decision
+    note
+    recheckAt
+    txTime
+  }
+}
+```
 
 ## Knowledge Acquisition Plan
 

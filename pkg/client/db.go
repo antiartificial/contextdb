@@ -547,6 +547,29 @@ type ReviewQueueRequest struct {
 	Limit                  int
 }
 
+// ReviewDecisionRequest records durable workflow state for a derived review task.
+type ReviewDecisionRequest struct {
+	ReviewID  string
+	Status    string
+	Owner     string
+	Decision  string
+	Note      string
+	RecheckAt time.Time
+}
+
+// ReviewDecision is an append-only workflow event attached to a derived review item.
+type ReviewDecision struct {
+	EventID   uuid.UUID `json:"event_id,omitempty"`
+	Namespace string    `json:"namespace"`
+	ReviewID  string    `json:"review_id"`
+	Status    string    `json:"status"`
+	Owner     string    `json:"owner,omitempty"`
+	Decision  string    `json:"decision,omitempty"`
+	Note      string    `json:"note,omitempty"`
+	RecheckAt time.Time `json:"recheck_at,omitempty"`
+	TxTime    time.Time `json:"tx_time"`
+}
+
 // ReviewItem is a derived operator task for claims that need attention.
 type ReviewItem struct {
 	ID         string      `json:"id"`
@@ -561,6 +584,12 @@ type ReviewItem struct {
 	CreatedAt  time.Time   `json:"created_at"`
 	Suggested  string      `json:"suggested_action"`
 	Confidence float64     `json:"confidence,omitempty"`
+	Status     string      `json:"status,omitempty"`
+	Owner      string      `json:"owner,omitempty"`
+	Decision   string      `json:"decision,omitempty"`
+	Note       string      `json:"note,omitempty"`
+	RecheckAt  time.Time   `json:"recheck_at,omitempty"`
+	ReviewedAt time.Time   `json:"reviewed_at,omitempty"`
 }
 
 // GapRequest configures knowledge-gap detection for a namespace.
@@ -1242,6 +1271,80 @@ func (h *NamespaceHandle) SourceTrustTimeline(ctx context.Context, sourceID stri
 	return out, nil
 }
 
+// RecordReviewDecision appends durable workflow state for a derived review task.
+func (h *NamespaceHandle) RecordReviewDecision(ctx context.Context, req ReviewDecisionRequest) (ReviewDecision, error) {
+	reviewID := strings.TrimSpace(req.ReviewID)
+	if reviewID == "" {
+		return ReviewDecision{}, fmt.Errorf("review decision: review_id is required")
+	}
+	status := strings.TrimSpace(req.Status)
+	if status == "" {
+		status = "open"
+	}
+	switch status {
+	case "open", "assigned", "resolved", "snoozed":
+	default:
+		return ReviewDecision{}, fmt.Errorf("review decision: unsupported status %q", status)
+	}
+	if status == "snoozed" && req.RecheckAt.IsZero() {
+		return ReviewDecision{}, fmt.Errorf("review decision: recheck_at is required for snoozed status")
+	}
+
+	decision := ReviewDecision{
+		EventID:   uuid.New(),
+		Namespace: h.cfg.ID,
+		ReviewID:  reviewID,
+		Status:    status,
+		Owner:     strings.TrimSpace(req.Owner),
+		Decision:  strings.TrimSpace(req.Decision),
+		Note:      strings.TrimSpace(req.Note),
+		RecheckAt: req.RecheckAt,
+		TxTime:    time.Now(),
+	}
+	payload, err := json.Marshal(decision)
+	if err != nil {
+		return ReviewDecision{}, fmt.Errorf("review decision: marshal: %w", err)
+	}
+	event := store.Event{
+		ID:        decision.EventID,
+		Namespace: h.cfg.ID,
+		Type:      store.EventReviewDecision,
+		Payload:   payload,
+		TxTime:    decision.TxTime,
+	}
+	if err := h.db.log.Append(ctx, event); err != nil {
+		return ReviewDecision{}, fmt.Errorf("review decision: append event: %w", err)
+	}
+	return decision, nil
+}
+
+// ReviewDecisions returns durable review workflow events after the given time.
+func (h *NamespaceHandle) ReviewDecisions(ctx context.Context, after time.Time) ([]ReviewDecision, error) {
+	events, err := h.db.log.SinceAll(ctx, h.cfg.ID, after)
+	if err != nil {
+		return nil, fmt.Errorf("review decisions: %w", err)
+	}
+	out := make([]ReviewDecision, 0, len(events))
+	for _, event := range events {
+		if event.Type != store.EventReviewDecision {
+			continue
+		}
+		var decision ReviewDecision
+		if err := json.Unmarshal(event.Payload, &decision); err != nil {
+			return nil, fmt.Errorf("review decisions: decode %s: %w", event.ID, err)
+		}
+		decision.EventID = event.ID
+		if decision.Namespace == "" {
+			decision.Namespace = event.Namespace
+		}
+		if decision.TxTime.IsZero() {
+			decision.TxTime = event.TxTime
+		}
+		out = append(out, decision)
+	}
+	return out, nil
+}
+
 // ReviewQueue derives operator review tasks from feedback, low-confidence claims, and contradictions.
 func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueRequest) ([]ReviewItem, error) {
 	threshold := req.LowConfidenceThreshold
@@ -1317,6 +1420,12 @@ func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueReques
 			Suggested: "compare evidence and resolve the contradiction",
 		})
 	}
+
+	decisions, err := h.ReviewDecisions(ctx, time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	items = applyReviewDecisions(items, latestReviewDecisions(decisions), now)
 
 	sort.SliceStable(items, func(i, j int) bool {
 		if items[i].Priority == items[j].Priority {
@@ -1750,6 +1859,44 @@ func reviewIDsKey(ids []uuid.UUID) string {
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ",")
+}
+
+func latestReviewDecisions(decisions []ReviewDecision) map[string]ReviewDecision {
+	latest := make(map[string]ReviewDecision, len(decisions))
+	for _, decision := range decisions {
+		if existing, ok := latest[decision.ReviewID]; !ok || decision.TxTime.After(existing.TxTime) {
+			latest[decision.ReviewID] = decision
+		}
+	}
+	return latest
+}
+
+func applyReviewDecisions(items []ReviewItem, decisions map[string]ReviewDecision, now time.Time) []ReviewItem {
+	if len(decisions) == 0 {
+		return items
+	}
+	out := make([]ReviewItem, 0, len(items))
+	for _, item := range items {
+		decision, ok := decisions[item.ID]
+		if !ok {
+			out = append(out, item)
+			continue
+		}
+		if decision.Status == "resolved" {
+			continue
+		}
+		if decision.Status == "snoozed" && decision.RecheckAt.After(now) {
+			continue
+		}
+		item.Status = decision.Status
+		item.Owner = decision.Owner
+		item.Decision = decision.Decision
+		item.Note = decision.Note
+		item.RecheckAt = decision.RecheckAt
+		item.ReviewedAt = decision.TxTime
+		out = append(out, item)
+	}
+	return out
 }
 
 func scoreRankNode(node core.Node, vector []float32, params core.ScoreParams) core.ScoredNode {

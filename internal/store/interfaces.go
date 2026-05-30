@@ -164,6 +164,7 @@ const (
 	EventNodeRetract    EventType = "node_retract"
 	EventSourceUpdate   EventType = "source_update"
 	EventFeedback       EventType = "feedback"
+	EventReviewDecision EventType = "review_decision"
 )
 
 // Event is a single append-only log record.

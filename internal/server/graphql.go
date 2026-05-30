@@ -380,6 +380,75 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				item, _ := p.Source.(client.ReviewItem)
 				return item.Confidence, nil
 			}},
+			"status": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Status, nil
+			}},
+			"owner": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Owner, nil
+			}},
+			"decision": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Decision, nil
+			}},
+			"note": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Note, nil
+			}},
+			"recheckAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.RecheckAt, nil
+			}},
+			"reviewedAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.ReviewedAt, nil
+			}},
+		},
+	})
+
+	reviewDecisionType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewDecision",
+		Fields: graphql.Fields{
+			"eventId": &graphql.Field{Type: graphql.ID, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				if decision.EventID == uuid.Nil {
+					return nil, nil
+				}
+				return decision.EventID.String(), nil
+			}},
+			"namespace": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.Namespace, nil
+			}},
+			"reviewId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.ReviewID, nil
+			}},
+			"status": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.Status, nil
+			}},
+			"owner": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.Owner, nil
+			}},
+			"decision": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.Decision, nil
+			}},
+			"note": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.Note, nil
+			}},
+			"recheckAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.RecheckAt, nil
+			}},
+			"txTime": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				decision, _ := p.Source.(client.ReviewDecision)
+				return decision.TxTime, nil
+			}},
 		},
 	})
 
@@ -1026,6 +1095,15 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewQueue,
 			},
+			"reviewDecisions": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveReviewDecisions,
+			},
 		},
 	})
 
@@ -1039,6 +1117,20 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 	mutationType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Mutation",
 		Fields: graphql.Fields{
+			"recordReviewDecision": &graphql.Field{
+				Type: graphql.NewNonNull(reviewDecisionType),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"reviewId":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.ID)},
+					"status":    &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"owner":     &graphql.ArgumentConfig{Type: graphql.String},
+					"decision":  &graphql.ArgumentConfig{Type: graphql.String},
+					"note":      &graphql.ArgumentConfig{Type: graphql.String},
+					"recheckAt": &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveRecordReviewDecision,
+			},
 			"validateClaim": &graphql.Field{
 				Type:    graphql.NewNonNull(feedbackResultType),
 				Args:    feedbackArgs,
@@ -1245,6 +1337,40 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 		After:                  after,
 		LowConfidenceThreshold: threshold,
 		Limit:                  limit,
+	})
+}
+
+func (s *GraphQLServer) resolveReviewDecisions(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewDecisions(p.Context, after)
+}
+
+func (s *GraphQLServer) resolveRecordReviewDecision(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	reviewID, _ := p.Args["reviewId"].(string)
+	status, _ := p.Args["status"].(string)
+	owner, _ := p.Args["owner"].(string)
+	decision, _ := p.Args["decision"].(string)
+	note, _ := p.Args["note"].(string)
+	recheckAt, _ := p.Args["recheckAt"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.RecordReviewDecision(p.Context, client.ReviewDecisionRequest{
+		ReviewID:  reviewID,
+		Status:    status,
+		Owner:     owner,
+		Decision:  decision,
+		Note:      note,
+		RecheckAt: recheckAt,
 	})
 }
 

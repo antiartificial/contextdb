@@ -309,6 +309,21 @@ for _, item := range items {
 }
 ```
 
+Review decisions persist workflow state without making queue generation stateful:
+
+```go
+decision, err := ns.RecordReviewDecision(ctx, client.ReviewDecisionRequest{
+    ReviewID: "low_confidence:550e8400-e29b-41d4-a716-446655440000",
+    Status:   "assigned",
+    Owner:    "alice",
+    Decision: "needs_evidence",
+    Note:     "check source logs",
+})
+decisions, err := ns.ReviewDecisions(ctx, time.Now().Add(-24*time.Hour))
+```
+
+Supported statuses are `open`, `assigned`, `resolved`, and `snoozed`. The derived queue overlays the latest decision for each task; resolved tasks are hidden, and snoozed tasks are hidden until `RecheckAt`.
+
 ## Narrative And Gaps
 
 ```go

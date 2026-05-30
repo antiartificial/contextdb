@@ -283,6 +283,72 @@ func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is.True(types["low_confidence"])
 }
 
+func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:review-decisions", namespace.ModeGeneral)
+	start := time.Now().Add(-time.Second)
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Unverified deployment claim",
+		SourceID:   "docs",
+		Labels:     []string{"Claim"},
+		Confidence: 0.2,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+
+	queue, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{LowConfidenceThreshold: 0.35})
+	is.NoErr(err)
+	is.True(len(queue) > 0)
+	reviewID := queue[0].ID
+
+	decision, err := ns.RecordReviewDecision(ctx, client.ReviewDecisionRequest{
+		ReviewID: reviewID,
+		Status:   "assigned",
+		Owner:    "alice",
+		Decision: "needs_evidence",
+		Note:     "check source logs",
+	})
+	is.NoErr(err)
+	is.Equal(decision.ReviewID, reviewID)
+	is.Equal(decision.Status, "assigned")
+	is.Equal(decision.Owner, "alice")
+	is.True(decision.EventID != uuid.Nil)
+
+	decisions, err := ns.ReviewDecisions(ctx, start)
+	is.NoErr(err)
+	is.Equal(len(decisions), 1)
+	is.Equal(decisions[0].ReviewID, reviewID)
+	is.Equal(decisions[0].Decision, "needs_evidence")
+
+	queue, err = ns.ReviewQueue(ctx, client.ReviewQueueRequest{LowConfidenceThreshold: 0.35})
+	is.NoErr(err)
+	is.True(len(queue) > 0)
+	is.Equal(queue[0].ID, reviewID)
+	is.Equal(queue[0].Status, "assigned")
+	is.Equal(queue[0].Owner, "alice")
+	is.Equal(queue[0].Note, "check source logs")
+
+	_, err = ns.RecordReviewDecision(ctx, client.ReviewDecisionRequest{
+		ReviewID: reviewID,
+		Status:   "resolved",
+		Owner:    "alice",
+		Decision: "verified_elsewhere",
+	})
+	is.NoErr(err)
+	queue, err = ns.ReviewQueue(ctx, client.ReviewQueueRequest{LowConfidenceThreshold: 0.35})
+	is.NoErr(err)
+	for _, item := range queue {
+		if item.ID == reviewID {
+			t.Fatalf("resolved review item %q still present in queue", reviewID)
+		}
+	}
+}
+
 func TestNamespace_ReviewQueueIncludesContradictions(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
