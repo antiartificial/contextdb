@@ -96,9 +96,15 @@ func main() {
 func runDoctor(args []string) {
 	fs := flag.NewFlagSet("contextdb doctor", flag.ExitOnError)
 	baseURL := fs.String("url", getenv("CONTEXTDB_REST_URL", "http://127.0.0.1:7701"), "contextdb REST base URL")
+	sampleWrite := fs.Bool("sample-write", false, "write and retrieve a sample probe node")
+	sampleNamespace := fs.String("sample-namespace", "_doctor", "namespace to use with --sample-write")
 	_ = fs.Parse(args)
 
-	report, err := doctor.Run(context.Background(), doctor.Options{BaseURL: *baseURL})
+	report, err := doctor.Run(context.Background(), doctor.Options{
+		BaseURL:         *baseURL,
+		SampleWrite:     *sampleWrite,
+		SampleNamespace: *sampleNamespace,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb doctor: %v\n", err)
 		os.Exit(2)

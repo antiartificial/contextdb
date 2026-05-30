@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,8 +12,10 @@ import (
 )
 
 type Options struct {
-	BaseURL string
-	Client  *http.Client
+	BaseURL         string
+	Client          *http.Client
+	SampleWrite     bool
+	SampleNamespace string
 }
 
 type Report struct {
@@ -21,6 +24,7 @@ type Report struct {
 	Version         string        `json:"version,omitempty"`
 	APIVersion      string        `json:"api_version,omitempty"`
 	LatestMigration int           `json:"latest_migration,omitempty"`
+	SampleNodeID    string        `json:"sample_node_id,omitempty"`
 	Checks          []CheckResult `json:"checks"`
 }
 
@@ -60,6 +64,36 @@ type migrationInfo struct {
 	Name    string `json:"name"`
 }
 
+type writeRequest struct {
+	Mode       string    `json:"mode"`
+	Content    string    `json:"content"`
+	SourceID   string    `json:"source_id"`
+	Labels     []string  `json:"labels"`
+	Vector     []float32 `json:"vector"`
+	Confidence float64   `json:"confidence"`
+	Dedup      bool      `json:"dedup"`
+}
+
+type writeResponse struct {
+	NodeID   string `json:"node_id"`
+	Admitted bool   `json:"admitted"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+type retrieveRequest struct {
+	Vector []float32 `json:"vector"`
+	TopK   int       `json:"top_k"`
+	Labels []string  `json:"labels,omitempty"`
+}
+
+type retrieveResponse struct {
+	Results []struct {
+		ID              string  `json:"id"`
+		Score           float64 `json:"score"`
+		SimilarityScore float64 `json:"similarity_score"`
+	} `json:"results"`
+}
+
 func Run(ctx context.Context, opts Options) (Report, error) {
 	target, err := normalizeBaseURL(opts.BaseURL)
 	if err != nil {
@@ -82,6 +116,15 @@ func Run(ctx context.Context, opts Options) (Report, error) {
 
 	report.Checks = append(report.Checks, runner.checkFeatures(ctx))
 	report.Checks = append(report.Checks, runner.checkMigrations(ctx))
+	if opts.SampleWrite {
+		namespace := strings.TrimSpace(opts.SampleNamespace)
+		if namespace == "" {
+			namespace = "_doctor"
+		}
+		nodeID, check := runner.checkSampleWrite(ctx, namespace)
+		report.Checks = append(report.Checks, check)
+		report.SampleNodeID = nodeID
+	}
 
 	report.OK = true
 	for _, check := range report.Checks {
@@ -155,11 +198,73 @@ func (r *runner) checkMigrations(ctx context.Context) CheckResult {
 	return CheckResult{Name: "migrations", OK: true, Detail: fmt.Sprintf("latest=%d count=%d", body.LatestMigration, len(body.Migrations))}
 }
 
+func (r *runner) checkSampleWrite(ctx context.Context, namespace string) (string, CheckResult) {
+	vector := []float32{1, 0, 0, 0}
+	writeReq := writeRequest{
+		Mode:       "general",
+		Content:    "contextdb doctor sample write retrieve probe",
+		SourceID:   "contextdb-doctor",
+		Labels:     []string{"DoctorProbe"},
+		Vector:     vector,
+		Confidence: 0.99,
+		Dedup:      true,
+	}
+	var writeResp writeResponse
+	if err := r.postJSON(ctx, "/v1/namespaces/"+url.PathEscape(namespace)+"/write", writeReq, &writeResp); err != nil {
+		return "", CheckResult{Name: "sample_write", OK: false, Detail: err.Error()}
+	}
+	if !writeResp.Admitted {
+		return writeResp.NodeID, CheckResult{Name: "sample_write", OK: false, Detail: "write was not admitted: " + writeResp.Reason}
+	}
+	if strings.TrimSpace(writeResp.NodeID) == "" {
+		return "", CheckResult{Name: "sample_write", OK: false, Detail: "write response missing node_id"}
+	}
+
+	var retrieveResp retrieveResponse
+	if err := r.postJSON(ctx, "/v1/namespaces/"+url.PathEscape(namespace)+"/retrieve", retrieveRequest{
+		Vector: vector,
+		TopK:   5,
+		Labels: []string{"DoctorProbe"},
+	}, &retrieveResp); err != nil {
+		return writeResp.NodeID, CheckResult{Name: "sample_write", OK: false, Detail: "retrieve: " + err.Error()}
+	}
+	for _, result := range retrieveResp.Results {
+		if result.ID == writeResp.NodeID {
+			return writeResp.NodeID, CheckResult{Name: "sample_write", OK: true, Detail: "wrote and retrieved " + writeResp.NodeID}
+		}
+	}
+	return writeResp.NodeID, CheckResult{Name: "sample_write", OK: false, Detail: "written node not found in retrieve results"}
+}
+
 func (r *runner) getJSON(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.baseURL+path, nil)
 	if err != nil {
 		return err
 	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("%s returned %s", path, resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("%s decode: %w", path, err)
+	}
+	return nil
+}
+
+func (r *runner) postJSON(ctx context.Context, path string, in, out any) error {
+	payload, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.baseURL+path, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return err

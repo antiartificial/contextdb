@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/antiartificial/contextdb/internal/buildinfo"
 	"github.com/antiartificial/contextdb/internal/server"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
@@ -74,7 +75,7 @@ func TestRESTServer_Introspection(t *testing.T) {
 		is.Equal(w.Code, http.StatusOK)
 		var resp map[string]any
 		is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
-		is.Equal(resp["version"], "0.4.0")
+		is.Equal(resp["version"], buildinfo.Version)
 	}
 
 	req := httptest.NewRequest("GET", "/v1/version", nil)
@@ -394,7 +395,7 @@ func TestGraphQLServer_Introspection(t *testing.T) {
 	}
 	data := resp["data"].(map[string]any)
 	version := data["version"].(map[string]any)
-	is.Equal(version["version"], "0.4.0")
+	is.Equal(version["version"], buildinfo.Version)
 	is.Equal(version["apiVersion"], "v1")
 	is.Equal(version["latestMigration"], float64(2))
 	is.True(len(version["features"].([]any)) > 0)

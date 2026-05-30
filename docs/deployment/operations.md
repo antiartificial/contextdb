@@ -12,7 +12,7 @@ title: Operations
 contextdb doctor --url http://localhost:7701
 ```
 
-The first v0.4.0 doctor checks are intentionally non-mutating:
+The default doctor checks are intentionally non-mutating:
 
 | Check | Verifies |
 |:------|:---------|
@@ -35,4 +35,18 @@ Use `CONTEXTDB_REST_URL` to set the target without passing `--url`:
 CONTEXTDB_REST_URL=http://contextdb.local:7701 contextdb doctor
 ```
 
-Future doctor slices should add explicit opt-in write/retrieve probes, index consistency checks, and backup readiness checks.
+### Sample Write Probe
+
+Add `--sample-write` to verify the live write path, vector retrieval path, and index visibility:
+
+```bash
+contextdb doctor --url http://localhost:7701 --sample-write
+```
+
+The probe writes a deduplicated `DoctorProbe` node and retrieves it by vector. It writes to `_doctor` by default; use `--sample-namespace` to choose another namespace:
+
+```bash
+contextdb doctor --sample-write --sample-namespace ops-checks
+```
+
+Future doctor slices should add backup readiness checks and deeper store/index consistency checks.

@@ -12,6 +12,12 @@ This is the working backlog for features that would make contextdb more useful, 
 | Ranking golden tests | Implemented | Belief-system and agent-memory score ordering fixtures |
 | API contract test | Implemented | gRPC write/retrieve/feedback contract and REST invalid-node-ID failure path |
 
+## Completed In v0.4.1
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| `contextdb doctor --sample-write` | Implemented | Opt-in CLI probe writes a deduplicated `DoctorProbe` node and verifies vector retrieval returns it |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -35,7 +41,7 @@ This is the working backlog for features that would make contextdb more useful, 
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
-| `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | First non-mutating live checks completed in v0.4.0; sample write/retrieve and index checks remain |
+| `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | Non-mutating checks completed in v0.4.0; opt-in sample write/retrieve probe completed in v0.4.1; deeper store/index checks remain |
 | Release health page | Makes release confidence visible | Document unit, integration, durability, ranking, and API parity status per release |
 | Backup/restore command | Productizes snapshot import/export | Include dry-run validation and namespace filters |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
@@ -60,9 +66,9 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs next | First useful slice |
 |:--------|:--------------------|:-------------------|
-| `contextdb doctor --sample-write` | The first doctor slice is non-mutating; an opt-in probe can validate write/read/index behavior | Write a tagged node in `_doctor`, retrieve it by vector, then report the persisted node ID |
 | Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, score breakdowns, sources, edges, and narrative reports |
 | Release health page | The release process now has concrete test categories to report | Add a docs page that lists unit, durability, ranking, API contract, docs-build, and race-test status per release |
+| Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks would make it more operationally complete | Check snapshot/export availability and warn when persistent embedded data has no recent backup marker |
 | Feedback event log | Feedback currently mutates node/source state; explicit event records would make audits and timelines stronger | Append durable events for validate/refute/useful/stale while preserving current node updates |
 | Source trust timeline | Builds naturally on feedback event logging | API endpoint and GraphQL field for source credibility changes over time |
 | Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |
