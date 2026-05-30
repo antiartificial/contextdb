@@ -246,9 +246,20 @@ func TestRehearseSnapshotRestore(t *testing.T) {
 	is.True(report.OK)
 	is.True(report.Verification.OK)
 	is.Equal(report.Namespace, "restore-preview")
+	is.Equal(report.TargetNamespace, "restore-preview")
+	is.True(report.RehearsedAt != "")
+	is.Equal(report.RecommendedImportCommand, "contextdb snapshot import --namespace 'restore-preview' --in '"+backup+"' --report")
 	is.Equal(report.Restore.DryRun, true)
 	is.True(report.Restore.Nodes > 0)
 	is.True(report.Restore.NewNodes > 0)
+}
+
+func TestRecommendedSnapshotImportCommandQuotesValues(t *testing.T) {
+	is := is.New(t)
+
+	command := recommendedSnapshotImportCommand("restore preview", "/tmp/aaron's backup.ndjson")
+
+	is.Equal(command, "contextdb snapshot import --namespace 'restore preview' --in '/tmp/aaron'\"'\"'s backup.ndjson' --report")
 }
 
 func TestBuildNornDriftReportMatches(t *testing.T) {

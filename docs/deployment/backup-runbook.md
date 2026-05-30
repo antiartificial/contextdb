@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.24.0",
+  "contextdb_version": "0.25.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -101,7 +101,7 @@ contextdb snapshot rehearse \
   --report
 ```
 
-Rehearsal first verifies the artifact manifest, then runs the same dry-run import report used for restore previews.
+Rehearsal first verifies the artifact manifest, then runs the same dry-run import report used for restore previews. The report includes `rehearsed_at`, `target_namespace`, and a shell-quoted `recommended_import_command` that can be reviewed before promotion.
 
 ## launchd
 

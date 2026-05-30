@@ -41,6 +41,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Backup artifact manifest | Implemented | v0.22 | `operations`, `backup`, `audit` | `contextdb snapshot export --manifest` writes a checksummed JSON sidecar with namespace, version, bytes, marker path, and record counts |
 | Backup manifest verify | Implemented | v0.23 | `operations`, `backup`, `audit` | `contextdb snapshot verify --manifest --in` validates checksum, size, and record counts before restore |
 | Restore rehearsal | Implemented | v0.24 | `operations`, `backup`, `audit` | `contextdb snapshot rehearse --manifest --in --namespace` verifies the artifact and returns dry-run restore counts in one preflight report |
+| Restore promotion checklist | Implemented | v0.25 | `operations`, `backup`, `audit` | Rehearsal reports include timestamp, target namespace, and a shell-quoted recommended import command |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |

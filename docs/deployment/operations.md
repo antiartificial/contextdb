@@ -118,7 +118,7 @@ contextdb snapshot rehearse \
   --report
 ```
 
-The rehearsal report includes the verification result plus the same dry-run restore counts returned by `contextdb snapshot import --dry-run --report`.
+The rehearsal report includes the verification result plus the same dry-run restore counts returned by `contextdb snapshot import --dry-run --report`. It also records `rehearsed_at`, `target_namespace`, and a shell-quoted `recommended_import_command` for the promotion step.
 
 For a complete scheduled workflow that pairs export, restore preview, marker checks, launchd/systemd timers, and Norn drift checks, see the [Backup Runbook](backup-runbook).
 

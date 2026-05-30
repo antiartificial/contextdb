@@ -151,6 +151,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Restore rehearsal command | Implemented | `contextdb snapshot rehearse --manifest PATH --in PATH --namespace NAME` verifies the backup artifact and returns dry-run restore counts in one preflight report |
 
+## Completed In v0.25.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Restore promotion checklist | Implemented | Rehearsal reports include `rehearsed_at`, `target_namespace`, and a shell-quoted `recommended_import_command` for the promotion step |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -182,6 +188,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup artifact manifest | Makes copied backup files auditable | Completed in v0.22.0 with `contextdb snapshot export --manifest` checksummed JSON sidecars |
 | Backup manifest verify | Catches mismatched or truncated artifacts before restore | Completed in v0.23.0 with `contextdb snapshot verify --manifest --in` |
 | Restore rehearsal command | Collapses verify and dry-run restore into one operator preflight | Completed in v0.24.0 with `contextdb snapshot rehearse --manifest --in --namespace` |
+| Restore promotion checklist | Makes the post-rehearsal import step explicit | Completed in v0.25.0 with rehearsal timestamp, target namespace, and recommended import command fields |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -358,7 +365,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Restore promotion checklist | Rehearsal proves readiness, but promotion still needs a repeatable operator path | Add docs and optional CLI report fields for rehearsal timestamp, target namespace, and recommended import command |
+| Restore promotion checklist | Rehearsal proves readiness, but promotion still needs a repeatable operator path | Completed in v0.25.0 with rehearsal timestamp, target namespace, and recommended import command fields |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.25.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Restore promotion audit event | Rehearsal now recommends the import command, but actual promotions are not logged as artifacts | Add optional `--promotion-note`/`--promotion-report` on snapshot import to write a promotion JSON receipt |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |

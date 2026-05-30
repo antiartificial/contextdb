@@ -371,10 +371,13 @@ type snapshotArtifactVerifyReport struct {
 }
 
 type snapshotRehearsalReport struct {
-	OK           bool                         `json:"ok"`
-	Namespace    string                       `json:"namespace"`
-	Verification snapshotArtifactVerifyReport `json:"verification"`
-	Restore      client.SnapshotReport        `json:"restore"`
+	OK                       bool                         `json:"ok"`
+	Namespace                string                       `json:"namespace"`
+	RehearsedAt              string                       `json:"rehearsed_at"`
+	TargetNamespace          string                       `json:"target_namespace"`
+	RecommendedImportCommand string                       `json:"recommended_import_command"`
+	Verification             snapshotArtifactVerifyReport `json:"verification"`
+	Restore                  client.SnapshotReport        `json:"restore"`
 }
 
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
@@ -486,12 +489,15 @@ func verifySnapshotArtifactManifest(manifestPath, backupPath string) (snapshotAr
 func rehearseSnapshotRestore(ctx context.Context, db *client.DB, namespace, manifestPath, backupPath string) (snapshotRehearsalReport, error) {
 	verifyReport, err := verifySnapshotArtifactManifest(manifestPath, backupPath)
 	report := snapshotRehearsalReport{
-		Namespace:    namespace,
-		Verification: verifyReport,
+		Namespace:       namespace,
+		RehearsedAt:     time.Now().UTC().Format(time.RFC3339),
+		TargetNamespace: namespace,
+		Verification:    verifyReport,
 	}
 	if err != nil {
 		return report, err
 	}
+	report.RecommendedImportCommand = recommendedSnapshotImportCommand(namespace, verifyReport.BackupFile)
 	in, closeIn, err := inputReader(verifyReport.BackupFile)
 	if err != nil {
 		return report, err
@@ -504,6 +510,17 @@ func rehearseSnapshotRestore(ctx context.Context, db *client.DB, namespace, mani
 		return report, err
 	}
 	return report, nil
+}
+
+func recommendedSnapshotImportCommand(namespace, backupPath string) string {
+	return "contextdb snapshot import --namespace " + shellQuote(namespace) + " --in " + shellQuote(backupPath) + " --report"
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func countSnapshotArtifactRecords(data []byte) (snapshotArtifactCounts, error) {
