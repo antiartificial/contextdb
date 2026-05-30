@@ -157,6 +157,60 @@ func TestBuildSnapshotArtifactManifestRequiresFileOutput(t *testing.T) {
 	is.True(err != nil)
 }
 
+func TestVerifySnapshotArtifactManifest(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "my-app.ndjson")
+	manifestPath := filepath.Join(dir, "my-app.manifest.json")
+	data := []byte(`{"type":"node","data":{"id":"550e8400-e29b-41d4-a716-446655440000"}}
+`)
+	is.NoErr(os.WriteFile(backup, data, 0o644))
+	manifest, err := buildSnapshotArtifactManifest(snapshotArtifactManifestOptions{
+		Namespace:  "my-app",
+		BackupPath: backup,
+		CreatedAt:  time.Date(2026, 5, 30, 18, 30, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	manifestData, err := json.Marshal(manifest)
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(manifestPath, manifestData, 0o644))
+
+	report, err := verifySnapshotArtifactManifest(manifestPath, "")
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.BackupFile, backup)
+	is.Equal(report.ActualBytes, int64(len(data)))
+	is.Equal(report.ActualRecords.Nodes, 1)
+	is.Equal(len(report.ValidationErrors), 0)
+}
+
+func TestVerifySnapshotArtifactManifestRejectsChecksumMismatch(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "my-app.ndjson")
+	manifestPath := filepath.Join(dir, "my-app.manifest.json")
+	is.NoErr(os.WriteFile(backup, []byte(`{"type":"node","data":{}}
+`), 0o644))
+	manifest, err := buildSnapshotArtifactManifest(snapshotArtifactManifestOptions{
+		Namespace:  "my-app",
+		BackupPath: backup,
+		CreatedAt:  time.Now(),
+	})
+	is.NoErr(err)
+	manifestData, err := json.Marshal(manifest)
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(manifestPath, manifestData, 0o644))
+	is.NoErr(os.WriteFile(backup, []byte(`{"type":"source","data":{}}
+`), 0o644))
+
+	report, err := verifySnapshotArtifactManifest(manifestPath, backup)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(len(report.ValidationErrors) > 0)
+}
+
 func TestBuildNornDriftReportMatches(t *testing.T) {
 	is := is.New(t)
 

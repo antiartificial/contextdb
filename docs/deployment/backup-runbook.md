@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.22.0",
+  "contextdb_version": "0.23.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -79,6 +79,17 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
 ```
 
 Keep the manifest with the NDJSON file when copying backups off-host. It gives scripts a stable checksum and enough counts to detect truncated or mismatched artifacts before a restore preview.
+
+Verify the copied artifact before restore:
+
+```bash
+contextdb snapshot verify \
+  --manifest "$manifest" \
+  --in "$backup" \
+  --report
+```
+
+If `--in` is omitted, verify looks for the manifest's `backup_file` beside the manifest. A mismatch in size, checksum, or record counts exits non-zero.
 
 ## launchd
 

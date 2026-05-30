@@ -117,7 +117,7 @@ func main() {
 
 func runSnapshot(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export or import")
+		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, or verify")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -125,6 +125,8 @@ func runSnapshot(args []string) {
 		runSnapshotExport(args[1:])
 	case "import":
 		runSnapshotImport(args[1:])
+	case "verify":
+		runSnapshotVerify(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb snapshot: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -211,6 +213,28 @@ func runSnapshotImport(args []string) {
 	if *reportOut {
 		writeIndentedJSON(report)
 	} else if *dryRun {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot verify", flag.ExitOnError)
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to verify")
+	inPath := fs.String("in", "", "input NDJSON file, defaults to manifest backup_file beside manifest")
+	reportOut := fs.Bool("report", false, "print a JSON verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotArtifactManifest(*manifestPath, *inPath)
+	if err != nil {
+		if *reportOut && (report.Manifest != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
 		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
@@ -303,6 +327,22 @@ type snapshotArtifactCounts struct {
 	Sources int `json:"sources"`
 }
 
+type snapshotArtifactVerifyReport struct {
+	OK               bool                   `json:"ok"`
+	Manifest         string                 `json:"manifest"`
+	BackupFile       string                 `json:"backup_file"`
+	ExpectedBytes    int64                  `json:"expected_bytes"`
+	ActualBytes      int64                  `json:"actual_bytes"`
+	ExpectedSHA256   string                 `json:"expected_sha256"`
+	ActualSHA256     string                 `json:"actual_sha256"`
+	ExpectedRecords  snapshotArtifactCounts `json:"expected_records"`
+	ActualRecords    snapshotArtifactCounts `json:"actual_records"`
+	ContextDBVersion string                 `json:"contextdb_version"`
+	ManifestVersion  string                 `json:"manifest_contextdb_version"`
+	SchemaVersion    int                    `json:"schema_version"`
+	ValidationErrors []string               `json:"validation_errors,omitempty"`
+}
+
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -345,6 +385,68 @@ func buildSnapshotArtifactManifest(opts snapshotArtifactManifestOptions) (snapsh
 		BackupMarker:     strings.TrimSpace(opts.BackupMarker),
 		Records:          counts,
 	}, nil
+}
+
+func verifySnapshotArtifactManifest(manifestPath, backupPath string) (snapshotArtifactVerifyReport, error) {
+	manifestPath = strings.TrimSpace(manifestPath)
+	if manifestPath == "" {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("--manifest is required")
+	}
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("read artifact manifest: %w", err)
+	}
+	var manifest snapshotArtifactManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("decode artifact manifest: %w", err)
+	}
+	backupPath = strings.TrimSpace(backupPath)
+	if backupPath == "" {
+		if strings.TrimSpace(manifest.BackupFile) == "" {
+			return snapshotArtifactVerifyReport{}, fmt.Errorf("manifest backup_file is empty; pass --in")
+		}
+		backupPath = filepath.Join(filepath.Dir(manifestPath), manifest.BackupFile)
+	}
+	backupData, err := os.ReadFile(backupPath)
+	if err != nil {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("read backup: %w", err)
+	}
+	counts, err := countSnapshotArtifactRecords(backupData)
+	if err != nil {
+		return snapshotArtifactVerifyReport{}, err
+	}
+	sum := sha256.Sum256(backupData)
+	actualSHA := hex.EncodeToString(sum[:])
+	report := snapshotArtifactVerifyReport{
+		Manifest:         manifestPath,
+		BackupFile:       backupPath,
+		ExpectedBytes:    manifest.BackupBytes,
+		ActualBytes:      int64(len(backupData)),
+		ExpectedSHA256:   manifest.ChecksumSHA256,
+		ActualSHA256:     actualSHA,
+		ExpectedRecords:  manifest.Records,
+		ActualRecords:    counts,
+		ContextDBVersion: buildinfo.Version,
+		ManifestVersion:  manifest.ContextDBVersion,
+		SchemaVersion:    manifest.SchemaVersion,
+	}
+	if manifest.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported schema_version %d", manifest.SchemaVersion))
+	}
+	if manifest.BackupBytes != report.ActualBytes {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("backup_bytes mismatch: manifest=%d actual=%d", manifest.BackupBytes, report.ActualBytes))
+	}
+	if !strings.EqualFold(strings.TrimSpace(manifest.ChecksumSHA256), actualSHA) {
+		report.ValidationErrors = append(report.ValidationErrors, "checksum_sha256 mismatch")
+	}
+	if manifest.Records != counts {
+		report.ValidationErrors = append(report.ValidationErrors, "record counts mismatch")
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("artifact manifest verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
 }
 
 func countSnapshotArtifactRecords(data []byte) (snapshotArtifactCounts, error) {

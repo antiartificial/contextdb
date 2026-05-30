@@ -39,6 +39,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Snapshot diff preview | Implemented | v0.20 | `operations`, `backup`, `inspectability` | Snapshot restore reports classify nodes as new, changed, or unchanged during dry-run and import |
 | Backup runbook | Implemented | v0.21 | `operations`, `backup`, `deployment` | Deployment docs provide scheduled export, restore preview, marker, doctor, launchd, systemd, and Norn check flow |
 | Backup artifact manifest | Implemented | v0.22 | `operations`, `backup`, `audit` | `contextdb snapshot export --manifest` writes a checksummed JSON sidecar with namespace, version, bytes, marker path, and record counts |
+| Backup manifest verify | Implemented | v0.23 | `operations`, `backup`, `audit` | `contextdb snapshot verify --manifest --in` validates checksum, size, and record counts before restore |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |

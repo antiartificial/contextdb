@@ -97,6 +97,17 @@ The report includes processed line, node, edge, source, vector, namespace overri
 
 The export marker and optional artifact manifest are written only after the snapshot stream completes successfully. The manifest records the namespace, contextdb version, backup filename, byte size, SHA-256 checksum, marker path, and node/edge/source record counts. Point `contextdb doctor --backup-marker` at the same marker file to include backup freshness in readiness checks.
 
+Verify a backup against its manifest before restore:
+
+```bash
+contextdb snapshot verify \
+  --manifest my-app.contextdb.manifest.json \
+  --in my-app.contextdb.ndjson \
+  --report
+```
+
+The verify command recomputes the backup byte size, SHA-256 checksum, and node/edge/source record counts. It exits non-zero when the artifact does not match the manifest.
+
 For a complete scheduled workflow that pairs export, restore preview, marker checks, launchd/systemd timers, and Norn drift checks, see the [Backup Runbook](backup-runbook).
 
 Future doctor slices should add deeper store/index consistency checks.
