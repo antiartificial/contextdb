@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.37.0",
+  "version": "0.38.0",
   "api_version": "v1",
-  "docs_version": "0.37.0",
+  "docs_version": "0.38.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -421,6 +421,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.37.0",
       "description": "Review queue escalation metadata flags aged assigned or snoozed items and high-priority source anomaly tasks."
+    },
+    {
+      "name": "review-escalation-digest",
+      "status": "stable",
+      "since": "v0.38.0",
+      "description": "Review escalation digests summarize escalated queue items by owner, source, item type, and escalation level."
     }
   ],
   "migrations": [
@@ -428,7 +434,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.37.0"
+  "release_notes_path": "/contextdb/releases/v0.38.0"
 }
 ```
 
@@ -687,6 +693,34 @@ Use filters to focus operational review views:
 ```bash
 curl "http://localhost:7701/v1/namespaces/my-app/review/queue?type=source_trust_anomaly&source_id=docs-crawler&status=open"
 curl "http://localhost:7701/v1/namespaces/my-app/review/queue?type=low_confidence&status=assigned&owner=alice"
+```
+
+Use the escalation digest when dashboards need a compact grouped summary instead of every item:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/escalations?escalation_after_hours=72"
+```
+
+The digest uses the same query parameters as the queue endpoint and groups escalated items by owner, source, item type, and escalation level:
+
+```json
+{
+  "digest": {
+    "total_escalated": 2,
+    "groups": [
+      {
+        "owner": "alice",
+        "source_id": "docs-crawler",
+        "type": "low_confidence",
+        "escalation_level": "review_overdue",
+        "count": 2,
+        "max_priority": 1.42,
+        "max_age_hours": 96,
+        "review_ids": ["low_confidence:550e8400-e29b-41d4-a716-446655440000"]
+      }
+    ]
+  }
+}
 ```
 
 Record workflow state for a derived review item with:

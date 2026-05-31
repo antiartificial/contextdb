@@ -289,6 +289,22 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(len(filteredItems), 1)
 	is.Equal(filteredItems[0].(map[string]any)["id"], reviewID)
 
+	time.Sleep(5 * time.Millisecond)
+	reqEscalations := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/escalations?low_confidence_threshold=0.99&status=assigned&owner=alice&escalation_after_hours=0.000000001", nil)
+	wEscalations := httptest.NewRecorder()
+	handler.ServeHTTP(wEscalations, reqEscalations)
+	is.Equal(wEscalations.Code, http.StatusOK)
+	var escalationsResp map[string]any
+	is.NoErr(json.Unmarshal(wEscalations.Body.Bytes(), &escalationsResp))
+	digest := escalationsResp["digest"].(map[string]any)
+	is.Equal(digest["total_escalated"], float64(1))
+	groups := digest["groups"].([]any)
+	is.Equal(len(groups), 1)
+	group := groups[0].(map[string]any)
+	is.Equal(group["owner"], "alice")
+	is.Equal(group["count"], float64(1))
+	is.Equal(group["escalation_level"], "review_overdue")
+
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
 	reqRefute.Header.Set("Content-Type", "application/json")
@@ -593,6 +609,7 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	refuteMutation := resp["data"].(map[string]any)["refuteClaim"].(map[string]any)
 	is.Equal(refuteMutation["action"], "refuted")
 
+	time.Sleep(5 * time.Millisecond)
 	queryBody, _ = json.Marshal(map[string]any{
 		"query": `query($id: ID!, $otherID: ID!) {
 			narrative(namespace: "graphql-test", nodeId: $id) {
@@ -639,6 +656,16 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				type
 				status
 				owner
+			}
+			reviewEscalationDigest(namespace: "graphql-test", lowConfidenceThreshold: 0.99, status: "assigned", owner: "alice", escalationAfterHours: 0.000000001) {
+				totalEscalated
+				groups {
+					owner
+					type
+					escalationLevel
+					count
+					reviewIds
+				}
 			}
 			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
 				id
@@ -713,6 +740,15 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	assignedReview := assignedReviews[0].(map[string]any)
 	is.Equal(assignedReview["id"], reviewID)
 	is.Equal(assignedReview["status"], "assigned")
+	digest := data["reviewEscalationDigest"].(map[string]any)
+	is.Equal(digest["totalEscalated"], float64(1))
+	groups := digest["groups"].([]any)
+	is.Equal(len(groups), 1)
+	group := groups[0].(map[string]any)
+	is.Equal(group["owner"], "alice")
+	is.Equal(group["type"], "low_confidence")
+	is.Equal(group["escalationLevel"], "review_overdue")
+	is.Equal(group["count"], float64(1))
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)

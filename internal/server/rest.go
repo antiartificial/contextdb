@@ -52,6 +52,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/namespaces/{ns}/sources/label", s.handleLabelSource)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/sources/{sourceID}/trust", s.handleSourceTrustTimeline)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/queue", s.handleReviewQueue)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalations", s.handleReviewEscalations)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/decisions", s.handleRecordReviewDecision)
 
@@ -224,6 +225,10 @@ type acquisitionPlanRequest struct {
 
 type reviewQueueResponse struct {
 	Items []client.ReviewItem `json:"items"`
+}
+
+type reviewEscalationDigestResponse struct {
+	Digest client.ReviewEscalationDigest `json:"digest"`
 }
 
 type reviewDecisionsResponse struct {
@@ -702,103 +707,101 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 		ns = tenant + "/" + ns
 	}
 
-	var after time.Time
-	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
-		t, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
-			return
-		}
-		after = t
+	req, err := parseReviewQueueRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
 	}
-	threshold := 0.0
-	if raw := strings.TrimSpace(r.URL.Query().Get("low_confidence_threshold")); raw != "" {
-		parsed, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid low_confidence_threshold: %w", err))
-			return
-		}
-		threshold = parsed
-	}
-	sourceTrustThreshold := 0.0
-	if raw := strings.TrimSpace(r.URL.Query().Get("source_trust_threshold")); raw != "" {
-		parsed, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_trust_threshold: %w", err))
-			return
-		}
-		sourceTrustThreshold = parsed
-	}
-	sourceTrustDropThreshold := 0.0
-	if raw := strings.TrimSpace(r.URL.Query().Get("source_trust_drop_threshold")); raw != "" {
-		parsed, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_trust_drop_threshold: %w", err))
-			return
-		}
-		sourceTrustDropThreshold = parsed
-	}
-	sourceRefutationThreshold := 0
-	if raw := strings.TrimSpace(r.URL.Query().Get("source_refutation_threshold")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_refutation_threshold: %w", err))
-			return
-		}
-		sourceRefutationThreshold = parsed
-	}
-	escalationAfter := time.Duration(0)
-	if raw := strings.TrimSpace(r.URL.Query().Get("escalation_after_hours")); raw != "" {
-		parsed, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid escalation_after_hours: %w", err))
-			return
-		}
-		escalationAfter = time.Duration(parsed * float64(time.Hour))
-	}
-	sourceAnomalyEscalationPriority := 0.0
-	if raw := strings.TrimSpace(r.URL.Query().Get("source_anomaly_escalation_priority")); raw != "" {
-		parsed, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_anomaly_escalation_priority: %w", err))
-			return
-		}
-		sourceAnomalyEscalationPriority = parsed
-	}
-	limit := 0
-	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid limit: %w", err))
-			return
-		}
-		limit = parsed
-	}
-	types := parseCommaList(r.URL.Query().Get("type"))
-	sourceID := strings.TrimSpace(r.URL.Query().Get("source_id"))
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	owner := strings.TrimSpace(r.URL.Query().Get("owner"))
 
 	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
-	items, err := h.ReviewQueue(r.Context(), client.ReviewQueueRequest{
-		After:                           after,
-		LowConfidenceThreshold:          threshold,
-		SourceTrustThreshold:            sourceTrustThreshold,
-		SourceTrustDropThreshold:        sourceTrustDropThreshold,
-		SourceRefutationThreshold:       sourceRefutationThreshold,
-		EscalationAfter:                 escalationAfter,
-		SourceAnomalyEscalationPriority: sourceAnomalyEscalationPriority,
-		Types:                           types,
-		SourceID:                        sourceID,
-		Status:                          status,
-		Owner:                           owner,
-		Limit:                           limit,
-	})
+	items, err := h.ReviewQueue(r.Context(), req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, reviewQueueResponse{Items: items})
+}
+
+func (s *RESTServer) handleReviewEscalations(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	req, err := parseReviewQueueRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	digest, err := h.ReviewEscalationDigest(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewEscalationDigestResponse{Digest: digest})
+}
+
+func parseReviewQueueRequest(r *http.Request) (client.ReviewQueueRequest, error) {
+	var req client.ReviewQueueRequest
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return req, fmt.Errorf("invalid after timestamp: %w", err)
+		}
+		req.After = t
+	}
+	var err error
+	if req.LowConfidenceThreshold, err = parseOptionalFloatQuery(r, "low_confidence_threshold"); err != nil {
+		return req, err
+	}
+	if req.SourceTrustThreshold, err = parseOptionalFloatQuery(r, "source_trust_threshold"); err != nil {
+		return req, err
+	}
+	if req.SourceTrustDropThreshold, err = parseOptionalFloatQuery(r, "source_trust_drop_threshold"); err != nil {
+		return req, err
+	}
+	if req.SourceAnomalyEscalationPriority, err = parseOptionalFloatQuery(r, "source_anomaly_escalation_priority"); err != nil {
+		return req, err
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("source_refutation_threshold")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return req, fmt.Errorf("invalid source_refutation_threshold: %w", err)
+		}
+		req.SourceRefutationThreshold = parsed
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("escalation_after_hours")); raw != "" {
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return req, fmt.Errorf("invalid escalation_after_hours: %w", err)
+		}
+		req.EscalationAfter = time.Duration(parsed * float64(time.Hour))
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return req, fmt.Errorf("invalid limit: %w", err)
+		}
+		req.Limit = parsed
+	}
+	req.Types = parseCommaList(r.URL.Query().Get("type"))
+	req.SourceID = strings.TrimSpace(r.URL.Query().Get("source_id"))
+	req.Status = strings.TrimSpace(r.URL.Query().Get("status"))
+	req.Owner = strings.TrimSpace(r.URL.Query().Get("owner"))
+	return req, nil
+}
+
+func parseOptionalFloatQuery(r *http.Request, name string) (float64, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(name))
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", name, err)
+	}
+	return parsed, nil
 }
 
 func parseCommaList(raw string) []string {

@@ -407,6 +407,20 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.True(strings.Contains(escalated[0].EscalationReason, "assigned review"))
 	is.True(escalated[0].EscalationAgeHours >= 2)
 
+	digest, err := ns.ReviewEscalationDigest(ctx, client.ReviewQueueRequest{
+		LowConfidenceThreshold: 0.35,
+		EscalationAfter:        time.Hour,
+		Now:                    decision.TxTime.Add(2 * time.Hour),
+	})
+	is.NoErr(err)
+	is.Equal(digest.TotalEscalated, 1)
+	is.Equal(len(digest.Groups), 1)
+	is.Equal(digest.Groups[0].Owner, "alice")
+	is.Equal(digest.Groups[0].Type, "low_confidence")
+	is.Equal(digest.Groups[0].EscalationLevel, "review_overdue")
+	is.Equal(digest.Groups[0].Count, 1)
+	is.Equal(digest.Groups[0].ReviewIDs[0], reviewID)
+
 	filtered, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
 		LowConfidenceThreshold: 0.35,
 		Types:                  []string{"low_confidence"},

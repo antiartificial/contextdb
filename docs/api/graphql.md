@@ -238,6 +238,26 @@ The queue derives review tasks from refuted and stale feedback, low-confidence a
 
 Filter arguments are additive: `types` narrows by review item type, `sourceId` focuses source-specific tasks, and `status`/`owner` focus the latest workflow state. Items with no recorded decision match `status: "open"`.
 
+Use `reviewEscalationDigest` for grouped escalation counts:
+
+```graphql
+query {
+  reviewEscalationDigest(namespace: "my-app", escalationAfterHours: 72) {
+    totalEscalated
+    groups {
+      owner
+      sourceId
+      type
+      escalationLevel
+      count
+      maxPriority
+      maxAgeHours
+      reviewIds
+    }
+  }
+}
+```
+
 Record and inspect review workflow state with:
 
 ```graphql

@@ -693,6 +693,26 @@ type ReviewItem struct {
 	EscalationAgeHours float64     `json:"escalation_age_hours,omitempty"`
 }
 
+// ReviewEscalationDigest summarizes escalated review queue items for dashboards.
+type ReviewEscalationDigest struct {
+	GeneratedAt     time.Time               `json:"generated_at"`
+	EscalationAfter time.Duration           `json:"escalation_after,omitempty"`
+	TotalEscalated  int                     `json:"total_escalated"`
+	Groups          []ReviewEscalationGroup `json:"groups"`
+}
+
+// ReviewEscalationGroup is one owner/source/type/severity bucket in a digest.
+type ReviewEscalationGroup struct {
+	Owner           string   `json:"owner"`
+	SourceID        string   `json:"source_id,omitempty"`
+	Type            string   `json:"type"`
+	EscalationLevel string   `json:"escalation_level"`
+	Count           int      `json:"count"`
+	MaxPriority     float64  `json:"max_priority"`
+	MaxAgeHours     float64  `json:"max_age_hours"`
+	ReviewIDs       []string `json:"review_ids,omitempty"`
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -1544,6 +1564,77 @@ func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueReques
 		items = items[:req.Limit]
 	}
 	return items, nil
+}
+
+// ReviewEscalationDigest groups escalated review queue items by owner, source, type, and level.
+func (h *NamespaceHandle) ReviewEscalationDigest(ctx context.Context, req ReviewQueueRequest) (ReviewEscalationDigest, error) {
+	now := req.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if req.EscalationAfter <= 0 {
+		req.EscalationAfter = 72 * time.Hour
+	}
+	req.Now = now
+	items, err := h.ReviewQueue(ctx, req)
+	if err != nil {
+		return ReviewEscalationDigest{}, err
+	}
+	digest := ReviewEscalationDigest{
+		GeneratedAt:     now,
+		EscalationAfter: req.EscalationAfter,
+		Groups:          []ReviewEscalationGroup{},
+	}
+	grouped := map[string]*ReviewEscalationGroup{}
+	for _, item := range items {
+		if !item.Escalated {
+			continue
+		}
+		digest.TotalEscalated++
+		owner := strings.TrimSpace(item.Owner)
+		if owner == "" {
+			owner = "unassigned"
+		}
+		sourceID := strings.TrimSpace(item.SourceID)
+		if sourceID == "" {
+			sourceID = "unsourced"
+		}
+		level := strings.TrimSpace(item.EscalationLevel)
+		if level == "" {
+			level = "escalated"
+		}
+		key := strings.Join([]string{owner, sourceID, item.Type, level}, "\x00")
+		group := grouped[key]
+		if group == nil {
+			group = &ReviewEscalationGroup{
+				Owner:           owner,
+				SourceID:        sourceID,
+				Type:            item.Type,
+				EscalationLevel: level,
+			}
+			grouped[key] = group
+		}
+		group.Count++
+		group.MaxPriority = maxFloat(group.MaxPriority, item.Priority)
+		group.MaxAgeHours = maxFloat(group.MaxAgeHours, item.EscalationAgeHours)
+		group.ReviewIDs = append(group.ReviewIDs, item.ID)
+	}
+	for _, group := range grouped {
+		sort.Strings(group.ReviewIDs)
+		digest.Groups = append(digest.Groups, *group)
+	}
+	sort.SliceStable(digest.Groups, func(i, j int) bool {
+		left, right := digest.Groups[i], digest.Groups[j]
+		if left.Count != right.Count {
+			return left.Count > right.Count
+		}
+		if left.MaxAgeHours != right.MaxAgeHours {
+			return left.MaxAgeHours > right.MaxAgeHours
+		}
+		return strings.Join([]string{left.Owner, left.SourceID, left.Type, left.EscalationLevel}, "\x00") <
+			strings.Join([]string{right.Owner, right.SourceID, right.Type, right.EscalationLevel}, "\x00")
+	})
+	return digest, nil
 }
 
 // Explain returns a narrative report explaining what is known about a node.

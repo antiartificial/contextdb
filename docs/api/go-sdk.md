@@ -318,6 +318,17 @@ for _, item := range items {
 
 Source trust anomaly tasks are emitted as `ReviewItem{Type: "source_trust_anomaly"}` when configured source credibility thresholds are crossed. Review queue filters can narrow by item type, source, workflow status, and owner; items with no recorded decision match `Status: "open"`. When `EscalationAfter` is set, returned items can include `Escalated`, `EscalationLevel`, `EscalationReason`, and `EscalationAgeHours` for overdue assigned or due snoozed tasks and high-priority source anomaly items.
 
+Use the digest when you need grouped escalation counts instead of every item:
+
+```go
+digest, err := ns.ReviewEscalationDigest(ctx, client.ReviewQueueRequest{
+    EscalationAfter: 72 * time.Hour,
+})
+for _, group := range digest.Groups {
+    fmt.Printf("%s %s %d\n", group.Owner, group.EscalationLevel, group.Count)
+}
+```
+
 Review decisions persist workflow state without making queue generation stateful:
 
 ```go

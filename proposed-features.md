@@ -229,6 +229,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review escalation rules | Implemented | Review queues add escalation metadata for aged assigned or due snoozed tasks and high-priority source anomaly items through Go, REST, and GraphQL |
 
+## Completed In v0.38.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Review escalation digest | Implemented | Go SDK, REST, and GraphQL expose grouped escalation summaries by owner, source, item type, and escalation level |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -273,6 +279,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Norn manifest publish | Lets operators validate and then publish the generated service entry | Completed in v0.35.0 with dry-run-first `contextdb norn publish` |
 | Backup index publish to Norn | Shares backup catalog state with ops tooling without moving backup contents | Completed in v0.36.0 with dry-run-first lifecycle index metadata publishing |
 | Review escalation rules | Highlights assigned, due snoozed, and high-priority source anomaly tasks that have aged past thresholds | Completed in v0.37.0 with review queue escalation metadata |
+| Review escalation digest | Summarizes escalated review work for dashboards and handoffs | Completed in v0.38.0 with grouped digest APIs |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -577,7 +584,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Review escalation digest | Escalation metadata is now available per item; operators still need a compact summary by owner, source, and severity | Add a review escalation summary endpoint/report grouped by owner, item type, and escalation level |
+| Review escalation digest | Escalation metadata is now available per item; operators still need a compact summary by owner, source, and severity | Completed in v0.38.0 with grouped Go, REST, and GraphQL escalation digests |
+| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.38.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Review escalation digest export | Digests are queryable, but weekly review handoffs may need durable snapshots | Add optional JSON file output or saved digest events for escalation handoffs |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |

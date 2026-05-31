@@ -468,6 +468,62 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	reviewEscalationGroupType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewEscalationGroup",
+		Fields: graphql.Fields{
+			"owner": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.Owner, nil
+			}},
+			"sourceId": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.SourceID, nil
+			}},
+			"type": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.Type, nil
+			}},
+			"escalationLevel": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.EscalationLevel, nil
+			}},
+			"count": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.Count, nil
+			}},
+			"maxPriority": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.MaxPriority, nil
+			}},
+			"maxAgeHours": &graphql.Field{Type: graphql.NewNonNull(graphql.Float), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.MaxAgeHours, nil
+			}},
+			"reviewIds": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.ID))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				group, _ := p.Source.(client.ReviewEscalationGroup)
+				return group.ReviewIDs, nil
+			}},
+		},
+	})
+
+	reviewEscalationDigestType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewEscalationDigest",
+		Fields: graphql.Fields{
+			"generatedAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				digest, _ := p.Source.(client.ReviewEscalationDigest)
+				return digest.GeneratedAt, nil
+			}},
+			"totalEscalated": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				digest, _ := p.Source.(client.ReviewEscalationDigest)
+				return digest.TotalEscalated, nil
+			}},
+			"groups": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewEscalationGroupType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				digest, _ := p.Source.(client.ReviewEscalationDigest)
+				return digest.Groups, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -1120,6 +1176,26 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewQueue,
 			},
+			"reviewEscalationDigest": &graphql.Field{
+				Type: graphql.NewNonNull(reviewEscalationDigestType),
+				Args: graphql.FieldConfigArgument{
+					"namespace":                       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":                            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":                           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"lowConfidenceThreshold":          &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustThreshold":            &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustDropThreshold":        &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceRefutationThreshold":       &graphql.ArgumentConfig{Type: graphql.Int},
+					"escalationAfterHours":            &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceAnomalyEscalationPriority": &graphql.ArgumentConfig{Type: graphql.Float},
+					"types":                           &graphql.ArgumentConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+					"sourceId":                        &graphql.ArgumentConfig{Type: graphql.String},
+					"status":                          &graphql.ArgumentConfig{Type: graphql.String},
+					"owner":                           &graphql.ArgumentConfig{Type: graphql.String},
+					"limit":                           &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveReviewEscalationDigest,
+			},
 			"reviewDecisions": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
 				Args: graphql.FieldConfigArgument{
@@ -1349,6 +1425,18 @@ func (s *GraphQLServer) resolveSourceTrustTimeline(p graphql.ResolveParams) (int
 }
 
 func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}, error) {
+	ns, mode, req := reviewQueueRequestFromGraphQL(p)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewQueue(p.Context, req)
+}
+
+func (s *GraphQLServer) resolveReviewEscalationDigest(p graphql.ResolveParams) (interface{}, error) {
+	ns, mode, req := reviewQueueRequestFromGraphQL(p)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewEscalationDigest(p.Context, req)
+}
+
+func reviewQueueRequestFromGraphQL(p graphql.ResolveParams) (string, string, client.ReviewQueueRequest) {
 	ns, _ := p.Args["namespace"].(string)
 	if ns == "" {
 		ns = "default"
@@ -1366,8 +1454,7 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 	status, _ := p.Args["status"].(string)
 	owner, _ := p.Args["owner"].(string)
 	limit, _ := p.Args["limit"].(int)
-	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
-	return h.ReviewQueue(p.Context, client.ReviewQueueRequest{
+	return ns, mode, client.ReviewQueueRequest{
 		After:                           after,
 		LowConfidenceThreshold:          threshold,
 		SourceTrustThreshold:            sourceTrustThreshold,
@@ -1380,7 +1467,7 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 		Status:                          status,
 		Owner:                           owner,
 		Limit:                           limit,
-	})
+	}
 }
 
 func (s *GraphQLServer) resolveReviewDecisions(p graphql.ResolveParams) (interface{}, error) {

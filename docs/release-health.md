@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.38.0 | Passed | Passed | Corpus coverage present | Review escalation digest coverage added | Go SDK, REST, and GraphQL digest tests added | Adds grouped escalation summaries by owner, source, type, and escalation level |
 | v0.37.0 | Passed | Passed | Corpus coverage present | Review escalation coverage added | Go SDK review queue escalation tests added | Adds escalation metadata for aged assigned/snoozed reviews and high-priority source anomalies |
 | v0.36.0 | Passed | Passed | Corpus coverage present | Lifecycle index publish coverage added | CLI lifecycle index publish tests added | Adds dry-run-first backup catalog metadata publishing without backup contents |
 | v0.35.0 | Passed | Passed | Corpus coverage present | Norn publish coverage added | CLI Norn publish tests added | Adds dry-run-first Norn manifest publishing with explicit HTTP execution |
