@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.69.0",
+  "contextdb_version": "0.70.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -368,7 +368,7 @@ contextdb snapshot lifecycle index publish drift \
   --report
 ```
 
-Publish drift compares the local publish payload to the fetched published payload and exits non-zero when bundle counts, retention decisions, artifact counts, bytes, or indexed hash coverage differ. Drift reports include `recommended_publish_command`, a dry-run `contextdb snapshot lifecycle index publish --in ... --report --publish-url ...` command to use when the local catalog metadata should replace the published metadata.
+Publish drift compares the local publish payload to the fetched published payload and exits non-zero when bundle counts, retention decisions, artifact counts, bytes, or indexed hash coverage differ. Drift reports include `recommended_publish_command`, a dry-run `contextdb snapshot lifecycle index publish --in ... --report --publish-url ...` command to use when the local catalog metadata should replace the published metadata. Before adding `--execute`, follow the [published backup repair guard](/deployment/published-backup-repair-guard).
 
 Check that the published backup catalog is fresh enough for operations dashboards:
 
