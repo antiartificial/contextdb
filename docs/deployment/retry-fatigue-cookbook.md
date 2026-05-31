@@ -34,7 +34,7 @@ Use `preset` when dashboards or handoff scripts should share a stable lane name:
 curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue?preset=review-overdue"
 ```
 
-Built-in presets are `review-overdue`, `source-trust-anomaly`, and `unassigned-review-overdue`. JSON responses include the same preset metadata so clients can render the available lanes without hard-coding descriptions or assembling example filters.
+Built-in presets are `review-overdue`, `source-trust-anomaly`, and `unassigned-review-overdue`. JSON responses include the same preset metadata so clients can render the available lanes without hard-coding descriptions or assembling example filters. SDK and REST tests validate that payload against `testdata/fixtures/retry-fatigue-presets.schema.json`, keeping the dashboard-facing contract stable.
 
 ## Preset Reference
 

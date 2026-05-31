@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://antiartificial.github.io/contextdb/schemas/retry-fatigue-presets.schema.json",
+  "title": "Review handoff retry fatigue presets",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "name",
+      "description",
+      "example_rest_query",
+      "example_graphql"
+    ],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "owner": {
+        "type": "string"
+      },
+      "escalation_level": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "example_rest_query": {
+        "type": "string"
+      },
+      "example_graphql": {
+        "type": "string"
+      }
+    }
+  },
+  "x-contextdb-stable-order": [
+    "review-overdue",
+    "source-trust-anomaly",
+    "unassigned-review-overdue"
+  ]
+}

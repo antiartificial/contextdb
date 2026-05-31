@@ -110,6 +110,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Retry fatigue preset discovery docs | Implemented | v0.73 | `review`, `operations`, `handoff` | Deployment docs provide preset names, expanded filters, and intended handoff audiences for dashboards |
 | Retry fatigue preset examples | Implemented | v0.77 | `review`, `operations`, `handoff` | Preset metadata includes copyable REST query and GraphQL argument snippets |
 | Retry fatigue preset docs drift test | Implemented | v0.81 | `review`, `operations`, `test` | SDK tests verify cookbook preset rows match `ReviewHandoffRetryFatiguePresets()` metadata |
+| Retry fatigue preset schema fixture | Implemented | v0.94 | `review`, `operations`, `test` | A shared JSON schema fixture guards SDK and REST preset payload fields, order, and required examples |
 | Admin/debug UI | Implemented | v0.88 | `inspectability`, `operations` | Observe port serves `/admin/` with runtime stats and a belief debugger backed by `/admin/api/belief` |
 | Admin debugger search | Implemented | v0.89 | `inspectability`, `operations` | `/admin/api/search` finds recent valid graph nodes by text, source, label, or ID and the UI can open them in the debugger |
 | Admin metrics dashboard | Implemented | v0.91 | `inspectability`, `operations`, `metrics` | `/admin/` surfaces health signals, ingest/retrieval rates, latency, and raw `/admin/api/metrics` JSON |
@@ -118,6 +119,6 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 ## Next Candidates
 
-1. Retry fatigue preset API schema fixture for REST/SDK parity.
-2. Doctor backup receipt runbook lane for repair closure checklists.
-3. KV derived refresh receipt verifier for incident evidence.
+1. Doctor backup receipt runbook lane for repair closure checklists.
+2. KV derived refresh receipt verifier for incident evidence.
+3. Retry fatigue preset schema publication for docs consumers.

@@ -20,6 +20,7 @@ import (
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/server"
 	"github.com/antiartificial/contextdb/pkg/client"
+	"github.com/antiartificial/contextdb/testdata"
 )
 
 func startGRPCTestServer(t *testing.T, db *client.DB) string {
@@ -60,6 +61,27 @@ func TestRESTServer_Ping(t *testing.T) {
 	var resp map[string]string
 	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
 	is.Equal(resp["status"], "ok")
+}
+
+func TestRESTServer_RetryFatiguePresetSchemaFixture(t *testing.T) {
+	is := is.New(t)
+
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	srv := server.NewRESTServer(db)
+	handler := srv.Handler()
+
+	req := httptest.NewRequest("GET", "/v1/namespaces/schema-test/review/handoff-webhooks/retry-fatigue", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	var body struct {
+		Presets []map[string]any `json:"presets"`
+	}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &body))
+	is.NoErr(testdata.ValidateRetryFatiguePresetPayload(body.Presets))
 }
 
 func TestRESTServer_Introspection(t *testing.T) {

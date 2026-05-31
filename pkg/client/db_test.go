@@ -3,6 +3,7 @@ package client_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/pkg/client"
+	"github.com/antiartificial/contextdb/testdata"
 )
 
 // vec8 returns a normalised 8-dim float32 vector with a strong bias toward
@@ -690,6 +692,21 @@ func TestRetryFatigueCookbookPresetReferenceMatchesSDK(t *testing.T) {
 		is.Equal(row.ExpandedFilters, retryFatiguePresetExpandedFilters(preset))
 		is.Equal(row.ExampleRESTQuery, preset.ExampleRESTQuery)
 		is.Equal(row.ExampleGraphQL, preset.ExampleGraphQL)
+	}
+}
+
+func TestReviewHandoffRetryFatiguePresetSchemaFixtureMatchesSDK(t *testing.T) {
+	presets := client.ReviewHandoffRetryFatiguePresets()
+	data, err := json.Marshal(presets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload []map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := testdata.ValidateRetryFatiguePresetPayload(payload); err != nil {
+		t.Fatal(err)
 	}
 }
 
