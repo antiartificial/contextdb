@@ -967,6 +967,9 @@ func TestBuildSnapshotLifecycleIndexPublishDriftReportFindsDrift(t *testing.T) {
 	is.True(len(report.Differences) >= 2)
 	is.True(strings.Contains(strings.Join(report.Differences, "\n"), "total_bundles differs"))
 	is.True(strings.Contains(strings.Join(report.Differences, "\n"), "decision differs"))
+	is.True(strings.Contains(report.RecommendedPublishCommand, "contextdb snapshot lifecycle index publish"))
+	is.True(strings.Contains(report.RecommendedPublishCommand, "--in '"+out+"'"))
+	is.True(strings.Contains(report.RecommendedPublishCommand, "--publish-url '"+srv.URL+"'"))
 }
 
 func TestBuildSnapshotLifecycleIndexPublishFreshnessReportFresh(t *testing.T) {
@@ -1127,6 +1130,7 @@ func TestBuildPublishedBackupDriftCheckReportsDrift(t *testing.T) {
 	is.Equal(check.Name, "published_backup_drift")
 	is.True(strings.Contains(check.Detail, "drift=true"))
 	is.True(strings.Contains(check.Detail, "total_bundles differs"))
+	is.True(strings.Contains(check.Detail, "recommended_publish_command=contextdb snapshot lifecycle index publish"))
 }
 
 func TestBuildRankingEvalSnapshotReport(t *testing.T) {

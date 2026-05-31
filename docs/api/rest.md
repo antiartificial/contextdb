@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.65.0",
+  "version": "0.66.0",
   "api_version": "v1",
-  "docs_version": "0.65.0",
+  "docs_version": "0.66.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -600,6 +600,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.65.0",
       "description": "Docs include owner and escalation lane recipes for retry fatigue handoffs."
+    },
+    {
+      "name": "doctor-published-backup-repair-hint",
+      "status": "stable",
+      "since": "v0.66.0",
+      "description": "Published backup drift reports include a dry-run publish command hint."
     }
   ],
   "migrations": [
@@ -607,7 +613,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.65.0"
+  "release_notes_path": "/contextdb/releases/v0.66.0"
 }
 ```
 

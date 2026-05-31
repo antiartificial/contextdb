@@ -1133,16 +1133,17 @@ type snapshotLifecycleIndexPublishReport struct {
 }
 
 type snapshotLifecycleIndexPublishDriftReport struct {
-	OK               bool                                 `json:"ok"`
-	Drift            bool                                 `json:"drift"`
-	IndexFile        string                               `json:"index_file"`
-	PublishedURL     string                               `json:"published_url,omitempty"`
-	Method           string                               `json:"method,omitempty"`
-	Status           string                               `json:"status,omitempty"`
-	LocalPayload     snapshotLifecycleIndexPublishPayload `json:"local_payload"`
-	PublishedPayload snapshotLifecycleIndexPublishPayload `json:"published_payload"`
-	Differences      []string                             `json:"differences,omitempty"`
-	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+	OK                        bool                                 `json:"ok"`
+	Drift                     bool                                 `json:"drift"`
+	IndexFile                 string                               `json:"index_file"`
+	PublishedURL              string                               `json:"published_url,omitempty"`
+	Method                    string                               `json:"method,omitempty"`
+	Status                    string                               `json:"status,omitempty"`
+	RecommendedPublishCommand string                               `json:"recommended_publish_command,omitempty"`
+	LocalPayload              snapshotLifecycleIndexPublishPayload `json:"local_payload"`
+	PublishedPayload          snapshotLifecycleIndexPublishPayload `json:"published_payload"`
+	Differences               []string                             `json:"differences,omitempty"`
+	ValidationErrors          []string                             `json:"validation_errors,omitempty"`
 }
 
 type snapshotLifecycleIndexPublishFreshnessReport struct {
@@ -2002,9 +2003,18 @@ func buildSnapshotLifecycleIndexPublishDriftReport(ctx context.Context, client *
 	report.Drift = len(report.Differences) > 0
 	report.OK = !report.Drift
 	if report.Drift {
+		report.RecommendedPublishCommand = recommendedSnapshotLifecycleIndexPublishCommand(path, report.PublishedURL)
 		return report, fmt.Errorf("published lifecycle index drift found: %s", strings.Join(report.Differences, "; "))
 	}
 	return report, nil
+}
+
+func recommendedSnapshotLifecycleIndexPublishCommand(indexPath, publishURL string) string {
+	command := "contextdb snapshot lifecycle index publish --in " + shellQuote(indexPath) + " --report"
+	if strings.TrimSpace(publishURL) != "" {
+		command += " --publish-url " + shellQuote(publishURL)
+	}
+	return command
 }
 
 func buildSnapshotLifecycleIndexPublishFreshnessReport(ctx context.Context, client *http.Client, opts snapshotLifecycleIndexPublishFreshnessOptions) (snapshotLifecycleIndexPublishFreshnessReport, error) {
@@ -3137,6 +3147,9 @@ func buildPublishedBackupDriftCheck(ctx context.Context, client *http.Client, pa
 			detail += ": " + strings.Join(report.ValidationErrors, "; ")
 		} else {
 			detail += ": " + err.Error()
+		}
+		if strings.TrimSpace(report.RecommendedPublishCommand) != "" {
+			detail += "; recommended_publish_command=" + report.RecommendedPublishCommand
 		}
 		return doctor.CheckResult{Name: "published_backup_drift", OK: false, Detail: strings.TrimSpace(detail)}
 	}
