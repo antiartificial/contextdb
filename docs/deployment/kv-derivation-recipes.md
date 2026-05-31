@@ -63,7 +63,7 @@ contextdb repair kv-cache \
   --report
 ```
 
-Pair this with `contextdb doctor --kv-key context:prod:support:recent-nodes` when you want the combined health report to verify the hot key exists.
+Pair this with `contextdb doctor --kv-key context:prod:support:recent-nodes` when you want the combined health report to verify the hot key exists. Use `contextdb doctor --kv-derived-key context:prod:support:recent-nodes --max-kv-derived-age 2h` when you also want doctor to validate the derived value's `generated_at` freshness.
 
 ## Common Patterns
 

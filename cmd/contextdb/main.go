@@ -1383,6 +1383,11 @@ type kvRefreshPlanItem struct {
 	Error      string `json:"error,omitempty"`
 }
 
+type kvDerivedFreshnessValue struct {
+	Kind        string `json:"kind"`
+	GeneratedAt string `json:"generated_at"`
+}
+
 type vectorIndexRepairReport struct {
 	SchemaVersion    int      `json:"schema_version"`
 	ContextDBVersion string   `json:"contextdb_version"`
@@ -2945,6 +2950,72 @@ func buildKVConsistencyCheck(ctx context.Context, kv store.KVStore, keys []strin
 	return doctor.CheckResult{Name: "kv_consistency", OK: true, Detail: detail}
 }
 
+func buildKVDerivedFreshnessCheck(ctx context.Context, kv store.KVStore, keys []string, maxAge time.Duration, now time.Time) doctor.CheckResult {
+	normalized := normalizeKVRefreshKeys(keys)
+	if len(normalized) == 0 {
+		return doctor.CheckResult{Name: "kv_derived_freshness", OK: true, Detail: "keys=0 fresh=0 stale=0 missing=0 invalid=0"}
+	}
+	if maxAge <= 0 {
+		maxAge = 24 * time.Hour
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if kv == nil {
+		return doctor.CheckResult{Name: "kv_derived_freshness", OK: false, Detail: fmt.Sprintf("keys=%d fresh=0 stale=0 missing=%d invalid=0 max_age_seconds=%d: kv store unavailable", len(normalized), len(normalized), int(maxAge.Seconds()))}
+	}
+	fresh := 0
+	stale := 0
+	missing := 0
+	invalid := 0
+	var issues []string
+	for _, key := range normalized {
+		data, err := kv.Get(ctx, key)
+		if err != nil {
+			invalid++
+			issues = append(issues, fmt.Sprintf("kv lookup failed for %q: %v", key, err))
+			continue
+		}
+		if len(data) == 0 {
+			missing++
+			issues = append(issues, fmt.Sprintf("derived kv value missing %q", key))
+			continue
+		}
+		var value kvDerivedFreshnessValue
+		if err := json.Unmarshal(data, &value); err != nil {
+			invalid++
+			issues = append(issues, fmt.Sprintf("derived kv value %q is invalid JSON: %v", key, err))
+			continue
+		}
+		if !strings.HasPrefix(strings.TrimSpace(value.Kind), "contextdb.kv.derived.") {
+			invalid++
+			issues = append(issues, fmt.Sprintf("derived kv value %q has unsupported kind %q", key, value.Kind))
+			continue
+		}
+		generatedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(value.GeneratedAt))
+		if err != nil {
+			invalid++
+			issues = append(issues, fmt.Sprintf("derived kv value %q generated_at is invalid: %v", key, err))
+			continue
+		}
+		age := now.Sub(generatedAt)
+		if age < 0 {
+			age = 0
+		}
+		if age > maxAge {
+			stale++
+			issues = append(issues, fmt.Sprintf("derived kv value %q age %s exceeds max age %s", key, age.Round(time.Second), maxAge.Round(time.Second)))
+			continue
+		}
+		fresh++
+	}
+	detail := fmt.Sprintf("keys=%d fresh=%d stale=%d missing=%d invalid=%d max_age_seconds=%d", len(normalized), fresh, stale, missing, invalid, int(maxAge.Seconds()))
+	if len(issues) > 0 {
+		return doctor.CheckResult{Name: "kv_derived_freshness", OK: false, Detail: detail + ": " + strings.Join(issues, "; ")}
+	}
+	return doctor.CheckResult{Name: "kv_derived_freshness", OK: true, Detail: detail}
+}
+
 func buildKVRefreshReport(ctx context.Context, kv store.KVStore, opts kvRefreshOptions) (kvRefreshReport, error) {
 	generatedAt := opts.GeneratedAt
 	if generatedAt.IsZero() {
@@ -4208,6 +4279,9 @@ func runDoctor(args []string) {
 	storeSample := fs.Int("store-sample", 100, "maximum valid graph nodes to sample with --store-consistency")
 	var kvKeys repeatedStringFlag
 	fs.Var(&kvKeys, "kv-key", "expected KV hot key to check; repeat for multiple keys")
+	var kvDerivedKeys repeatedStringFlag
+	fs.Var(&kvDerivedKeys, "kv-derived-key", "expected derived KV hot key to check for generated_at freshness; repeat for multiple keys")
+	maxKVDerivedAge := fs.Duration("max-kv-derived-age", 24*time.Hour, "maximum acceptable generated_at age for --kv-derived-key")
 	_ = fs.Parse(args)
 
 	report, err := doctor.Run(context.Background(), doctor.Options{
@@ -4243,7 +4317,7 @@ func runDoctor(args []string) {
 		}))
 		recomputeDoctorReportOK(&report)
 	}
-	if *storeConsistency || len(kvKeys) > 0 {
+	if *storeConsistency || len(kvKeys) > 0 || len(kvDerivedKeys) > 0 {
 		db := openSnapshotDB()
 		defer db.Close()
 		graph, vecs, kv, _ := db.Stores()
@@ -4252,6 +4326,9 @@ func runDoctor(args []string) {
 		}
 		if len(kvKeys) > 0 {
 			report.Checks = append(report.Checks, buildKVConsistencyCheck(context.Background(), kv, kvKeys))
+		}
+		if len(kvDerivedKeys) > 0 {
+			report.Checks = append(report.Checks, buildKVDerivedFreshnessCheck(context.Background(), kv, kvDerivedKeys, *maxKVDerivedAge, time.Now()))
 		}
 		recomputeDoctorReportOK(&report)
 	}

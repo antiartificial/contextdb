@@ -87,6 +87,15 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 
 Missing keys are reported as refresh candidates in a `kv_consistency` check. The check only reads the configured keys and does not refresh or mutate the cache.
 
+For derived KV values, add `--kv-derived-key` and optionally tune `--max-kv-derived-age`:
+
+```bash
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb doctor --kv-derived-key context:prod:support:recent-nodes --max-kv-derived-age 2h
+```
+
+The `kv_derived_freshness` check reads the cached JSON metadata, validates the `kind` and `generated_at` fields, and reports stale, missing, or malformed derived values without rewriting the cache.
+
 Use `contextdb repair kv-cache` after reviewing missing hot keys and choosing the exact cache value to restore. The command is dry-run by default and only writes with `--execute`:
 
 ```bash

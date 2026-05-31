@@ -1413,6 +1413,68 @@ func TestBuildKVConsistencyCheckFindsRefreshCandidate(t *testing.T) {
 	is.True(strings.Contains(check.Detail, "kv refresh candidate"))
 }
 
+func TestBuildKVDerivedFreshnessCheck(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	value := kvRefreshRecentNodesValue{
+		Kind:        "contextdb.kv.derived.recent_nodes.v1",
+		Namespace:   "prod",
+		GeneratedAt: now.Add(-30 * time.Minute).Format(time.RFC3339),
+		Limit:       5,
+		Nodes:       []kvRefreshRecentNodeValue{},
+	}
+	data, err := json.Marshal(value)
+	is.NoErr(err)
+	is.NoErr(kv.Set(ctx, "context:prod:recent-nodes", data, 0))
+
+	check := buildKVDerivedFreshnessCheck(ctx, kv, []string{"context:prod:recent-nodes"}, time.Hour, now)
+
+	is.True(check.OK)
+	is.Equal(check.Name, "kv_derived_freshness")
+	is.True(strings.Contains(check.Detail, "keys=1"))
+	is.True(strings.Contains(check.Detail, "fresh=1"))
+	is.True(strings.Contains(check.Detail, "stale=0"))
+}
+
+func TestBuildKVDerivedFreshnessCheckFindsStaleValue(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	now := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	value := kvRefreshRecentNodesValue{
+		Kind:        "contextdb.kv.derived.recent_nodes.v1",
+		Namespace:   "prod",
+		GeneratedAt: now.Add(-3 * time.Hour).Format(time.RFC3339),
+		Limit:       5,
+		Nodes:       []kvRefreshRecentNodeValue{},
+	}
+	data, err := json.Marshal(value)
+	is.NoErr(err)
+	is.NoErr(kv.Set(ctx, "context:prod:recent-nodes", data, 0))
+
+	check := buildKVDerivedFreshnessCheck(ctx, kv, []string{"context:prod:recent-nodes"}, time.Hour, now)
+
+	is.True(!check.OK)
+	is.True(strings.Contains(check.Detail, "stale=1"))
+	is.True(strings.Contains(check.Detail, "exceeds max age"))
+}
+
+func TestBuildKVDerivedFreshnessCheckRejectsInvalidValue(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	is.NoErr(kv.Set(ctx, "context:prod:recent-nodes", []byte(`{"kind":"literal","generated_at":"not-time"}`), 0))
+
+	check := buildKVDerivedFreshnessCheck(ctx, kv, []string{"context:prod:recent-nodes", "context:prod:missing"}, time.Hour, time.Now())
+
+	is.True(!check.OK)
+	is.True(strings.Contains(check.Detail, "missing=1"))
+	is.True(strings.Contains(check.Detail, "invalid=1"))
+	is.True(strings.Contains(check.Detail, "unsupported kind"))
+}
+
 func TestBuildKVRefreshReportDryRun(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

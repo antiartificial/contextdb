@@ -35,6 +35,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb doctor --backup-marker` | Implemented, opt-in readiness check | v0.10 | `operations`, `backup`, `durability` | CLI verifies a backup marker file exists and is newer than `--max-backup-age` |
 | `contextdb doctor --store-consistency` | Implemented, opt-in local check | v0.49 | `operations`, `durability` | CLI samples valid graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
 | `contextdb doctor --kv-key` | Implemented, opt-in local check | v0.54 | `operations`, `durability` | CLI samples expected KV hot keys and reports missing cache refresh candidates |
+| `contextdb doctor --kv-derived-key` | Implemented, opt-in local check | v0.71 | `operations`, `durability` | CLI validates derived KV metadata and warns when `generated_at` is older than `--max-kv-derived-age` |
 | `contextdb doctor --published-backup-url` | Implemented, opt-in readiness check | v0.57 | `operations`, `backup`, `durability` | CLI reuses published backup catalog freshness checks inside the combined doctor report |
 | `contextdb doctor --published-backup-index` | Implemented, opt-in readiness check | v0.62 | `operations`, `backup`, `durability` | CLI reuses published backup catalog drift checks inside the combined doctor report |
 | `published_backup_drift` repair hint | Implemented | v0.66 | `operations`, `backup`, `durability` | Drift reports include a dry-run publish command hint when local catalog metadata should replace published metadata |
