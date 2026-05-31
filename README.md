@@ -5,7 +5,7 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.108.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.108.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**Playground**](https://antiartificial.github.io/contextdb/playground) | [**v0.108.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.108.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
 **Current release:** `v0.108.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
@@ -182,6 +182,8 @@ ns.LabelSource(ctx, "user:spammer", []string{"troll"})
 **[Hybrid retrieval](docs/architecture/read-path.md)** -- Fan out to vector ANN, graph walk, and session context simultaneously, then fuse with configurable weights. MMR diversity prevents near-duplicate results. [Example](docs/examples.md#rag-pipeline-document-retrieval). *Typical vector DBs: vector-only.*
 
 **[Reranking](docs/architecture/read-path.md)** -- Optional LLM cross-encoder reranking after fusion. Falls back gracefully on LLM failure. *Typical vector DBs: no reranking.*
+
+**[AI verification and ranking](docs/concepts/ai-verification-and-ranking.md)** -- End-to-end guide for acquisition dry-runs, provider connectors, retries, receipts, reranking, explain-rank, and dashboard debugging. *Typical vector DBs: verification orchestration is external glue.*
 
 **[Caller-supplied weights](docs/concepts/scoring.md)** -- Every query can tune the balance between similarity, confidence, recency, and utility. Or use namespace mode defaults. *Typical vector DBs: fixed ranking.*
 

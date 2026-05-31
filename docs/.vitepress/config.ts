@@ -28,6 +28,7 @@ export default withMermaid(
             text: 'Getting Started',
             items: [
               { text: 'Quick Start', link: '/quick-start' },
+              { text: 'Playground', link: '/playground' },
               { text: 'Examples', link: '/examples' },
               { text: 'Releases', link: '/releases/' },
               { text: 'Release Health', link: '/release-health' },
@@ -148,6 +149,7 @@ export default withMermaid(
             items: [
               { text: 'Data Modeling', link: '/concepts/data-modeling' },
               { text: 'Scoring Function', link: '/concepts/scoring' },
+              { text: 'AI Verification and Ranking', link: '/concepts/ai-verification-and-ranking' },
               { text: 'Bi-Temporal Model', link: '/concepts/temporal' },
               { text: 'Source Credibility', link: '/concepts/credibility' },
               { text: 'Namespace Modes', link: '/concepts/namespaces' },
