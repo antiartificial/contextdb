@@ -132,6 +132,31 @@ ns.label_source("user:spammer", labels=["troll"])
 ns.label_source("moderator:alice", labels=["moderator"])
 ```
 
+## Acquisition execution
+
+```python
+from contextdb import AcquisitionConnector
+
+preview = ns.acquisition_execution(
+    connectors=[
+        AcquisitionConnector(
+            id="docs-search",
+            type="search",
+            endpoint="https://search.example.internal/contextdb",
+            allowed_source_ids=["docs/runbook"],
+            default_labels=["acquired"],
+        )
+    ],
+    budget=2,
+    max_results=3,
+    allowed_source_ids=["docs/runbook"],
+)
+
+print(preview["dry_run"])  # True
+```
+
+Pass `execute=True` only after reviewing the dry-run connector calls. Execution writes returned connector items through the normal contextdb write path after source allow-list filtering.
+
 ## Health check
 
 ```python

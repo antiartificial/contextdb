@@ -608,6 +608,31 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	planTasks := planResp["tasks"].([]any)
 	is.True(len(planTasks) > 0)
 	is.True(planTasks[0].(map[string]any)["prompt"].(string) != "")
+
+	executeBody, _ := json.Marshal(map[string]any{
+		"budget":             1,
+		"allowed_source_ids": []string{"docs/runbook"},
+		"connectors": []map[string]any{
+			{
+				"id":                 "docs-search",
+				"type":               "search",
+				"endpoint":           "https://search.example.invalid/acquire",
+				"allowed_source_ids": []string{"docs/runbook"},
+				"default_labels":     []string{"acquired"},
+			},
+		},
+	})
+	reqExecute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/acquisition/execute", bytes.NewReader(executeBody))
+	reqExecute.Header.Set("Content-Type", "application/json")
+	wExecute := httptest.NewRecorder()
+	handler.ServeHTTP(wExecute, reqExecute)
+	is.Equal(wExecute.Code, http.StatusOK)
+	var executeResp map[string]any
+	is.NoErr(json.Unmarshal(wExecute.Body.Bytes(), &executeResp))
+	is.Equal(executeResp["dry_run"], true)
+	runs := executeResp["runs"].([]any)
+	is.Equal(runs[0].(map[string]any)["connector_type"], "search")
+	is.Equal(runs[0].(map[string]any)["status"], "planned")
 }
 
 func TestRESTServer_InvalidFeedbackNodeIDReturnsBadRequest(t *testing.T) {

@@ -39,6 +39,7 @@ contextdb exposes a REST API on port **7701**.
 | `GET` | `/v1/namespaces/{ns}/nodes/{id}/narrative` | Explain a claim with evidence |
 | `POST` | `/v1/namespaces/{ns}/gaps` | Detect knowledge gaps |
 | `POST` | `/v1/namespaces/{ns}/acquisition/plan` | Plan research, crawl, verification, and refresh tasks |
+| `POST` | `/v1/namespaces/{ns}/acquisition/execute` | Preview or execute configured search/crawler acquisition connectors |
 | `GET` | `/v1/stats` | Runtime statistics |
 | `GET` | `/v1/ping` | Health check |
 | `GET` | `/v1/version` | Release, API, feature, and migration summary |
@@ -211,9 +212,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.104.0",
+  "version": "0.105.0",
   "api_version": "v1",
-  "docs_version": "0.104.0",
+  "docs_version": "0.105.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -312,6 +313,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.9.0",
       "description": "Convert knowledge gaps and weak claims into prioritized source-backed acquisition tasks."
+    },
+    {
+      "name": "acquisition-execution-connectors",
+      "status": "stable",
+      "since": "v0.105.0",
+      "description": "Acquisition planner tasks can be previewed and executed through configured search or crawler connectors with source constraints."
     },
     {
       "name": "doctor-backup-readiness",
@@ -846,6 +853,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.104.0",
       "description": "The admin belief debugger visualizes source trust timelines, confidence history, contradiction paths, and graph/source context."
+    },
+    {
+      "name": "acquisition-execution-connectors",
+      "status": "stable",
+      "since": "v0.105.0",
+      "description": "Acquisition planner tasks can be previewed and executed through configured search or crawler connectors with source constraints."
     }
   ],
   "migrations": [
@@ -853,7 +866,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.104.0"
+  "release_notes_path": "/contextdb/releases/v0.105.0"
 }
 ```
 
@@ -1324,6 +1337,64 @@ Returns prioritized acquisition tasks derived from knowledge gaps, low-confidenc
       "related_node_ids": ["550e8400-e29b-41d4-a716-446655440000"]
     }
   ]
+}
+```
+
+## Knowledge Acquisition Execution
+
+Connector execution is dry-run by default. A dry run returns the exact connector calls, payload hashes, source constraints, and task queries that would be sent to configured `search` or `crawler` endpoints.
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/acquisition/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "budget": 2,
+    "max_results": 3,
+    "allowed_source_ids": ["docs/runbook"],
+    "connectors": [
+      {
+        "id": "docs-search",
+        "type": "search",
+        "endpoint": "https://search.example.internal/contextdb",
+        "allowed_source_ids": ["docs/runbook"],
+        "default_labels": ["acquired", "connector:search"]
+      }
+    ]
+  }'
+```
+
+Add `"execute": true` only after reviewing the dry-run plan. During execution, contextdb sends each connector a JSON body containing `task_id`, `task_type`, `query`, `prompt`, `allowed_source_ids`, `max_results`, `connector_id`, and `connector_type`. Connectors should return either an array of items or `{ "items": [...] }` where each item may include `title`, `url`, `snippet`, `content`, `source_id`, `labels`, `confidence`, and `metadata`. Returned items outside the request/connector source allow-list are ignored before writes.
+
+**Response:**
+
+```json
+{
+  "namespace": "my-app",
+  "dry_run": true,
+  "executed": false,
+  "planned_at": "2026-05-31T17:00:00Z",
+  "runs": [
+    {
+      "task_id": "low_confidence:550e8400-e29b-41d4-a716-446655440000",
+      "task_type": "low_confidence",
+      "connector_id": "docs-search",
+      "connector_type": "search",
+      "method": "POST",
+      "target_url": "https://search.example.internal/contextdb",
+      "query": "Low confidence claim needs supporting evidence: Deploys use manual copy rollout",
+      "allowed_source_ids": ["docs/runbook"],
+      "dry_run": true,
+      "status": "planned",
+      "payload_sha256": "..."
+    }
+  ],
+  "summary": {
+    "tasks": 1,
+    "connector_runs": 1,
+    "preview_items": 0,
+    "written_nodes": 0,
+    "errors": 0
+  }
 }
 ```
 

@@ -142,6 +142,27 @@ await ns.labelSource("user:spammer", ["troll"]);
 await ns.labelSource("moderator:alice", ["moderator"]);
 ```
 
+## Acquisition execution
+
+```typescript
+const preview = await ns.acquisitionExecution({
+  budget: 2,
+  maxResults: 3,
+  allowedSourceIds: ["docs/runbook"],
+  connectors: [{
+    id: "docs-search",
+    type: "search",
+    endpoint: "https://search.example.internal/contextdb",
+    allowedSourceIds: ["docs/runbook"],
+    defaultLabels: ["acquired"],
+  }],
+});
+
+console.log(preview.dry_run); // true
+```
+
+Set `execute: true` only after reviewing the dry-run connector calls. Execution writes returned connector items through the normal contextdb write path after source allow-list filtering.
+
 ## Health check
 
 ```typescript

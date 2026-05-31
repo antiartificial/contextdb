@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from contextdb.types import (
+    AcquisitionConnector,
     IngestResult,
     Result,
     RetrieveRequest,
@@ -189,3 +190,53 @@ class Namespace:
             f"/v1/namespaces/{self._name}/sources/label", json=body
         )
         resp.raise_for_status()
+
+    def acquisition_execution(
+        self,
+        connectors: list[AcquisitionConnector],
+        *,
+        top_k: int = 0,
+        min_gap_size: float = 0.0,
+        max_gaps: int = 0,
+        budget: int = 0,
+        task_ids: list[str] | None = None,
+        allowed_source_ids: list[str] | None = None,
+        max_results: int = 0,
+        execute: bool = False,
+    ) -> dict[str, Any]:
+        """Preview or execute connector-specific acquisition workflows."""
+        body: dict[str, Any] = {
+            "mode": self._mode,
+            "connectors": [
+                {
+                    "id": c.id,
+                    "type": c.type,
+                    "endpoint": c.endpoint,
+                    "allowed_source_ids": c.allowed_source_ids,
+                    "default_labels": c.default_labels,
+                    "headers": c.headers,
+                }
+                for c in connectors
+            ],
+            "execute": execute,
+        }
+        if top_k:
+            body["top_k"] = top_k
+        if min_gap_size:
+            body["min_gap_size"] = min_gap_size
+        if max_gaps:
+            body["max_gaps"] = max_gaps
+        if budget:
+            body["budget"] = budget
+        if task_ids:
+            body["task_ids"] = task_ids
+        if allowed_source_ids:
+            body["allowed_source_ids"] = allowed_source_ids
+        if max_results:
+            body["max_results"] = max_results
+
+        resp = self._client.post(
+            f"/v1/namespaces/{self._name}/acquisition/execute", json=body
+        )
+        resp.raise_for_status()
+        return resp.json()

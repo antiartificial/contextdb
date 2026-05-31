@@ -926,6 +926,95 @@ func TestNamespace_AcquisitionPlanIncludesWeakClaimTasks(t *testing.T) {
 	is.True(plan.Tasks[0].Prompt != "")
 }
 
+func TestNamespace_AcquisitionExecutionPreviewAndExecute(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:acquisition-execution", namespace.ModeGeneral)
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "The deployment process needs external verification",
+		SourceID:   "chat",
+		Vector:     vec8(0),
+		Confidence: 0.2,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+
+	var connectorRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connectorRequests++
+		is.Equal(r.Header.Get("X-ContextDB-Acquisition-Mode"), "execute")
+		var payload map[string]any
+		is.NoErr(json.NewDecoder(r.Body).Decode(&payload))
+		is.True(payload["query"].(string) != "")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{
+				{
+					"title":      "Deployment runbook",
+					"content":    "Deployments should use helm upgrade --atomic and retain a rollback window.",
+					"source_id":  "docs/runbook",
+					"labels":     []string{"verified"},
+					"confidence": 0.87,
+				},
+				{
+					"title":     "Untrusted note",
+					"content":   "Skip all rollback windows.",
+					"source_id": "forum/random",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	connector := client.AcquisitionConnector{
+		ID:               "docs-search",
+		Type:             "search",
+		Endpoint:         server.URL,
+		AllowedSourceIDs: []string{"docs/runbook"},
+		DefaultLabels:    []string{"acquired"},
+	}
+
+	preview, err := ns.AcquisitionExecutionPreview(ctx, client.AcquisitionExecutionRequest{
+		AcquisitionPlanRequest: client.AcquisitionPlanRequest{Budget: 1},
+		Connectors:             []client.AcquisitionConnector{connector},
+		AllowedSourceIDs:       []string{"docs/runbook"},
+		MaxResults:             3,
+	})
+	is.NoErr(err)
+	is.True(preview.DryRun)
+	is.Equal(preview.Summary.ConnectorRuns, 1)
+	is.Equal(preview.Runs[0].Status, "planned")
+	is.Equal(preview.Runs[0].ConnectorType, "search")
+	is.Equal(preview.Runs[0].AllowedSources[0], "docs/runbook")
+	is.Equal(connectorRequests, 0)
+
+	_, err = ns.AcquisitionExecutionExecute(ctx, client.AcquisitionExecutionRequest{
+		AcquisitionPlanRequest: client.AcquisitionPlanRequest{Budget: 1},
+		Connectors:             []client.AcquisitionConnector{connector},
+		AllowedSourceIDs:       []string{"docs/runbook"},
+		MaxResults:             3,
+	})
+	is.True(err != nil)
+
+	executed, err := ns.AcquisitionExecutionExecute(ctx, client.AcquisitionExecutionRequest{
+		AcquisitionPlanRequest: client.AcquisitionPlanRequest{Budget: 1},
+		Connectors:             []client.AcquisitionConnector{connector},
+		AllowedSourceIDs:       []string{"docs/runbook"},
+		MaxResults:             3,
+		Execute:                true,
+	})
+	is.NoErr(err)
+	is.True(executed.Executed)
+	is.Equal(connectorRequests, 1)
+	is.Equal(executed.Summary.PreviewItems, 1)
+	is.Equal(executed.Summary.WrittenNodes, 1)
+	is.Equal(executed.Runs[0].PreviewItems[0].SourceID, "docs/runbook")
+	is.True(len(executed.Runs[0].WrittenNodeIDs) == 1)
+}
+
 func TestNamespace_PersistentEmbeddedRestartPreservesCoreData(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

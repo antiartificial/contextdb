@@ -962,6 +962,83 @@ type AcquisitionPlan struct {
 	Tasks         []AcquisitionTask `json:"tasks"`
 }
 
+// AcquisitionConnector configures a source of acquisition results.
+type AcquisitionConnector struct {
+	ID               string            `json:"id"`
+	Type             string            `json:"type"`
+	Endpoint         string            `json:"endpoint,omitempty"`
+	AllowedSourceIDs []string          `json:"allowed_source_ids,omitempty"`
+	DefaultLabels    []string          `json:"default_labels,omitempty"`
+	Headers          map[string]string `json:"headers,omitempty"`
+}
+
+// AcquisitionExecutionRequest configures connector-specific acquisition execution.
+type AcquisitionExecutionRequest struct {
+	AcquisitionPlanRequest
+	TaskIDs          []string
+	Connectors       []AcquisitionConnector
+	AllowedSourceIDs []string
+	MaxResults       int
+	Execute          bool
+	Now              time.Time
+	Timeout          time.Duration
+	HTTPClient       *http.Client
+}
+
+// AcquisitionPreviewItem is one item returned or previewed by a connector.
+type AcquisitionPreviewItem struct {
+	Title      string            `json:"title,omitempty"`
+	URL        string            `json:"url,omitempty"`
+	Snippet    string            `json:"snippet,omitempty"`
+	Content    string            `json:"content,omitempty"`
+	SourceID   string            `json:"source_id,omitempty"`
+	Labels     []string          `json:"labels,omitempty"`
+	Confidence float64           `json:"confidence,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+}
+
+// AcquisitionConnectorRun describes one planned or executed connector call.
+type AcquisitionConnectorRun struct {
+	TaskID         string                   `json:"task_id"`
+	TaskType       string                   `json:"task_type"`
+	ConnectorID    string                   `json:"connector_id"`
+	ConnectorType  string                   `json:"connector_type"`
+	Method         string                   `json:"method"`
+	TargetURL      string                   `json:"target_url,omitempty"`
+	Query          string                   `json:"query"`
+	Prompt         string                   `json:"prompt"`
+	AllowedSources []string                 `json:"allowed_source_ids,omitempty"`
+	DryRun         bool                     `json:"dry_run"`
+	Executed       bool                     `json:"executed,omitempty"`
+	Status         string                   `json:"status"`
+	PayloadSHA256  string                   `json:"payload_sha256"`
+	Headers        map[string]string        `json:"headers,omitempty"`
+	PreviewItems   []AcquisitionPreviewItem `json:"preview_items,omitempty"`
+	WrittenNodeIDs []uuid.UUID              `json:"written_node_ids,omitempty"`
+	Error          string                   `json:"error,omitempty"`
+}
+
+// AcquisitionExecutionSummary summarizes a connector execution plan.
+type AcquisitionExecutionSummary struct {
+	Tasks         int `json:"tasks"`
+	ConnectorRuns int `json:"connector_runs"`
+	PreviewItems  int `json:"preview_items"`
+	WrittenNodes  int `json:"written_nodes"`
+	Errors        int `json:"errors"`
+}
+
+// AcquisitionExecutionPlan is a dry-run or executed acquisition connector workflow.
+type AcquisitionExecutionPlan struct {
+	Namespace  string                      `json:"namespace"`
+	DryRun     bool                        `json:"dry_run"`
+	Executed   bool                        `json:"executed"`
+	PlannedAt  time.Time                   `json:"planned_at"`
+	Plan       *AcquisitionPlan            `json:"plan"`
+	Connectors []AcquisitionConnector      `json:"connectors"`
+	Runs       []AcquisitionConnectorRun   `json:"runs"`
+	Summary    AcquisitionExecutionSummary `json:"summary"`
+}
+
 // Write ingests a new claim, memory, or fact into the namespace.
 // It runs through the admission gate (credibility floor, near-duplicate
 // check, novelty threshold) before writing.
@@ -2598,6 +2675,348 @@ func (h *NamespaceHandle) AcquisitionPlan(ctx context.Context, req AcquisitionPl
 		plan.Tasks = plan.Tasks[:budget]
 	}
 	return plan, nil
+}
+
+// AcquisitionExecutionPreview returns connector-specific acquisition calls without mutating stored knowledge.
+func (h *NamespaceHandle) AcquisitionExecutionPreview(ctx context.Context, req AcquisitionExecutionRequest) (*AcquisitionExecutionPlan, error) {
+	req.Execute = false
+	return h.acquisitionExecution(ctx, req, false)
+}
+
+// AcquisitionExecutionExecute executes configured acquisition connectors and writes returned items.
+func (h *NamespaceHandle) AcquisitionExecutionExecute(ctx context.Context, req AcquisitionExecutionRequest) (*AcquisitionExecutionPlan, error) {
+	if !req.Execute {
+		return nil, fmt.Errorf("acquisition execution: execute must be true")
+	}
+	return h.acquisitionExecution(ctx, req, true)
+}
+
+func (h *NamespaceHandle) acquisitionExecution(ctx context.Context, req AcquisitionExecutionRequest, execute bool) (*AcquisitionExecutionPlan, error) {
+	if len(req.Connectors) == 0 {
+		return nil, fmt.Errorf("acquisition execution: at least one connector is required")
+	}
+	connectors, err := normalizeAcquisitionConnectors(req.Connectors)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := h.AcquisitionPlan(ctx, req.AcquisitionPlanRequest)
+	if err != nil {
+		return nil, err
+	}
+	tasks := filterAcquisitionTasks(plan.Tasks, req.TaskIDs)
+	if len(tasks) == 0 {
+		return nil, fmt.Errorf("acquisition execution: no matching tasks")
+	}
+	plannedAt := req.Now
+	if plannedAt.IsZero() {
+		plannedAt = time.Now().UTC()
+	}
+	maxResults := req.MaxResults
+	if maxResults <= 0 {
+		maxResults = 5
+	}
+	out := &AcquisitionExecutionPlan{
+		Namespace:  h.cfg.ID,
+		DryRun:     !execute,
+		Executed:   execute,
+		PlannedAt:  plannedAt,
+		Plan:       plan,
+		Connectors: connectors,
+		Runs:       make([]AcquisitionConnectorRun, 0, len(tasks)*len(connectors)),
+	}
+	out.Summary.Tasks = len(tasks)
+	for _, task := range tasks {
+		for _, connector := range connectors {
+			run, err := h.buildAcquisitionConnectorRun(ctx, task, connector, req, maxResults, plannedAt, execute)
+			if err != nil {
+				run = baseAcquisitionConnectorRun(task, connector, req.AllowedSourceIDs, maxResults, plannedAt, !execute)
+				run.Status = "error"
+				run.Error = err.Error()
+			}
+			out.Summary.ConnectorRuns++
+			out.Summary.PreviewItems += len(run.PreviewItems)
+			out.Summary.WrittenNodes += len(run.WrittenNodeIDs)
+			if run.Error != "" {
+				out.Summary.Errors++
+			}
+			out.Runs = append(out.Runs, run)
+		}
+	}
+	return out, nil
+}
+
+func (h *NamespaceHandle) buildAcquisitionConnectorRun(ctx context.Context, task AcquisitionTask, connector AcquisitionConnector, req AcquisitionExecutionRequest, maxResults int, plannedAt time.Time, execute bool) (AcquisitionConnectorRun, error) {
+	if len(req.AllowedSourceIDs) > 0 && len(connector.AllowedSourceIDs) > 0 && len(allowedAcquisitionSources(req.AllowedSourceIDs, connector.AllowedSourceIDs)) == 0 {
+		return AcquisitionConnectorRun{}, fmt.Errorf("acquisition execution: connector %s has no allowed source intersection", connector.ID)
+	}
+	run := baseAcquisitionConnectorRun(task, connector, req.AllowedSourceIDs, maxResults, plannedAt, !execute)
+	if !execute {
+		run.Status = "planned"
+		return run, nil
+	}
+	if connector.Endpoint == "" {
+		return run, fmt.Errorf("acquisition execution: connector %s endpoint is required for execute", connector.ID)
+	}
+	items, err := executeAcquisitionConnector(ctx, connector, run, req, maxResults)
+	if err != nil {
+		return run, err
+	}
+	items = filterAcquisitionPreviewItems(items, allowedAcquisitionSources(req.AllowedSourceIDs, connector.AllowedSourceIDs), connector.ID, maxResults)
+	run.PreviewItems = items
+	for _, item := range items {
+		content := strings.TrimSpace(item.Content)
+		if content == "" {
+			content = strings.TrimSpace(item.Snippet)
+		}
+		if content == "" {
+			content = strings.TrimSpace(item.Title)
+		}
+		if content == "" {
+			continue
+		}
+		sourceID := strings.TrimSpace(item.SourceID)
+		if sourceID == "" {
+			sourceID = connector.ID
+		}
+		labels := append([]string{}, connector.DefaultLabels...)
+		labels = append(labels, item.Labels...)
+		written, err := h.Write(ctx, WriteRequest{
+			Content:    content,
+			SourceID:   sourceID,
+			Labels:     dedupeStrings(labels),
+			Confidence: item.Confidence,
+		})
+		if err != nil {
+			return run, err
+		}
+		if written.Admitted {
+			run.WrittenNodeIDs = append(run.WrittenNodeIDs, written.NodeID)
+		}
+	}
+	run.Executed = true
+	run.DryRun = false
+	run.Status = "executed"
+	return run, nil
+}
+
+func baseAcquisitionConnectorRun(task AcquisitionTask, connector AcquisitionConnector, requestAllowedSources []string, maxResults int, plannedAt time.Time, dryRun bool) AcquisitionConnectorRun {
+	payload, _ := json.Marshal(map[string]any{
+		"task_id":            task.ID,
+		"task_type":          task.Type,
+		"description":        task.Description,
+		"prompt":             task.Prompt,
+		"query":              acquisitionTaskQuery(task),
+		"nearest_topics":     task.NearestTopics,
+		"related_node_ids":   task.RelatedNodeIDs,
+		"allowed_source_ids": allowedAcquisitionSources(requestAllowedSources, connector.AllowedSourceIDs),
+		"max_results":        maxResults,
+		"planned_at":         plannedAt.Format(time.RFC3339),
+	})
+	sum := sha256.Sum256(payload)
+	headers := map[string]string{
+		"Content-Type":                        "application/json",
+		"X-ContextDB-Acquisition-Mode":        acquisitionMode(dryRun),
+		"X-ContextDB-Acquisition-Task-ID":     task.ID,
+		"X-ContextDB-Acquisition-Connector":   connector.ID,
+		"X-ContextDB-Acquisition-Payload-SHA": hex.EncodeToString(sum[:]),
+	}
+	for key, value := range connector.Headers {
+		headers[key] = value
+	}
+	return AcquisitionConnectorRun{
+		TaskID:         task.ID,
+		TaskType:       task.Type,
+		ConnectorID:    connector.ID,
+		ConnectorType:  connector.Type,
+		Method:         "POST",
+		TargetURL:      connector.Endpoint,
+		Query:          acquisitionTaskQuery(task),
+		Prompt:         task.Prompt,
+		AllowedSources: allowedAcquisitionSources(requestAllowedSources, connector.AllowedSourceIDs),
+		DryRun:         dryRun,
+		Status:         "planned",
+		PayloadSHA256:  hex.EncodeToString(sum[:]),
+		Headers:        headers,
+	}
+}
+
+func executeAcquisitionConnector(ctx context.Context, connector AcquisitionConnector, run AcquisitionConnectorRun, req AcquisitionExecutionRequest, maxResults int) ([]AcquisitionPreviewItem, error) {
+	timeout := req.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	httpClient := req.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: timeout}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"task_id":            run.TaskID,
+		"task_type":          run.TaskType,
+		"query":              run.Query,
+		"prompt":             run.Prompt,
+		"allowed_source_ids": run.AllowedSources,
+		"max_results":        maxResults,
+		"connector_id":       connector.ID,
+		"connector_type":     connector.Type,
+	})
+	if err != nil {
+		return nil, err
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(callCtx, run.Method, connector.Endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range run.Headers {
+		httpReq.Header.Set(key, value)
+	}
+	resp, err := httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("acquisition execution: connector %s returned status %d: %s", connector.ID, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return decodeAcquisitionPreviewItems(body)
+}
+
+func decodeAcquisitionPreviewItems(body []byte) ([]AcquisitionPreviewItem, error) {
+	var wrapped struct {
+		Items []AcquisitionPreviewItem `json:"items"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err == nil && wrapped.Items != nil {
+		return wrapped.Items, nil
+	}
+	var items []AcquisitionPreviewItem
+	if err := json.Unmarshal(body, &items); err != nil {
+		return nil, fmt.Errorf("acquisition execution: decode connector response: %w", err)
+	}
+	return items, nil
+}
+
+func normalizeAcquisitionConnectors(connectors []AcquisitionConnector) ([]AcquisitionConnector, error) {
+	out := make([]AcquisitionConnector, 0, len(connectors))
+	seen := map[string]bool{}
+	for _, connector := range connectors {
+		connector.ID = strings.TrimSpace(connector.ID)
+		connector.Type = strings.TrimSpace(strings.ToLower(connector.Type))
+		connector.Endpoint = strings.TrimSpace(connector.Endpoint)
+		if connector.ID == "" {
+			return nil, fmt.Errorf("acquisition execution: connector id is required")
+		}
+		if seen[connector.ID] {
+			return nil, fmt.Errorf("acquisition execution: duplicate connector id %s", connector.ID)
+		}
+		switch connector.Type {
+		case "search", "crawler":
+		default:
+			return nil, fmt.Errorf("acquisition execution: unsupported connector type %q", connector.Type)
+		}
+		seen[connector.ID] = true
+		connector.AllowedSourceIDs = dedupeStrings(connector.AllowedSourceIDs)
+		connector.DefaultLabels = dedupeStrings(connector.DefaultLabels)
+		out = append(out, connector)
+	}
+	return out, nil
+}
+
+func filterAcquisitionTasks(tasks []AcquisitionTask, taskIDs []string) []AcquisitionTask {
+	if len(taskIDs) == 0 {
+		return tasks
+	}
+	allowed := map[string]bool{}
+	for _, id := range taskIDs {
+		allowed[strings.TrimSpace(id)] = true
+	}
+	out := make([]AcquisitionTask, 0, len(tasks))
+	for _, task := range tasks {
+		if allowed[task.ID] {
+			out = append(out, task)
+		}
+	}
+	return out
+}
+
+func filterAcquisitionPreviewItems(items []AcquisitionPreviewItem, allowedSources []string, defaultSourceID string, maxResults int) []AcquisitionPreviewItem {
+	allowed := map[string]bool{}
+	for _, source := range allowedSources {
+		allowed[source] = true
+	}
+	out := make([]AcquisitionPreviewItem, 0, len(items))
+	for _, item := range items {
+		item.SourceID = strings.TrimSpace(item.SourceID)
+		effectiveSourceID := item.SourceID
+		if effectiveSourceID == "" {
+			effectiveSourceID = defaultSourceID
+		}
+		if len(allowed) > 0 && !allowed[effectiveSourceID] {
+			continue
+		}
+		item.Labels = dedupeStrings(item.Labels)
+		out = append(out, item)
+		if maxResults > 0 && len(out) >= maxResults {
+			break
+		}
+	}
+	return out
+}
+
+func allowedAcquisitionSources(requestSources, connectorSources []string) []string {
+	if len(requestSources) == 0 {
+		return dedupeStrings(connectorSources)
+	}
+	if len(connectorSources) == 0 {
+		return dedupeStrings(requestSources)
+	}
+	allowed := map[string]bool{}
+	for _, source := range requestSources {
+		allowed[strings.TrimSpace(source)] = true
+	}
+	var out []string
+	for _, source := range connectorSources {
+		source = strings.TrimSpace(source)
+		if allowed[source] {
+			out = append(out, source)
+		}
+	}
+	return dedupeStrings(out)
+}
+
+func acquisitionTaskQuery(task AcquisitionTask) string {
+	if len(task.NearestTopics) > 0 {
+		return strings.Join(task.NearestTopics, " ")
+	}
+	if task.Description != "" {
+		return task.Description
+	}
+	return task.Prompt
+}
+
+func acquisitionMode(dryRun bool) string {
+	if dryRun {
+		return "dry-run"
+	}
+	return "execute"
+}
+
+func dedupeStrings(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, value := range in {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func (h *NamespaceHandle) rankEvidence(ctx context.Context, nodeID uuid.UUID, maxDepth int) (RankEvidence, error) {

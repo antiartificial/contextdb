@@ -78,6 +78,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/nodes/{id}/narrative", s.handleNarrative)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/gaps", s.handleKnowledgeGaps)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/acquisition/plan", s.handleAcquisitionPlan)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/acquisition/execute", s.handleAcquisitionExecute)
 
 	// GET /v1/stats
 	mux.HandleFunc("GET /v1/stats", s.handleStats)
@@ -248,6 +249,15 @@ type acquisitionPlanRequest struct {
 	MinGapSize float64 `json:"min_gap_size,omitempty"`
 	MaxGaps    int     `json:"max_gaps,omitempty"`
 	Budget     int     `json:"budget,omitempty"`
+}
+
+type acquisitionExecuteRequest struct {
+	acquisitionPlanRequest
+	TaskIDs          []string                      `json:"task_ids,omitempty"`
+	Connectors       []client.AcquisitionConnector `json:"connectors,omitempty"`
+	AllowedSourceIDs []string                      `json:"allowed_source_ids,omitempty"`
+	MaxResults       int                           `json:"max_results,omitempty"`
+	Execute          bool                          `json:"execute,omitempty"`
 }
 
 type reviewQueueResponse struct {
@@ -1391,6 +1401,47 @@ func (s *RESTServer) handleAcquisitionPlan(w http.ResponseWriter, r *http.Reques
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+func (s *RESTServer) handleAcquisitionExecute(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+
+	var req acquisitionExecuteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	h := s.db.Namespace(ns, resolveMode(req.Mode))
+	execReq := client.AcquisitionExecutionRequest{
+		AcquisitionPlanRequest: client.AcquisitionPlanRequest{
+			TopK:       req.TopK,
+			MinGapSize: req.MinGapSize,
+			MaxGaps:    req.MaxGaps,
+			Budget:     req.Budget,
+		},
+		TaskIDs:          req.TaskIDs,
+		Connectors:       req.Connectors,
+		AllowedSourceIDs: req.AllowedSourceIDs,
+		MaxResults:       req.MaxResults,
+		Execute:          req.Execute,
+	}
+	var plan *client.AcquisitionExecutionPlan
+	var err error
+	if req.Execute {
+		plan, err = h.AcquisitionExecutionExecute(r.Context(), execReq)
+	} else {
+		plan, err = h.AcquisitionExecutionPreview(r.Context(), execReq)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, plan)

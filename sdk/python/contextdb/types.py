@@ -78,3 +78,15 @@ class IngestResult:
     nodes_written: int = 0
     edges_written: int = 0
     rejected: int = 0
+
+
+@dataclass
+class AcquisitionConnector:
+    """Connector used by acquisition execution workflows."""
+
+    id: str
+    type: str
+    endpoint: str = ""
+    allowed_source_ids: list[str] = field(default_factory=list)
+    default_labels: list[str] = field(default_factory=list)
+    headers: dict[str, str] = field(default_factory=dict)

@@ -4,6 +4,8 @@ import type {
   RetrieveRequest,
   Result,
   IngestResult,
+  AcquisitionExecutionPlan,
+  AcquisitionExecutionRequest,
 } from './types';
 
 /** Top-level client for a contextdb server. */
@@ -166,5 +168,39 @@ export class Namespace {
       }
     );
     if (!resp.ok) throw new Error(`labelSource failed: ${resp.status}`);
+  }
+
+  /** Preview or execute connector-specific acquisition workflows. */
+  async acquisitionExecution(req: AcquisitionExecutionRequest): Promise<AcquisitionExecutionPlan> {
+    const body: Record<string, unknown> = {
+      mode: this.mode,
+      connectors: req.connectors.map((connector) => ({
+        id: connector.id,
+        type: connector.type,
+        endpoint: connector.endpoint,
+        allowed_source_ids: connector.allowedSourceIds,
+        default_labels: connector.defaultLabels,
+        headers: connector.headers,
+      })),
+      execute: req.execute ?? false,
+    };
+    if (req.topK) body.top_k = req.topK;
+    if (req.minGapSize) body.min_gap_size = req.minGapSize;
+    if (req.maxGaps) body.max_gaps = req.maxGaps;
+    if (req.budget) body.budget = req.budget;
+    if (req.taskIds) body.task_ids = req.taskIds;
+    if (req.allowedSourceIds) body.allowed_source_ids = req.allowedSourceIds;
+    if (req.maxResults) body.max_results = req.maxResults;
+
+    const resp = await fetch(
+      `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/execute`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!resp.ok) throw new Error(`acquisitionExecution failed: ${resp.status}`);
+    return resp.json();
   }
 }

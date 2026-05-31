@@ -57,3 +57,38 @@ export interface IngestResult {
   edgesWritten: number;
   rejected: number;
 }
+
+/** Connector used by acquisition execution workflows. */
+export interface AcquisitionConnector {
+  id: string;
+  type: 'search' | 'crawler' | string;
+  endpoint?: string;
+  allowedSourceIds?: string[];
+  defaultLabels?: string[];
+  headers?: Record<string, string>;
+}
+
+/** Request for acquisition planner execution previews or execution. */
+export interface AcquisitionExecutionRequest {
+  topK?: number;
+  minGapSize?: number;
+  maxGaps?: number;
+  budget?: number;
+  taskIds?: string[];
+  connectors: AcquisitionConnector[];
+  allowedSourceIds?: string[];
+  maxResults?: number;
+  execute?: boolean;
+}
+
+/** Result returned by acquisition connector workflows. */
+export interface AcquisitionExecutionPlan {
+  namespace: string;
+  dry_run: boolean;
+  executed: boolean;
+  planned_at: string;
+  plan: Record<string, unknown>;
+  connectors: Record<string, unknown>[];
+  runs: Record<string, unknown>[];
+  summary: Record<string, number>;
+}

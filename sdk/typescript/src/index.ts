@@ -6,4 +6,7 @@ export type {
   Result,
   ScoreParams,
   IngestResult,
+  AcquisitionConnector,
+  AcquisitionExecutionPlan,
+  AcquisitionExecutionRequest,
 } from './types';

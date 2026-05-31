@@ -632,6 +632,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Richer debugger / epistemics visualization | Implemented | `/admin/api/belief` keeps the raw audit fields and adds an additive `epistemics` envelope; the Svelte debugger renders source trust timelines, confidence history, source context, contradiction paths, and graph/source context |
 
+## Completed In v0.105.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Knowledge acquisition execution connectors | Implemented | Go SDK, REST, TypeScript, and Python expose dry-run-first `/acquisition/execute` workflows for configured `search` and `crawler` connectors; execution requires explicit opt-in and writes only connector results that satisfy source allow-lists |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -649,7 +655,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; durable workflow decisions completed in v0.12.0 |
 | Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; anomaly review tasks completed in v0.13.0; debugger timeline visualization completed in v0.104.0; next step is exportable timeline evidence |
-| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Completed in v0.9.0; next step is connector-specific acquisition execution |
+| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Planner completed in v0.9.0; connector-specific dry-run and execution workflows completed in v0.105.0; next step is connector receipts and scheduled acquisition runs |
 | Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Completed in v0.12.0; reviewer filters completed in v0.15.0; next step is escalation rules |
 
 ## Durability And Operations
@@ -717,7 +723,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks make it more operationally complete | Completed in v0.10.0; deeper store/index consistency checks remain |
 | Review workflow persistence | The derived queue now exists; operators need durable triage state around it | Completed in v0.12.0; next step is reviewer filters and escalation rules |
 | Source trust anomaly alerts | Trust timelines now exist; the next step is detecting suspicious credibility drops or repeated refutations | Completed in v0.13.0; next step is reviewer-facing anomaly filters |
-| Acquisition execution connectors | Planner tasks now exist; the next step is executing them through configured crawlers/search tools | Add connector hooks and dry-run previews for source-constrained acquisition tasks |
+| Acquisition execution connectors | Planner tasks now exist; the next step is executing them through configured crawlers/search tools | Completed in v0.105.0 with dry-run previews, explicit execution, search/crawler connectors, and source-constrained writes |
 | Postgres integration harness | Standard mode needs the same confidence now covered for Badger restarts | Docker-backed test for migrations, fingerprint dedup, feedback, and vector retrieval |
 
 ## Fresh Brainstorm After v0.11.1
@@ -1195,3 +1201,12 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Contradiction path depth expansion | One-hop conflict paths are useful, but some contradictions are mediated by derived summaries | Add a bounded depth selector that follows `derived_from`, `supports`, and `contradicts` paths with cycle protection |
 | Ranking-dashboard-to-debugger handoff | Ranking failures should open the exact evidence context behind a surprising top result | Add a button from ranking query detail to inspect the selected top result in the belief debugger |
 | Manifest-backed debugger evidence bundle | Epistemic investigations should leave portable audit evidence | Emit a small manifest for exported debugger evidence with report hash, node ID, source ID, and generated_at |
+
+## Fresh Brainstorm After v0.105.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Acquisition execution receipts | Connector execution writes should leave durable audit evidence | Record connector endpoint, payload hash, accepted item hashes, source allow-list, and written node IDs as an event-log receipt |
+| Scheduled acquisition runs | Operators will want recurring gap filling without hand-running previews | Add a dry-run schedule plan and explicit enablement for namespaces with reviewed connectors |
+| Connector result scoring | Not every crawler/search result should be ingested at the same confidence | Add optional connector-level confidence floors, result rank weighting, and duplicate-source suppression |
+| Acquisition-to-review handoff | Acquired evidence should often be reviewed before it affects belief | Add a mode that writes connector results into review queue candidates before validation |
