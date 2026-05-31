@@ -1485,6 +1485,56 @@ func TestBuildRankingEvalBaselineArtifactManifest(t *testing.T) {
 	is.True(!missingMarkdown.Exists)
 }
 
+func TestVerifyRankingEvalBaselineArtifactManifest(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	files := map[string]string{
+		"ranking-eval-v0.61.0.json": `{"version":"0.61.0"}`,
+		"ranking-eval-v0.61.0.md":   "# v0.61.0\n",
+		"ranking-eval-v0.62.0.json": `{"version":"0.62.0"}`,
+	}
+	for name, content := range files {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.ManifestFile, manifestPath)
+	is.Equal(report.TotalArtifacts, 4)
+	is.Equal(report.VerifiedArtifacts, 3)
+	is.Equal(report.MissingArtifacts, 1)
+}
+
+func TestVerifyRankingEvalBaselineArtifactManifestDetectsHashDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "ranking-eval-v0.61.0.json")
+	mdPath := filepath.Join(dir, "ranking-eval-v0.61.0.md")
+	is.NoErr(os.WriteFile(jsonPath, []byte(`{"version":"0.61.0"}`), 0o644))
+	is.NoErr(os.WriteFile(mdPath, []byte("# v0.61.0\n"), 0o644))
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	is.NoErr(os.WriteFile(jsonPath, []byte(`{"version":"0.61.0","changed":true}`), 0o644))
+
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "artifact sha256 mismatch"))
+}
+
 func TestBuildRankingEvalBaselineDeleteScript(t *testing.T) {
 	is := is.New(t)
 

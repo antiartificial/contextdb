@@ -146,6 +146,10 @@ func runEval(args []string) {
 }
 
 func runEvalRanking(args []string) {
+	if len(args) > 0 && args[0] == "baseline" {
+		runEvalRankingBaseline(args[1:])
+		return
+	}
 	fs := flag.NewFlagSet("contextdb eval ranking", flag.ExitOnError)
 	outPath := fs.String("out", "", "JSON ranking eval snapshot to write")
 	markdownOutPath := fs.String("markdown-out", "", "Markdown ranking eval recap to write")
@@ -260,6 +264,53 @@ func runEvalRanking(args []string) {
 	}
 	if *reportOut || (!diffRequested && strings.TrimSpace(*outPath) == "" && strings.TrimSpace(*markdownOutPath) == "" && strings.TrimSpace(*baselineDir) == "" && !*markdownReportOut) {
 		writeIndentedJSON(report)
+	}
+}
+
+func runEvalRankingBaseline(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb eval ranking baseline: expected manifest")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "manifest":
+		runEvalRankingBaselineManifest(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runEvalRankingBaselineManifest(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb eval ranking baseline manifest: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runEvalRankingBaselineManifestVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runEvalRankingBaselineManifestVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb eval ranking baseline manifest verify", flag.ExitOnError)
+	manifestPath := fs.String("manifest", "", "JSON ranking baseline artifact manifest to verify")
+	reportOut := fs.Bool("report", false, "print a JSON ranking baseline manifest verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifyRankingEvalBaselineArtifactManifest(*manifestPath)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest verify: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
 
@@ -1409,6 +1460,34 @@ type rankingEvalBaselineArtifactManifestItem struct {
 	Bytes   int64  `json:"bytes,omitempty"`
 	SHA256  string `json:"sha256,omitempty"`
 	Missing bool   `json:"missing,omitempty"`
+}
+
+type rankingEvalBaselineArtifactManifestVerifyReport struct {
+	OK                    bool                                                  `json:"ok"`
+	ManifestFile          string                                                `json:"manifest_file"`
+	ManifestKind          string                                                `json:"manifest_kind,omitempty"`
+	ManifestGeneratedAt   string                                                `json:"manifest_generated_at,omitempty"`
+	ContextDBVersion      string                                                `json:"contextdb_version,omitempty"`
+	TotalArtifacts        int                                                   `json:"total_artifacts"`
+	VerifiedArtifacts     int                                                   `json:"verified_artifacts"`
+	MissingArtifacts      int                                                   `json:"missing_artifacts"`
+	ValidationErrors      []string                                              `json:"validation_errors,omitempty"`
+	ArtifactVerifications []rankingEvalBaselineArtifactManifestVerifyReportItem `json:"artifact_verifications"`
+}
+
+type rankingEvalBaselineArtifactManifestVerifyReportItem struct {
+	Version          string   `json:"version"`
+	Status           string   `json:"status"`
+	Current          bool     `json:"current"`
+	Kind             string   `json:"kind"`
+	Path             string   `json:"path"`
+	ExpectedMissing  bool     `json:"expected_missing,omitempty"`
+	Exists           bool     `json:"exists"`
+	ExpectedBytes    int64    `json:"expected_bytes,omitempty"`
+	ActualBytes      int64    `json:"actual_bytes,omitempty"`
+	ExpectedSHA256   string   `json:"expected_sha256,omitempty"`
+	ActualSHA256     string   `json:"actual_sha256,omitempty"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
 }
 
 type rankingEvalBaselineVersion struct {
@@ -2871,6 +2950,139 @@ func buildRankingEvalBaselineArtifactManifest(report rankingEvalBaselineRetentio
 		}
 	}
 	return manifest, nil
+}
+
+func verifyRankingEvalBaselineArtifactManifest(manifestPath string) (rankingEvalBaselineArtifactManifestVerifyReport, error) {
+	manifestPath = strings.TrimSpace(manifestPath)
+	report := rankingEvalBaselineArtifactManifestVerifyReport{
+		ManifestFile: manifestPath,
+	}
+	if manifestPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--manifest is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read ranking baseline artifact manifest: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	var manifest rankingEvalBaselineArtifactManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode ranking baseline artifact manifest: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.ManifestKind = manifest.Kind
+	report.ManifestGeneratedAt = manifest.GeneratedAt
+	report.ContextDBVersion = manifest.ContextDBVersion
+	report.TotalArtifacts = len(manifest.Artifacts)
+	if manifest.Kind != "contextdb.ranking.baseline.artifact_manifest" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported manifest kind %q", manifest.Kind))
+	}
+	if manifest.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported manifest schema_version %d", manifest.SchemaVersion))
+	}
+	for _, artifact := range manifest.Artifacts {
+		item := rankingEvalBaselineArtifactManifestVerifyReportItem{
+			Version:         artifact.Version,
+			Status:          artifact.Status,
+			Current:         artifact.Current,
+			Kind:            artifact.Kind,
+			Path:            artifact.Path,
+			ExpectedMissing: artifact.Missing,
+			ExpectedBytes:   artifact.Bytes,
+			ExpectedSHA256:  artifact.SHA256,
+		}
+		path := strings.TrimSpace(artifact.Path)
+		if artifact.Missing {
+			report.MissingArtifacts++
+			if path == "" {
+				report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+				continue
+			}
+			info, statErr := os.Stat(path)
+			switch {
+			case statErr == nil && !info.IsDir():
+				item.Exists = true
+				item.ActualBytes = info.Size()
+				msg := "artifact exists but manifest marks it missing"
+				item.ValidationErrors = append(item.ValidationErrors, msg)
+				report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, msg))
+			case statErr == nil && info.IsDir():
+				msg := "artifact path is a directory but manifest marks it missing"
+				item.ValidationErrors = append(item.ValidationErrors, msg)
+				report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, msg))
+			case statErr != nil && !errors.Is(statErr, os.ErrNotExist):
+				msg := fmt.Sprintf("stat artifact: %v", statErr)
+				item.ValidationErrors = append(item.ValidationErrors, msg)
+				report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, msg))
+			}
+			report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+			continue
+		}
+		if path == "" {
+			item.ValidationErrors = append(item.ValidationErrors, "artifact path is empty")
+			report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, "artifact path is empty"))
+			report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+			continue
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("stat artifact: %v", err))
+			report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, item.ValidationErrors[len(item.ValidationErrors)-1]))
+			report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+			continue
+		}
+		if info.IsDir() {
+			item.ValidationErrors = append(item.ValidationErrors, "artifact path is a directory")
+			report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, "artifact path is a directory"))
+			report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+			continue
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("read artifact: %v", err))
+			report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, item.ValidationErrors[len(item.ValidationErrors)-1]))
+			report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+			continue
+		}
+		sum := sha256.Sum256(content)
+		item.Exists = true
+		item.ActualBytes = int64(len(content))
+		item.ActualSHA256 = hex.EncodeToString(sum[:])
+		if artifact.Bytes != item.ActualBytes {
+			msg := fmt.Sprintf("artifact byte size mismatch: expected %d got %d", artifact.Bytes, item.ActualBytes)
+			item.ValidationErrors = append(item.ValidationErrors, msg)
+			report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, msg))
+		}
+		if !strings.EqualFold(strings.TrimSpace(artifact.SHA256), item.ActualSHA256) {
+			msg := "artifact sha256 mismatch"
+			item.ValidationErrors = append(item.ValidationErrors, msg)
+			report.ValidationErrors = append(report.ValidationErrors, artifactManifestValidationPrefix(item, msg))
+		}
+		if len(item.ValidationErrors) == 0 {
+			report.VerifiedArtifacts++
+		}
+		report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("ranking baseline artifact manifest verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func artifactManifestValidationPrefix(item rankingEvalBaselineArtifactManifestVerifyReportItem, msg string) string {
+	label := strings.TrimSpace(item.Kind)
+	if label == "" {
+		label = "artifact"
+	}
+	if strings.TrimSpace(item.Version) != "" {
+		label = item.Version + " " + label
+	}
+	if strings.TrimSpace(item.Path) != "" {
+		return fmt.Sprintf("%s %s: %s", label, item.Path, msg)
+	}
+	return fmt.Sprintf("%s: %s", label, msg)
 }
 
 func buildRankingEvalBaselineDeleteCommands(baselines []rankingEvalBaselineRetentionItem) []string {

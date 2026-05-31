@@ -50,6 +50,16 @@ contextdb eval ranking \
 
 The manifest records each JSON and Markdown baseline artifact with its version, retention status, path, existence, byte size, and SHA-256 hash. Missing counterpart artifacts are included with `missing: true` so release jobs can spot incomplete baseline pairs.
 
+Verify the inventory later with:
+
+```bash
+contextdb eval ranking baseline manifest verify \
+  --manifest ranking-baseline-manifest.json \
+  --report
+```
+
+The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash.
+
 ## Review Retention
 
 Inspect retained and pruneable baseline versions before deleting anything:

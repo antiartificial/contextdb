@@ -79,6 +79,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Ranking eval baseline delete script | Implemented | v0.68 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --baseline-retention-dir --emit-delete-script` emits a reviewed shell deletion plan for existing pruneable baseline artifacts without deleting files |
 | Ranking baseline retention cookbook | Implemented | v0.72 | `ranking`, `release`, `inspectability` | Deployment docs provide keep-count, CI artifact, review, and delete-script recipes for ranking baseline history |
 | Ranking baseline artifact manifest | Implemented | v0.76 | `ranking`, `release`, `audit` | `contextdb eval ranking --baseline-manifest-out` writes artifact inventory JSON with bytes and SHA-256 hashes |
+| Ranking baseline artifact manifest verify | Implemented | v0.80 | `ranking`, `release`, `audit` | `contextdb eval ranking baseline manifest verify --manifest` verifies inventory paths, byte sizes, and SHA-256 hashes |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
