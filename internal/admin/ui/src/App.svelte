@@ -23,6 +23,14 @@
     match_reason: string
   }
 
+  type RankExplanation = {
+    winner_node_id?: string
+    loser_node_id?: string
+    margin: number
+    summary: string
+    factors: { factor: string; node_contribution: number; other_contribution: number; delta: number }[]
+  }
+
   let metrics: Metrics | null = null
   let metricsError = ''
   let searchNamespace = 'default'
@@ -34,6 +42,11 @@
   let debugID = ''
   let debugOutput =
     'Enter a namespace and node ID to inspect source, support, contradictions, provenance, and confidence history.'
+  let compareLeft = ''
+  let compareRight = ''
+  let compareQuery = ''
+  let compareOutput = 'Select two search results or paste node IDs to compare ranking factors.'
+  let compareSummary = ''
 
   const percent = (value = 0) => `${Math.round(value * 1000) / 10}%`
   const ms = (value = 0) => `${value.toFixed(2)} ms`
@@ -76,6 +89,14 @@
     debugID = result.id
   }
 
+  function addCompareTarget(result: SearchResult) {
+    if (!compareLeft || compareLeft === result.id) {
+      compareLeft = result.id
+      return
+    }
+    compareRight = result.id
+  }
+
   async function inspectNode() {
     debugOutput = 'Loading...'
     try {
@@ -89,6 +110,31 @@
       debugOutput = JSON.stringify(JSON.parse(text), null, 2)
     } catch (error) {
       debugOutput = String(error instanceof Error ? error.message : error)
+    }
+  }
+
+  async function compareRank() {
+    compareOutput = 'Comparing...'
+    compareSummary = ''
+    try {
+      const response = await fetch('/admin/api/explain-rank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          namespace: searchNamespace.trim(),
+          node_id: compareLeft.trim(),
+          other_node_id: compareRight.trim(),
+          text: compareQuery.trim(),
+          max_depth: 2,
+        }),
+      })
+      const text = await response.text()
+      if (!response.ok) throw new Error(text || response.statusText)
+      const data: RankExplanation = JSON.parse(text)
+      compareSummary = data.summary
+      compareOutput = JSON.stringify(data, null, 2)
+    } catch (error) {
+      compareOutput = String(error instanceof Error ? error.message : error)
     }
   }
 
@@ -202,7 +248,10 @@
                 <strong>{result.text || result.id}</strong>
                 <span>{result.id} | {result.source_id || 'unknown source'} | confidence {(result.confidence || 0).toFixed(2)} | {result.match_reason}</span>
               </div>
-              <button type="button" class="ghost" on:click={() => inspectResult(result)}>Inspect</button>
+              <div class="result-actions">
+                <button type="button" class="ghost" on:click={() => inspectResult(result)}>Inspect</button>
+                <button type="button" class="ghost" on:click={() => addCompareTarget(result)}>Compare</button>
+              </div>
             </article>
           {/each}
         </div>
@@ -220,6 +269,31 @@
         <button type="button" on:click={inspectNode}>Inspect</button>
       </div>
       <pre>{debugOutput}</pre>
+    </div>
+  </section>
+
+  <section class="compare" aria-labelledby="compare-heading">
+    <h2 id="compare-heading">Explain Rank Compare</h2>
+    <div class="tool">
+      <div class="compare-row">
+        <label>
+          Left node
+          <input bind:value={compareLeft} placeholder="Node UUID" autocomplete="off" />
+        </label>
+        <label>
+          Right node
+          <input bind:value={compareRight} placeholder="Node UUID" autocomplete="off" />
+        </label>
+        <label>
+          Query text
+          <input bind:value={compareQuery} placeholder="optional query context" autocomplete="off" />
+        </label>
+        <button type="button" on:click={compareRank}>Compare</button>
+      </div>
+      {#if compareSummary}
+        <p class="compare-summary">{compareSummary}</p>
+      {/if}
+      <pre>{compareOutput}</pre>
     </div>
   </section>
 

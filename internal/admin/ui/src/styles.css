@@ -218,6 +218,7 @@ h3 {
 }
 
 .debugger h2,
+.compare h2,
 .links h2 {
   border-bottom: 1px solid #21262d;
   margin-bottom: 1rem;
@@ -235,6 +236,14 @@ h3 {
 
 .inspect-row {
   grid-template-columns: 1fr 1fr auto;
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.8rem;
 }
 
 label {
@@ -283,6 +292,20 @@ label input {
   overflow-wrap: anywhere;
 }
 
+.result-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.compare-summary {
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0f1117;
+  color: #e1e4e8;
+  margin: 0 0 0.8rem;
+  padding: 0.75rem;
+}
+
 .ghost {
   background: #21262d;
 }
@@ -323,6 +346,7 @@ label input {
   .metrics-detail,
   .search-row,
   .inspect-row,
+  .compare-row,
   .result {
     grid-template-columns: 1fr;
   }

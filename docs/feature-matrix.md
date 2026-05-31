@@ -114,9 +114,10 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Admin debugger search | Implemented | v0.89 | `inspectability`, `operations` | `/admin/api/search` finds recent valid graph nodes by text, source, label, or ID and the UI can open them in the debugger |
 | Admin metrics dashboard | Implemented | v0.91 | `inspectability`, `operations`, `metrics` | `/admin/` surfaces health signals, ingest/retrieval rates, latency, and raw `/admin/api/metrics` JSON |
 | Svelte admin shell | Implemented | v0.92 | `inspectability`, `operations`, `ui` | `/admin/` is served from an embedded Svelte app bundle while preserving metrics, search, and belief debugger APIs |
+| Debugger explain-rank compare | Implemented | v0.93 | `inspectability`, `ranking`, `ui` | `/admin/api/explain-rank` and the Svelte dashboard compare two nodes with rank summary and factor deltas |
 
 ## Next Candidates
 
-1. Debugger explain-rank compare for side-by-side ranking questions.
-2. Retry fatigue preset API schema fixture for REST/SDK parity.
-3. Doctor backup receipt runbook lane for repair closure checklists.
+1. Retry fatigue preset API schema fixture for REST/SDK parity.
+2. Doctor backup receipt runbook lane for repair closure checklists.
+3. KV derived refresh receipt verifier for incident evidence.

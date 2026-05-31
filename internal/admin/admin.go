@@ -51,6 +51,7 @@ func New(db *client.DB) http.Handler {
 	h.mux.HandleFunc("GET /admin/api/stats", h.handleStats)
 	h.mux.HandleFunc("GET /admin/api/metrics", h.handleMetrics)
 	h.mux.HandleFunc("GET /admin/api/belief", h.handleBeliefAudit)
+	h.mux.HandleFunc("POST /admin/api/explain-rank", h.handleExplainRank)
 	h.mux.HandleFunc("GET /admin/api/search", h.handleSearch)
 	h.mux.HandleFunc("GET /admin/api/timetravel", h.handleTimeTravel)
 	h.mux.HandleFunc("GET /admin/api/diff", h.handleDiff)
@@ -188,6 +189,51 @@ func ratio(numerator, denominator float64) float64 {
 		return 0
 	}
 	return numerator / denominator
+}
+
+type adminExplainRankRequest struct {
+	Namespace   string    `json:"namespace"`
+	NodeID      string    `json:"node_id"`
+	OtherNodeID string    `json:"other_node_id"`
+	Text        string    `json:"text,omitempty"`
+	Vector      []float32 `json:"vector,omitempty"`
+	MaxDepth    int       `json:"max_depth,omitempty"`
+}
+
+func (h *adminHandler) handleExplainRank(w http.ResponseWriter, r *http.Request) {
+	var req adminExplainRankRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ns := strings.TrimSpace(req.Namespace)
+	if ns == "" {
+		http.Error(w, "missing namespace", http.StatusBadRequest)
+		return
+	}
+	nodeID, err := uuid.Parse(strings.TrimSpace(req.NodeID))
+	if err != nil {
+		http.Error(w, "invalid node_id", http.StatusBadRequest)
+		return
+	}
+	otherNodeID, err := uuid.Parse(strings.TrimSpace(req.OtherNodeID))
+	if err != nil {
+		http.Error(w, "invalid other_node_id", http.StatusBadRequest)
+		return
+	}
+	explanation, err := h.db.Namespace(ns, "").ExplainRank(r.Context(), client.ExplainRankRequest{
+		NodeID:      nodeID,
+		OtherNodeID: otherNodeID,
+		Text:        req.Text,
+		Vector:      req.Vector,
+		MaxDepth:    req.MaxDepth,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(explanation)
 }
 
 // handleBeliefAudit returns the evidence trail for one claim.

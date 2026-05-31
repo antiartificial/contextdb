@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.92.0"
+	Version = "0.93.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.92.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.93.0",
 	}
 }
 
@@ -146,6 +146,7 @@ func Features() []Feature {
 		{Name: "admin-debugger-search", Status: "stable", Since: "v0.89.0", Description: "The admin debugger can search recent valid nodes by text, label, source, or ID before opening an audit."},
 		{Name: "admin-metrics-dashboard", Status: "stable", Since: "v0.91.0", Description: "The admin dashboard surfaces health, ingest, retrieval, latency, and raw metrics through /admin/api/metrics."},
 		{Name: "admin-svelte-shell", Status: "stable", Since: "v0.92.0", Description: "The admin dashboard is built as an embedded Svelte app while preserving the /admin/ route and debugger APIs."},
+		{Name: "admin-debugger-explain-rank", Status: "stable", Since: "v0.93.0", Description: "The admin debugger can compare two nodes with explain-rank factors from the Svelte dashboard."},
 	}
 }
 

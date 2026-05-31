@@ -8,6 +8,7 @@ Release notes are the high-level map of what changed, why it matters, and which 
 
 | Release | Date | Theme |
 |:--------|:-----|:------|
+| [v0.93.0](v0.93.0) | 2026-05-31 | Debugger explain-rank compare |
 | [v0.92.0](v0.92.0) | 2026-05-31 | Svelte admin shell |
 | [v0.91.0](v0.91.0) | 2026-05-31 | Admin metrics dashboard |
 | [v0.90.0](v0.90.0) | 2026-05-31 | Ranking bundle index verifier |
@@ -111,9 +112,9 @@ The docs are currently versioned by release notes and feature tags rather than a
 Use the Git tags for exact historical source:
 
 ```bash
-git checkout v0.92.0
+git checkout v0.93.0
 npm ci
 npm run docs:build
 ```
 
-Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.92.0 is intentionally non-breaking, so tagged release notes are the clearer tool.
+Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.93.0 is intentionally non-breaking, so tagged release notes are the clearer tool.

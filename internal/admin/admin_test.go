@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -101,7 +102,9 @@ func TestAdminDashboardIncludesDebugger(t *testing.T) {
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/metrics"))
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/search"))
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/belief"))
+	is.True(strings.Contains(assetW.Body.String(), "/admin/api/explain-rank"))
 	is.True(strings.Contains(assetW.Body.String(), "Belief Debugger"))
+	is.True(strings.Contains(assetW.Body.String(), "Explain Rank Compare"))
 }
 
 func TestAdminMetricsAPI(t *testing.T) {
@@ -187,6 +190,49 @@ func TestAdminSearchAPI(t *testing.T) {
 	is.Equal(body.Count, 1)
 	is.Equal(body.Results[0].ID, matchID)
 	is.Equal(body.Results[0].MatchReason, "text")
+}
+
+func TestAdminExplainRankAPI(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+	ns := db.Namespace("admin-rank-test", namespace.ModeGeneral)
+	credible, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "release health requires passing docs builds",
+		SourceID:   "runbook",
+		Vector:     []float32{1, 0, 0, 0, 0, 0, 0, 0},
+		Confidence: 0.95,
+	})
+	is.NoErr(err)
+	uncertain, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "release health skips tests",
+		SourceID:   "chat",
+		Vector:     []float32{0, 1, 0, 0, 0, 0, 0, 0},
+		Confidence: 0.2,
+	})
+	is.NoErr(err)
+	body, err := json.Marshal(adminExplainRankRequest{
+		Namespace:   "admin-rank-test",
+		NodeID:      credible.NodeID.String(),
+		OtherNodeID: uncertain.NodeID.String(),
+		Vector:      []float32{1, 0, 0, 0, 0, 0, 0, 0},
+	})
+	is.NoErr(err)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/explain-rank", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	New(db).ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	var explanation client.RankExplanation
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &explanation))
+	is.Equal(explanation.WinnerNodeID, credible.NodeID)
+	is.Equal(explanation.Node.NodeID, credible.NodeID)
+	is.Equal(explanation.Other.NodeID, uncertain.NodeID)
+	is.True(explanation.Margin > 0)
+	is.True(len(explanation.Factors) == 4)
+	is.True(explanation.Summary != "")
 }
 
 func TestAdminBeliefDebuggerAPIRejectsBadRequest(t *testing.T) {

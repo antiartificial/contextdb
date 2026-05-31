@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.93.0 | Passed | Passed | Admin explain-rank compare coverage added | Corpus coverage present | Admin compare API and embedded asset tests added | Adds side-by-side explain-rank comparison to the Svelte debugger |
 | v0.92.0 | Passed | Passed | Svelte admin shell coverage added | Corpus coverage present | Embedded admin asset tests added | Moves the admin metrics/debugger surface into an embedded Svelte app |
 | v0.91.0 | Passed | Passed | Admin metrics dashboard coverage added | Corpus coverage present | Admin metrics API tests added | Adds health, ingest, retrieval, latency, and raw metrics panels to the admin dashboard |
 | v0.90.0 | Passed | Passed | Bundle index verifier coverage added | Corpus coverage present | CLI bundle index verification tests added | Re-hashes verification bundle artifacts and checks JSON report status consistency |
