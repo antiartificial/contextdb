@@ -303,9 +303,15 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 	markdownOutPath := fs.String("markdown-out", "", "Markdown ranking baseline manifest verification summary to write")
 	annotationsOut := fs.Bool("annotations", false, "print CI annotation lines for ranking baseline manifest verification failures")
 	annotationsOutPath := fs.String("annotations-out", "", "CI annotation lines for ranking baseline manifest verification failures to write")
+	bundleDir := fs.String("bundle-dir", "", "directory for JSON, Markdown, and annotation verification artifacts")
 	_ = fs.Parse(args)
 
 	report, err := verifyRankingEvalBaselineArtifactManifest(*manifestPath)
+	if strings.TrimSpace(*bundleDir) != "" {
+		if writeErr := writeRankingEvalBaselineArtifactManifestVerifyBundle(*bundleDir, report); writeErr != nil && err == nil {
+			err = writeErr
+		}
+	}
 	if strings.TrimSpace(*markdownOutPath) != "" {
 		if writeErr := writeTextFile(*markdownOutPath, buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report)); writeErr != nil && err == nil {
 			err = writeErr
@@ -334,7 +340,7 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest verify: %v\n", err)
 		os.Exit(1)
 	}
-	if !*reportOut && !*markdownOut && strings.TrimSpace(*markdownOutPath) == "" && !*annotationsOut && strings.TrimSpace(*annotationsOutPath) == "" {
+	if !*reportOut && !*markdownOut && strings.TrimSpace(*markdownOutPath) == "" && !*annotationsOut && strings.TrimSpace(*annotationsOutPath) == "" && strings.TrimSpace(*bundleDir) == "" {
 		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
@@ -3202,6 +3208,26 @@ func buildRankingEvalBaselineArtifactManifestFailureAnnotations(report rankingEv
 		}
 	}
 	return b.String()
+}
+
+func writeRankingEvalBaselineArtifactManifestVerifyBundle(dir string, report rankingEvalBaselineArtifactManifestVerifyReport) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return errors.New("--bundle-dir is required")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create ranking baseline verification bundle dir: %w", err)
+	}
+	if err := writeJSONFile(filepath.Join(dir, "ranking-baseline-manifest-verification.json"), report); err != nil {
+		return err
+	}
+	if err := writeTextFile(filepath.Join(dir, "ranking-baseline-manifest-verification.md"), buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report)); err != nil {
+		return err
+	}
+	if err := writeTextFile(filepath.Join(dir, "ranking-baseline-manifest-annotations.txt"), buildRankingEvalBaselineArtifactManifestFailureAnnotations(report)); err != nil {
+		return err
+	}
+	return nil
 }
 
 func artifactManifestValidationPrefix(item rankingEvalBaselineArtifactManifestVerifyReportItem, msg string) string {

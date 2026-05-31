@@ -523,6 +523,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking manifest annotation fixture docs | Implemented | `docs/deployment/ranking-baseline-retention-cookbook.md` includes a GitHub Actions recipe that captures JSON, Markdown, and annotation artifacts together |
 
+## Completed In v0.87.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking baseline verification bundle command | Implemented | `contextdb eval ranking baseline manifest verify --bundle-dir DIR` writes JSON, Markdown, and annotation artifacts with stable filenames |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1059,11 +1065,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.86.0
+## Fresh Brainstorm After v0.87.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Ranking baseline verification bundle command | CI recipes now combine several flags, but operators may want one durable bundle path | Add a command or preset that writes JSON report, Markdown recap, and annotation file with stable names |
+| Ranking baseline bundle index metadata | Bundle output exists, but downstream jobs may want one pointer file | Add a small bundle index JSON with artifact paths, generated_at, status, and hashes |
 | Retry fatigue preset API schema fixture | Preset docs now have drift coverage, but API examples could use a small schema fixture | Add a test fixture for retry fatigue preset JSON fields across SDK and REST |
 | Doctor backup receipt runbook lane | Receipt verification is in doctor, but teams may want a full incident checklist | Add a deployment recipe combining freshness, drift, receipt verify, and repair closure |
 | KV derived refresh receipt verifier | Refresh receipts now exist, but incident review may need later integrity checks | Add a verifier that recomputes report/value hash and checks written-key doctor commands |

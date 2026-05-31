@@ -1668,6 +1668,39 @@ func TestBuildRankingEvalBaselineArtifactManifestFailureAnnotationsManifestError
 	is.Equal(annotations, "::error title=Ranking baseline manifest verification::unsupported manifest kind \"wrong%3Akind\"\n")
 }
 
+func TestWriteRankingEvalBaselineArtifactManifestVerifyBundle(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	files := map[string]string{
+		"ranking-eval-v0.61.0.json": `{"version":"0.61.0"}`,
+		"ranking-eval-v0.61.0.md":   "# v0.61.0\n",
+	}
+	for name, content := range files {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+	is.NoErr(err)
+	bundleDir := filepath.Join(dir, "verification-bundle")
+
+	is.NoErr(writeRankingEvalBaselineArtifactManifestVerifyBundle(bundleDir, report))
+
+	jsonData, err := os.ReadFile(filepath.Join(bundleDir, "ranking-baseline-manifest-verification.json"))
+	is.NoErr(err)
+	is.True(strings.Contains(string(jsonData), `"ok": true`))
+	markdownData, err := os.ReadFile(filepath.Join(bundleDir, "ranking-baseline-manifest-verification.md"))
+	is.NoErr(err)
+	is.True(strings.Contains(string(markdownData), "# Ranking Baseline Manifest Verification"))
+	annotationsData, err := os.ReadFile(filepath.Join(bundleDir, "ranking-baseline-manifest-annotations.txt"))
+	is.NoErr(err)
+	is.Equal(string(annotationsData), "\n")
+}
+
 func TestBuildRankingEvalBaselineDeleteScript(t *testing.T) {
 	is := is.New(t)
 

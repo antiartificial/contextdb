@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.86.0"
+	Version = "0.87.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.86.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.87.0",
 	}
 }
 
@@ -138,6 +138,7 @@ func Features() []Feature {
 		{Name: "ranking-baseline-manifest-verify-markdown", Status: "stable", Since: "v0.84.0", Description: "Ranking baseline manifest verification can emit Markdown release summaries."},
 		{Name: "ranking-baseline-manifest-failure-annotations", Status: "stable", Since: "v0.85.0", Description: "Ranking baseline manifest verification can emit CI annotation lines for artifact failures."},
 		{Name: "ranking-baseline-annotation-fixture-docs", Status: "stable", Since: "v0.86.0", Description: "Docs include a GitHub Actions recipe for ranking baseline verification JSON, Markdown, and annotation artifacts."},
+		{Name: "ranking-baseline-verification-bundle", Status: "stable", Since: "v0.87.0", Description: "Ranking baseline manifest verification can write JSON, Markdown, and annotation artifacts into a stable bundle directory."},
 	}
 }
 
