@@ -47,6 +47,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb repair kv-cache` | Implemented, dry-run first | v0.59 | `operations`, `durability` | CLI plans reviewed KV hot-key refreshes and writes explicit values only with `--execute` |
 | `contextdb repair kv-cache --derive recent-nodes` | Implemented, dry-run first | v0.63 | `operations`, `durability` | CLI derives reviewed recent-node session context values from graph data before optional KV writes |
 | KV derivation recipes | Implemented | v0.67 | `operations`, `durability`, `deployment` | Deployment docs provide naming, review, and promotion recipes for derived recent-node KV cache values |
+| KV derived repair execution recipe | Implemented | v0.79 | `operations`, `durability`, `deployment` | Deployment docs provide a guarded doctor-hint to dry-run to execute checklist for stale derived KV refreshes |
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
 | Snapshot backup marker | Implemented | v0.19 | `operations`, `backup`, `durability` | `contextdb snapshot export --backup-marker` writes a doctor-compatible marker only after export succeeds |
@@ -105,5 +106,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. KV derivation repair execution recipe for stale cache refresh handoffs.
-3. Ranking baseline manifest verification for CI artifact integrity checks.
+2. Ranking baseline manifest verification for CI artifact integrity checks.
+3. Retry fatigue preset docs drift test for cookbook and SDK metadata alignment.

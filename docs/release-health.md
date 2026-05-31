@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.79.0 | Passed | Passed | Corpus coverage present | KV derived repair execution docs added | Docs build coverage | Adds a guarded stale derived KV refresh checklist from doctor hint to execute |
 | v0.78.0 | Passed | Passed | Corpus coverage present | Published backup receipt verification coverage added | CLI publish receipt verify tests added | Adds post-repair verification for lifecycle index publish receipts |
 | v0.77.0 | Passed | Passed | Corpus coverage present | Retry fatigue preset example coverage added | SDK and REST preset metadata tests added | Adds copyable REST and GraphQL examples to retry fatigue preset metadata |
 | v0.76.0 | Passed | Passed | Ranking baseline manifest coverage added | Corpus coverage present | CLI ranking retention manifest tests added | Adds JSON artifact inventory output for ranking baseline retention |

@@ -108,7 +108,7 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 
 The repair report lists present keys, missing keys, refresh candidates, skipped keys, and written keys. Existing keys are skipped unless `--overwrite` is set.
 
-For graph-derived session context values, use the [KV derivation recipes](/deployment/kv-derivation-recipes) to choose stable hot-key names, labels, and review steps before executing a refresh.
+For graph-derived session context values, use the [KV derivation recipes](/deployment/kv-derivation-recipes) to choose stable hot-key names, labels, and review steps before executing a refresh. The stale derived KV repair recipe starts from doctor's `recommended_repair_command`, preserves the first run as a dry-run report, executes only after payload review, and reruns doctor to confirm freshness.
 
 Use `contextdb repair vector-index` after reviewing candidates and choosing a maintenance window. The command is dry-run by default and only mutates the vector index with `--execute`:
 

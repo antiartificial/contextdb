@@ -67,6 +67,36 @@ Pair this with `contextdb doctor --kv-key context:prod:support:recent-nodes` whe
 
 If the freshness check fails, review the `recommended_repair_command` in the doctor detail. It stays dry-run by default and points back to `contextdb repair kv-cache --derive recent-nodes` with the checked key and inferred derive namespace.
 
+## Execute A Stale Derived KV Repair
+
+When `contextdb doctor --kv-derived-key ...` reports stale, missing, or malformed derived metadata, treat the repair as a reviewed refresh rather than an automatic rewrite:
+
+1. Save the doctor report with the failing `kv_derived_freshness` detail and `recommended_repair_command`.
+2. Run the recommended command exactly as shown and keep it dry-run with `--report`.
+3. Review the derived payload fields in the report: `kind`, `namespace`, `labels`, `count`, `generated_at`, and the compact node list.
+4. Re-run the same command with `--execute --report` only after the payload matches the intended namespace, label scope, and consumer.
+5. Re-run doctor with the original `--kv-derived-key` and `--max-kv-derived-age` values to confirm the refreshed value is present and fresh.
+
+The reviewed execution usually looks like this:
+
+```bash
+contextdb repair kv-cache \
+  --key context:prod:support:recent-nodes \
+  --derive recent-nodes \
+  --derive-namespace support \
+  --derive-label SessionContext \
+  --derive-limit 5 \
+  --execute \
+  --report
+
+contextdb doctor \
+  --kv-derived-key context:prod:support:recent-nodes \
+  --max-kv-derived-age 2h \
+  --report
+```
+
+If the dry-run payload is wrong, fix the derivation inputs before executing. Common corrections are adding `--derive-label`, changing `--derive-namespace`, lowering `--derive-limit`, or choosing a more specific hot-key name for the consumer.
+
 ## Common Patterns
 
 | Pattern | Key | Scope |
