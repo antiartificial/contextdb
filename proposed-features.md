@@ -644,6 +644,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | First-party acquisition provider connectors | Implemented | `contextdb connectors serve` exposes OpenAI, xAI, and Anthropic search/crawler adapter endpoints that normalize provider web-search responses into acquisition connector items |
 
+## Completed In v0.107.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Acquisition connector retry receipts | Implemented | Go SDK, REST, TypeScript, and Python expose receipt and retry-inspection surfaces; executed connector attempts carry stable idempotency keys, classify retryable failures, and record append-only receipts |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -661,7 +667,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; durable workflow decisions completed in v0.12.0 |
 | Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; anomaly review tasks completed in v0.13.0; debugger timeline visualization completed in v0.104.0; next step is exportable timeline evidence |
-| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Planner completed in v0.9.0; connector-specific dry-run and execution workflows completed in v0.105.0; provider adapters completed in v0.106.0; next step is connector receipts and scheduled acquisition runs |
+| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Planner completed in v0.9.0; connector-specific dry-run and execution workflows completed in v0.105.0; provider adapters completed in v0.106.0; connector retry receipts completed in v0.107.0; next step is scheduled acquisition runs |
 | Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Completed in v0.12.0; reviewer filters completed in v0.15.0; next step is escalation rules |
 
 ## Durability And Operations
@@ -1212,7 +1218,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Acquisition execution receipts | Connector execution writes should leave durable audit evidence | Record connector endpoint, payload hash, accepted item hashes, source allow-list, and written node IDs as an event-log receipt |
+| Acquisition execution receipts | Connector execution writes should leave durable audit evidence | Completed in v0.107.0 with endpoint, payload hash, response hash, source allow-list, status, retryability, idempotency key, and written node IDs |
 | Scheduled acquisition runs | Operators will want recurring gap filling without hand-running previews | Add a dry-run schedule plan and explicit enablement for namespaces with reviewed connectors |
 | Connector result scoring | Not every crawler/search result should be ingested at the same confidence | Add optional connector-level confidence floors, result rank weighting, and duplicate-source suppression |
 | Acquisition-to-review handoff | Acquired evidence should often be reviewed before it affects belief | Add a mode that writes connector results into review queue candidates before validation |
@@ -1221,6 +1227,6 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Provider connector receipts | Provider-backed search should be auditable like backup and webhook execution | Record provider, model, endpoint route, payload hash, response item hashes, and written node IDs |
+| Provider connector receipts | Provider-backed search should be auditable like backup and webhook execution | Covered by v0.107.0 connector receipts for endpoint, payload, response hash, source allow-list, and written node IDs; next step is richer provider/model metadata in item metadata |
 | Connector auth scopes | Provider adapters may be run as shared internal services | Add optional bearer token verification before provider routes accept connector calls |
 | Provider-specific citation enrichment | Providers expose citations differently | Preserve provider citation IDs, result titles, and URL-level snippets in item metadata |

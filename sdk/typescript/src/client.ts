@@ -191,6 +191,7 @@ export class Namespace {
     if (req.taskIds) body.task_ids = req.taskIds;
     if (req.allowedSourceIds) body.allowed_source_ids = req.allowedSourceIds;
     if (req.maxResults) body.max_results = req.maxResults;
+    if (req.maxAttempts) body.max_attempts = req.maxAttempts;
 
     const resp = await fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/execute`,
@@ -202,5 +203,38 @@ export class Namespace {
     );
     if (!resp.ok) throw new Error(`acquisitionExecution failed: ${resp.status}`);
     return resp.json();
+  }
+
+  async acquisitionExecutionReceipts(after?: string): Promise<Record<string, unknown>[]> {
+    const params = new URLSearchParams({ mode: this.mode });
+    if (after) params.set('after', after);
+    const resp = await fetch(
+      `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/receipts?${params.toString()}`
+    );
+    if (!resp.ok) throw new Error(`acquisitionExecutionReceipts failed: ${resp.status}`);
+    const data = await resp.json();
+    return data.receipts ?? [];
+  }
+
+  async acquisitionRetryCandidates(after?: string): Promise<Record<string, unknown>[]> {
+    const params = new URLSearchParams({ mode: this.mode });
+    if (after) params.set('after', after);
+    const resp = await fetch(
+      `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/retry-candidates?${params.toString()}`
+    );
+    if (!resp.ok) throw new Error(`acquisitionRetryCandidates failed: ${resp.status}`);
+    const data = await resp.json();
+    return data.candidates ?? [];
+  }
+
+  async acquisitionRetryRecommendations(after?: string): Promise<Record<string, unknown>[]> {
+    const params = new URLSearchParams({ mode: this.mode });
+    if (after) params.set('after', after);
+    const resp = await fetch(
+      `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/retry-recommendations?${params.toString()}`
+    );
+    if (!resp.ok) throw new Error(`acquisitionRetryRecommendations failed: ${resp.status}`);
+    const data = await resp.json();
+    return data.recommendations ?? [];
   }
 }

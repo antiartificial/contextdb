@@ -40,6 +40,9 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/gaps` | Detect knowledge gaps |
 | `POST` | `/v1/namespaces/{ns}/acquisition/plan` | Plan research, crawl, verification, and refresh tasks |
 | `POST` | `/v1/namespaces/{ns}/acquisition/execute` | Preview or execute configured search/crawler acquisition connectors |
+| `GET` | `/v1/namespaces/{ns}/acquisition/receipts` | List acquisition connector execution receipts |
+| `GET` | `/v1/namespaces/{ns}/acquisition/retry-candidates` | List unresolved failed acquisition connector attempts |
+| `GET` | `/v1/namespaces/{ns}/acquisition/retry-recommendations` | List retry pacing recommendations for failed acquisition connector attempts |
 | `GET` | `/v1/stats` | Runtime statistics |
 | `GET` | `/v1/ping` | Health check |
 | `GET` | `/v1/version` | Release, API, feature, and migration summary |
@@ -212,9 +215,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.106.0",
+  "version": "0.107.0",
   "api_version": "v1",
-  "docs_version": "0.106.0",
+  "docs_version": "0.107.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -325,6 +328,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.106.0",
       "description": "The connector server provides OpenAI, xAI, and Anthropic search/crawler adapters for acquisition execution."
+    },
+    {
+      "name": "acquisition-connector-retry-receipts",
+      "status": "stable",
+      "since": "v0.107.0",
+      "description": "Acquisition connector execution records append-only receipts, idempotency keys, retry classification, and retry guidance for transient failures."
     },
     {
       "name": "doctor-backup-readiness",
@@ -871,6 +880,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.106.0",
       "description": "The connector server provides OpenAI, xAI, and Anthropic search/crawler adapters for acquisition execution."
+    },
+    {
+      "name": "acquisition-connector-retry-receipts",
+      "status": "stable",
+      "since": "v0.107.0",
+      "description": "Acquisition connector execution records append-only receipts, idempotency keys, retry classification, and retry guidance for transient failures."
     }
   ],
   "migrations": [
@@ -878,7 +893,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.106.0"
+  "release_notes_path": "/contextdb/releases/v0.107.0"
 }
 ```
 
@@ -1376,6 +1391,18 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/acquisition/execute \
 ```
 
 Add `"execute": true` only after reviewing the dry-run plan. During execution, contextdb sends each connector a JSON body containing `task_id`, `task_type`, `query`, `prompt`, `allowed_source_ids`, `max_results`, `connector_id`, and `connector_type`. Connectors should return either an array of items or `{ "items": [...] }` where each item may include `title`, `url`, `snippet`, `content`, `source_id`, `labels`, `confidence`, and `metadata`. Returned items outside the request/connector source allow-list are ignored before writes.
+
+Execution is single-attempt by default. Set `"max_attempts": 2` or higher to retry transient connector failures such as `408`, `429`, `502`, `503`, or `504`. Every executed attempt records an append-only receipt with payload and response hashes, status code, retryability, written node IDs, and the stable `X-ContextDB-Acquisition-Idempotency-Key` sent to the connector.
+
+List acquisition execution receipts and retry guidance without sending new connector calls:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/acquisition/receipts?after=2026-05-31T00:00:00Z"
+curl "http://localhost:7701/v1/namespaces/my-app/acquisition/retry-candidates"
+curl "http://localhost:7701/v1/namespaces/my-app/acquisition/retry-recommendations"
+```
+
+Retry candidates group failed receipts by task, connector, and payload hash, then drop groups that have a later success. Recommendations add `recommended_after`, `delay_seconds`, `ready`, and `reason` fields using capped exponential backoff.
 
 ### Provider Connector Server
 

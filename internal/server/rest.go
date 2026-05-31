@@ -79,6 +79,9 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/namespaces/{ns}/gaps", s.handleKnowledgeGaps)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/acquisition/plan", s.handleAcquisitionPlan)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/acquisition/execute", s.handleAcquisitionExecute)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/acquisition/receipts", s.handleAcquisitionReceipts)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/acquisition/retry-candidates", s.handleAcquisitionRetryCandidates)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/acquisition/retry-recommendations", s.handleAcquisitionRetryRecommendations)
 
 	// GET /v1/stats
 	mux.HandleFunc("GET /v1/stats", s.handleStats)
@@ -257,7 +260,20 @@ type acquisitionExecuteRequest struct {
 	Connectors       []client.AcquisitionConnector `json:"connectors,omitempty"`
 	AllowedSourceIDs []string                      `json:"allowed_source_ids,omitempty"`
 	MaxResults       int                           `json:"max_results,omitempty"`
+	MaxAttempts      int                           `json:"max_attempts,omitempty"`
 	Execute          bool                          `json:"execute,omitempty"`
+}
+
+type acquisitionReceiptsResponse struct {
+	Receipts []client.AcquisitionExecutionReceipt `json:"receipts"`
+}
+
+type acquisitionRetryCandidatesResponse struct {
+	Candidates []client.AcquisitionRetryCandidate `json:"candidates"`
+}
+
+type acquisitionRetryRecommendationsResponse struct {
+	Recommendations []client.AcquisitionRetryRecommendation `json:"recommendations"`
 }
 
 type reviewQueueResponse struct {
@@ -1431,6 +1447,7 @@ func (s *RESTServer) handleAcquisitionExecute(w http.ResponseWriter, r *http.Req
 		Connectors:       req.Connectors,
 		AllowedSourceIDs: req.AllowedSourceIDs,
 		MaxResults:       req.MaxResults,
+		MaxAttempts:      req.MaxAttempts,
 		Execute:          req.Execute,
 	}
 	var plan *client.AcquisitionExecutionPlan
@@ -1447,9 +1464,83 @@ func (s *RESTServer) handleAcquisitionExecute(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, plan)
 }
 
+func (s *RESTServer) handleAcquisitionReceipts(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	after, ok := parseQueryTime(w, r, "after")
+	if !ok {
+		return
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	receipts, err := h.AcquisitionExecutionReceipts(r.Context(), after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, acquisitionReceiptsResponse{Receipts: receipts})
+}
+
+func (s *RESTServer) handleAcquisitionRetryCandidates(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	after, ok := parseQueryTime(w, r, "after")
+	if !ok {
+		return
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	candidates, err := h.AcquisitionRetryCandidates(r.Context(), after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, acquisitionRetryCandidatesResponse{Candidates: candidates})
+}
+
+func (s *RESTServer) handleAcquisitionRetryRecommendations(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	after, ok := parseQueryTime(w, r, "after")
+	if !ok {
+		return
+	}
+	now, ok := parseQueryTime(w, r, "now")
+	if !ok {
+		return
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	recommendations, err := h.AcquisitionRetryRecommendations(r.Context(), after, now)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, acquisitionRetryRecommendationsResponse{Recommendations: recommendations})
+}
+
 func (s *RESTServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := s.db.Stats()
 	writeJSON(w, http.StatusOK, stats)
+}
+
+func parseQueryTime(w http.ResponseWriter, r *http.Request, key string) (time.Time, bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get(key))
+	if raw == "" {
+		return time.Time{}, true
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid %s timestamp: %w", key, err))
+		return time.Time{}, false
+	}
+	return parsed, true
 }
 
 func (s *RESTServer) handlePing(w http.ResponseWriter, r *http.Request) {

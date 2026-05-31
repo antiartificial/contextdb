@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.106.0"
+	Version = "0.107.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.106.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.107.0",
 	}
 }
 
@@ -160,6 +160,7 @@ func Features() []Feature {
 		{Name: "admin-epistemics-visualization", Status: "stable", Since: "v0.104.0", Description: "The admin belief debugger visualizes source trust timelines, confidence history, contradiction paths, and graph/source context."},
 		{Name: "acquisition-execution-connectors", Status: "stable", Since: "v0.105.0", Description: "Acquisition planner tasks can be previewed and executed through configured search or crawler connectors with source constraints."},
 		{Name: "acquisition-provider-connectors", Status: "stable", Since: "v0.106.0", Description: "The connector server provides OpenAI, xAI, and Anthropic search/crawler adapters for acquisition execution."},
+		{Name: "acquisition-connector-retry-receipts", Status: "stable", Since: "v0.107.0", Description: "Acquisition connector execution records append-only receipts, idempotency keys, retry classification, and retry guidance for transient failures."},
 	}
 }
 

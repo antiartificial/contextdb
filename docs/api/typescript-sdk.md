@@ -148,6 +148,7 @@ await ns.labelSource("moderator:alice", ["moderator"]);
 const preview = await ns.acquisitionExecution({
   budget: 2,
   maxResults: 3,
+  maxAttempts: 2,
   allowedSourceIds: ["docs/runbook"],
   connectors: [{
     id: "docs-search",
@@ -161,7 +162,7 @@ const preview = await ns.acquisitionExecution({
 console.log(preview.dry_run); // true
 ```
 
-Set `execute: true` only after reviewing the dry-run connector calls. Execution writes returned connector items through the normal contextdb write path after source allow-list filtering.
+Set `execute: true` only after reviewing the dry-run connector calls. Execution writes returned connector items through the normal contextdb write path after source allow-list filtering. `maxAttempts` opts into retrying transient connector failures. Use `acquisitionExecutionReceipts`, `acquisitionRetryCandidates`, and `acquisitionRetryRecommendations` to inspect append-only attempt receipts and retry guidance.
 
 ## Health check
 

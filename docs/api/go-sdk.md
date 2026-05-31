@@ -422,10 +422,14 @@ preview, err := ns.AcquisitionExecutionPreview(ctx, client.AcquisitionExecutionR
     }},
     AllowedSourceIDs: []string{"docs/runbook"},
     MaxResults: 3,
+    MaxAttempts: 2,
 })
+receipts, err := ns.AcquisitionExecutionReceipts(ctx, time.Now().Add(-24*time.Hour))
+retryCandidates, err := ns.AcquisitionRetryCandidates(ctx, time.Now().Add(-24*time.Hour))
+retryRecommendations, err := ns.AcquisitionRetryRecommendations(ctx, time.Now().Add(-24*time.Hour), time.Time{})
 ```
 
-`Explain` returns a structured narrative report with evidence, contradictions, provenance, and confidence explanation. `KnowledgeGaps` returns sparse semantic regions that suggest where the namespace needs more information. `AcquisitionPlan` turns gaps and weak claims into prioritized research, crawl, verification, or refresh tasks. `AcquisitionExecutionPreview` converts those tasks into dry-run connector calls for configured `search` or `crawler` endpoints, while `AcquisitionExecutionExecute` requires `Execute: true` and writes only returned items that satisfy the source allow-list.
+`Explain` returns a structured narrative report with evidence, contradictions, provenance, and confidence explanation. `KnowledgeGaps` returns sparse semantic regions that suggest where the namespace needs more information. `AcquisitionPlan` turns gaps and weak claims into prioritized research, crawl, verification, or refresh tasks. `AcquisitionExecutionPreview` converts those tasks into dry-run connector calls for configured `search` or `crawler` endpoints, while `AcquisitionExecutionExecute` requires `Execute: true` and writes only returned items that satisfy the source allow-list. `MaxAttempts` is opt-in; when greater than `1`, transient connector failures are retried with a stable idempotency key. Executed attempts record receipts, unresolved failures appear as retry candidates, and retry recommendations provide read-only backoff guidance.
 
 Sets labels on a source. Use "moderator"/"admin" for full trust, "troll"/"flagged" for floor.
 

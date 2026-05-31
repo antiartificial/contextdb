@@ -22,6 +22,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Knowledge acquisition planner | Implemented | v0.9 | `active-learning`, `epistemics`, `operations` | Go SDK, REST, and GraphQL expose prioritized acquisition tasks from gaps and weak claims |
 | Acquisition execution connectors | Implemented | v0.105 | `active-learning`, `operations`, `source-constraints` | Go SDK, REST, TypeScript, and Python expose dry-run-first search/crawler connector workflows with source allow-lists |
 | Acquisition provider connectors | Implemented | v0.106 | `active-learning`, `integrations`, `providers` | `contextdb connectors serve` exposes OpenAI, xAI, and Anthropic adapter endpoints for acquisition execution |
+| Acquisition connector retry receipts | Implemented | v0.107 | `active-learning`, `audit`, `reliability` | Executed connector attempts record receipts, idempotency keys, retry classification, retry candidates, and backoff recommendations |
 | Feedback APIs | Implemented | v0.3 | `feedback-loop`, `non-breaking` | Go SDK, REST, gRPC, and GraphQL expose validate/refute/useful/stale |
 | Explain-rank | Implemented | v0.8 | `inspectability`, `ranking`, `non-breaking` | Go SDK, REST, and GraphQL compare two nodes with score component deltas |
 | Explain-rank graph evidence | Implemented | v0.11 | `inspectability`, `ranking`, `graph` | Explain-rank responses include support-chain evidence and compound confidence |

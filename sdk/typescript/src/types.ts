@@ -78,6 +78,7 @@ export interface AcquisitionExecutionRequest {
   connectors: AcquisitionConnector[];
   allowedSourceIds?: string[];
   maxResults?: number;
+  maxAttempts?: number;
   execute?: boolean;
 }
 

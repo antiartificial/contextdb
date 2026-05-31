@@ -1013,6 +1013,148 @@ func TestNamespace_AcquisitionExecutionPreviewAndExecute(t *testing.T) {
 	is.Equal(executed.Summary.WrittenNodes, 1)
 	is.Equal(executed.Runs[0].PreviewItems[0].SourceID, "docs/runbook")
 	is.True(len(executed.Runs[0].WrittenNodeIDs) == 1)
+	is.True(executed.Runs[0].IdempotencyKey != "")
+
+	receipts, err := ns.AcquisitionExecutionReceipts(ctx, time.Now().Add(-time.Hour))
+	is.NoErr(err)
+	is.Equal(len(receipts), 1)
+	is.True(receipts[0].Success)
+	is.Equal(receipts[0].ConnectorID, "docs-search")
+	is.Equal(receipts[0].StatusCode, 200)
+	is.True(receipts[0].PayloadSHA256 != "")
+	is.True(receipts[0].ResponseSHA256 != "")
+	is.True(receipts[0].IdempotencyKey != "")
+	is.Equal(len(receipts[0].WrittenNodeIDs), 1)
+	candidates, err := ns.AcquisitionRetryCandidates(ctx, time.Now().Add(-time.Hour))
+	is.NoErr(err)
+	is.Equal(len(candidates), 0)
+}
+
+func TestNamespace_AcquisitionExecutionRetriesAndReceipts(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:acquisition-retry-receipts", namespace.ModeGeneral)
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Ranking evidence needs external support",
+		SourceID:   "chat",
+		Vector:     vec8(0),
+		Confidence: 0.2,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+
+	var connectorRequests int
+	var idempotencyKey string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connectorRequests++
+		if idempotencyKey == "" {
+			idempotencyKey = r.Header.Get("X-ContextDB-Acquisition-Idempotency-Key")
+		}
+		is.Equal(r.Header.Get("X-ContextDB-Acquisition-Idempotency-Key"), idempotencyKey)
+		if connectorRequests == 1 {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"items": []map[string]any{
+				{
+					"title":      "Ranking evidence",
+					"content":    "Ranking evidence should include source-constrained acquisition receipts.",
+					"source_id":  "docs/eval",
+					"confidence": 0.81,
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	executed, err := ns.AcquisitionExecutionExecute(ctx, client.AcquisitionExecutionRequest{
+		AcquisitionPlanRequest: client.AcquisitionPlanRequest{Budget: 1},
+		Connectors: []client.AcquisitionConnector{{
+			ID:               "docs-search",
+			Type:             "search",
+			Endpoint:         server.URL,
+			AllowedSourceIDs: []string{"docs/eval"},
+		}},
+		AllowedSourceIDs: []string{"docs/eval"},
+		MaxAttempts:      2,
+		Execute:          true,
+	})
+	is.NoErr(err)
+	is.True(executed.Executed)
+	is.Equal(connectorRequests, 2)
+	is.Equal(executed.Runs[0].Attempt, 2)
+	is.Equal(executed.Runs[0].StatusCode, 200)
+	is.Equal(executed.Summary.WrittenNodes, 1)
+
+	receipts, err := ns.AcquisitionExecutionReceipts(ctx, time.Now().Add(-time.Hour))
+	is.NoErr(err)
+	is.Equal(len(receipts), 2)
+	is.True(receipts[0].Success)
+	is.True(!receipts[1].Success)
+	is.True(receipts[1].Retryable)
+	is.Equal(receipts[1].StatusCode, 429)
+	is.Equal(receipts[0].IdempotencyKey, receipts[1].IdempotencyKey)
+
+	recommendations, err := ns.AcquisitionRetryRecommendations(ctx, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	is.NoErr(err)
+	is.Equal(len(recommendations), 0)
+}
+
+func TestNamespace_AcquisitionExecutionRetryCandidates(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:acquisition-retry-candidates", namespace.ModeGeneral)
+	written, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Connector failures should be auditable",
+		SourceID:   "chat",
+		Vector:     vec8(0),
+		Confidence: 0.2,
+	})
+	is.NoErr(err)
+	is.True(written.Admitted)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	executed, err := ns.AcquisitionExecutionExecute(ctx, client.AcquisitionExecutionRequest{
+		AcquisitionPlanRequest: client.AcquisitionPlanRequest{Budget: 1},
+		Connectors: []client.AcquisitionConnector{{
+			ID:       "docs-search",
+			Type:     "search",
+			Endpoint: server.URL,
+		}},
+		MaxAttempts: 1,
+		Execute:     true,
+	})
+	is.NoErr(err)
+	is.Equal(executed.Summary.Errors, 1)
+	is.Equal(executed.Runs[0].Status, "error")
+	is.True(executed.Runs[0].Retryable)
+	is.Equal(executed.Runs[0].StatusCode, 503)
+
+	candidates, err := ns.AcquisitionRetryCandidates(ctx, time.Now().Add(-time.Hour))
+	is.NoErr(err)
+	is.Equal(len(candidates), 1)
+	is.Equal(candidates[0].ConnectorID, "docs-search")
+	is.Equal(candidates[0].LastStatusCode, 503)
+	is.True(candidates[0].Retryable)
+
+	recommendations, err := ns.AcquisitionRetryRecommendations(ctx, time.Now().Add(-time.Hour), time.Now().Add(2*time.Hour))
+	is.NoErr(err)
+	is.Equal(len(recommendations), 1)
+	is.True(recommendations[0].Ready)
+	is.Equal(recommendations[0].Reason, "ready_for_operator_retry")
 }
 
 func TestNamespace_PersistentEmbeddedRestartPreservesCoreData(t *testing.T) {

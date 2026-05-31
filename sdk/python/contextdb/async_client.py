@@ -197,6 +197,7 @@ class AsyncNamespace:
         task_ids: list[str] | None = None,
         allowed_source_ids: list[str] | None = None,
         max_results: int = 0,
+        max_attempts: int = 0,
         execute: bool = False,
     ) -> dict[str, Any]:
         """Preview or execute connector-specific acquisition workflows."""
@@ -229,9 +230,44 @@ class AsyncNamespace:
             body["allowed_source_ids"] = allowed_source_ids
         if max_results:
             body["max_results"] = max_results
+        if max_attempts:
+            body["max_attempts"] = max_attempts
 
         resp = await self._client.post(
             f"/v1/namespaces/{self._name}/acquisition/execute", json=body
         )
         resp.raise_for_status()
         return resp.json()
+
+    async def acquisition_execution_receipts(self, after: str = "") -> list[dict[str, Any]]:
+        """Return append-only acquisition connector execution receipts."""
+        params = {"mode": self._mode}
+        if after:
+            params["after"] = after
+        resp = await self._client.get(
+            f"/v1/namespaces/{self._name}/acquisition/receipts", params=params
+        )
+        resp.raise_for_status()
+        return resp.json().get("receipts", [])
+
+    async def acquisition_retry_candidates(self, after: str = "") -> list[dict[str, Any]]:
+        """Return unresolved failed acquisition connector attempts."""
+        params = {"mode": self._mode}
+        if after:
+            params["after"] = after
+        resp = await self._client.get(
+            f"/v1/namespaces/{self._name}/acquisition/retry-candidates", params=params
+        )
+        resp.raise_for_status()
+        return resp.json().get("candidates", [])
+
+    async def acquisition_retry_recommendations(self, after: str = "") -> list[dict[str, Any]]:
+        """Return read-only acquisition retry backoff guidance."""
+        params = {"mode": self._mode}
+        if after:
+            params["after"] = after
+        resp = await self._client.get(
+            f"/v1/namespaces/{self._name}/acquisition/retry-recommendations", params=params
+        )
+        resp.raise_for_status()
+        return resp.json().get("recommendations", [])

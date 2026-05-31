@@ -979,6 +979,7 @@ type AcquisitionExecutionRequest struct {
 	Connectors       []AcquisitionConnector
 	AllowedSourceIDs []string
 	MaxResults       int
+	MaxAttempts      int
 	Execute          bool
 	Now              time.Time
 	Timeout          time.Duration
@@ -1012,10 +1013,66 @@ type AcquisitionConnectorRun struct {
 	Executed       bool                     `json:"executed,omitempty"`
 	Status         string                   `json:"status"`
 	PayloadSHA256  string                   `json:"payload_sha256"`
+	ResponseSHA256 string                   `json:"response_sha256,omitempty"`
+	IdempotencyKey string                   `json:"idempotency_key,omitempty"`
+	Attempt        int                      `json:"attempt,omitempty"`
+	MaxAttempts    int                      `json:"max_attempts,omitempty"`
+	Retryable      bool                     `json:"retryable,omitempty"`
+	NextRetryAfter time.Duration            `json:"next_retry_after,omitempty"`
+	StatusCode     int                      `json:"status_code,omitempty"`
 	Headers        map[string]string        `json:"headers,omitempty"`
 	PreviewItems   []AcquisitionPreviewItem `json:"preview_items,omitempty"`
 	WrittenNodeIDs []uuid.UUID              `json:"written_node_ids,omitempty"`
 	Error          string                   `json:"error,omitempty"`
+}
+
+// AcquisitionExecutionReceipt is an append-only audit record for one connector attempt.
+type AcquisitionExecutionReceipt struct {
+	ReceiptID        uuid.UUID     `json:"receipt_id,omitempty"`
+	Namespace        string        `json:"namespace,omitempty"`
+	TaskID           string        `json:"task_id"`
+	TaskType         string        `json:"task_type,omitempty"`
+	ConnectorID      string        `json:"connector_id"`
+	ConnectorType    string        `json:"connector_type"`
+	TargetURL        string        `json:"target_url,omitempty"`
+	ExecutedAt       time.Time     `json:"executed_at"`
+	Attempt          int           `json:"attempt"`
+	MaxAttempts      int           `json:"max_attempts"`
+	Success          bool          `json:"success"`
+	Retryable        bool          `json:"retryable,omitempty"`
+	NextRetryAfter   time.Duration `json:"next_retry_after,omitempty"`
+	StatusCode       int           `json:"status_code,omitempty"`
+	PayloadSHA256    string        `json:"payload_sha256"`
+	ResponseSHA256   string        `json:"response_sha256,omitempty"`
+	IdempotencyKey   string        `json:"idempotency_key,omitempty"`
+	Error            string        `json:"error,omitempty"`
+	WrittenNodeIDs   []uuid.UUID   `json:"written_node_ids,omitempty"`
+	AllowedSourceIDs []string      `json:"allowed_source_ids,omitempty"`
+}
+
+// AcquisitionRetryCandidate groups failed connector attempts that may need retry.
+type AcquisitionRetryCandidate struct {
+	TaskID         string    `json:"task_id"`
+	ConnectorID    string    `json:"connector_id"`
+	ConnectorType  string    `json:"connector_type"`
+	TargetURL      string    `json:"target_url,omitempty"`
+	LastReceiptID  uuid.UUID `json:"last_receipt_id"`
+	LastAttemptAt  time.Time `json:"last_attempt_at"`
+	Attempts       int       `json:"attempts"`
+	LastStatusCode int       `json:"last_status_code,omitempty"`
+	PayloadSHA256  string    `json:"payload_sha256"`
+	IdempotencyKey string    `json:"idempotency_key,omitempty"`
+	LastError      string    `json:"last_error,omitempty"`
+	Retryable      bool      `json:"retryable,omitempty"`
+}
+
+// AcquisitionRetryRecommendation adds dry-run retry pacing guidance to a failed acquisition attempt.
+type AcquisitionRetryRecommendation struct {
+	AcquisitionRetryCandidate
+	RecommendedAfter time.Time `json:"recommended_after"`
+	DelaySeconds     int       `json:"delay_seconds"`
+	Ready            bool      `json:"ready"`
+	Reason           string    `json:"reason"`
 }
 
 // AcquisitionExecutionSummary summarizes a connector execution plan.
@@ -2729,7 +2786,9 @@ func (h *NamespaceHandle) acquisitionExecution(ctx context.Context, req Acquisit
 		for _, connector := range connectors {
 			run, err := h.buildAcquisitionConnectorRun(ctx, task, connector, req, maxResults, plannedAt, execute)
 			if err != nil {
-				run = baseAcquisitionConnectorRun(task, connector, req.AllowedSourceIDs, maxResults, plannedAt, !execute)
+				if run.TaskID == "" {
+					run = baseAcquisitionConnectorRun(task, connector, req.AllowedSourceIDs, maxResults, plannedAt, !execute)
+				}
 				run.Status = "error"
 				run.Error = err.Error()
 			}
@@ -2750,6 +2809,11 @@ func (h *NamespaceHandle) buildAcquisitionConnectorRun(ctx context.Context, task
 		return AcquisitionConnectorRun{}, fmt.Errorf("acquisition execution: connector %s has no allowed source intersection", connector.ID)
 	}
 	run := baseAcquisitionConnectorRun(task, connector, req.AllowedSourceIDs, maxResults, plannedAt, !execute)
+	maxAttempts := req.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	run.MaxAttempts = maxAttempts
 	if !execute {
 		run.Status = "planned"
 		return run, nil
@@ -2757,10 +2821,27 @@ func (h *NamespaceHandle) buildAcquisitionConnectorRun(ctx context.Context, task
 	if connector.Endpoint == "" {
 		return run, fmt.Errorf("acquisition execution: connector %s endpoint is required for execute", connector.ID)
 	}
-	items, err := executeAcquisitionConnector(ctx, connector, run, req, maxResults)
-	if err != nil {
-		return run, err
+	var result acquisitionConnectorResult
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		run.Attempt = attempt
+		result, err = executeAcquisitionConnector(ctx, connector, run, req, maxResults)
+		run.StatusCode = result.StatusCode
+		run.ResponseSHA256 = result.ResponseSHA256
+		run.Retryable = result.Retryable
+		run.NextRetryAfter = acquisitionRetryBackoff(attempt)
+		if err == nil {
+			break
+		}
+		run.Error = err.Error()
+		if receiptErr := h.recordAcquisitionExecutionReceipt(ctx, run, false); receiptErr != nil {
+			return run, receiptErr
+		}
+		if !result.Retryable || attempt >= maxAttempts {
+			return run, err
+		}
 	}
+	items := result.Items
 	items = filterAcquisitionPreviewItems(items, allowedAcquisitionSources(req.AllowedSourceIDs, connector.AllowedSourceIDs), connector.ID, maxResults)
 	run.PreviewItems = items
 	for _, item := range items {
@@ -2787,6 +2868,12 @@ func (h *NamespaceHandle) buildAcquisitionConnectorRun(ctx context.Context, task
 			Confidence: item.Confidence,
 		})
 		if err != nil {
+			run.Error = err.Error()
+			run.Retryable = false
+			run.NextRetryAfter = 0
+			if receiptErr := h.recordAcquisitionExecutionReceipt(ctx, run, false); receiptErr != nil {
+				return run, receiptErr
+			}
 			return run, err
 		}
 		if written.Admitted {
@@ -2796,6 +2883,12 @@ func (h *NamespaceHandle) buildAcquisitionConnectorRun(ctx context.Context, task
 	run.Executed = true
 	run.DryRun = false
 	run.Status = "executed"
+	run.Error = ""
+	run.Retryable = false
+	run.NextRetryAfter = 0
+	if err := h.recordAcquisitionExecutionReceipt(ctx, run, true); err != nil {
+		return run, err
+	}
 	return run, nil
 }
 
@@ -2820,6 +2913,8 @@ func baseAcquisitionConnectorRun(task AcquisitionTask, connector AcquisitionConn
 		"X-ContextDB-Acquisition-Connector":   connector.ID,
 		"X-ContextDB-Acquisition-Payload-SHA": hex.EncodeToString(sum[:]),
 	}
+	idempotencyKey := acquisitionIdempotencyKey(task.ID, connector.ID, hex.EncodeToString(sum[:]))
+	headers["X-ContextDB-Acquisition-Idempotency-Key"] = idempotencyKey
 	for key, value := range connector.Headers {
 		headers[key] = value
 	}
@@ -2836,11 +2931,21 @@ func baseAcquisitionConnectorRun(task AcquisitionTask, connector AcquisitionConn
 		DryRun:         dryRun,
 		Status:         "planned",
 		PayloadSHA256:  hex.EncodeToString(sum[:]),
+		IdempotencyKey: idempotencyKey,
+		Attempt:        1,
+		MaxAttempts:    1,
 		Headers:        headers,
 	}
 }
 
-func executeAcquisitionConnector(ctx context.Context, connector AcquisitionConnector, run AcquisitionConnectorRun, req AcquisitionExecutionRequest, maxResults int) ([]AcquisitionPreviewItem, error) {
+type acquisitionConnectorResult struct {
+	Items          []AcquisitionPreviewItem
+	StatusCode     int
+	ResponseSHA256 string
+	Retryable      bool
+}
+
+func executeAcquisitionConnector(ctx context.Context, connector AcquisitionConnector, run AcquisitionConnectorRun, req AcquisitionExecutionRequest, maxResults int) (acquisitionConnectorResult, error) {
 	timeout := req.Timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Second
@@ -2860,30 +2965,42 @@ func executeAcquisitionConnector(ctx context.Context, connector AcquisitionConne
 		"connector_type":     connector.Type,
 	})
 	if err != nil {
-		return nil, err
+		return acquisitionConnectorResult{}, err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	httpReq, err := http.NewRequestWithContext(callCtx, run.Method, connector.Endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return acquisitionConnectorResult{}, err
 	}
 	for key, value := range run.Headers {
 		httpReq.Header.Set(key, value)
 	}
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
-		return nil, err
+		return acquisitionConnectorResult{Retryable: true}, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, err
+		return acquisitionConnectorResult{StatusCode: resp.StatusCode, Retryable: true}, err
+	}
+	bodySum := sha256.Sum256(body)
+	result := acquisitionConnectorResult{
+		StatusCode:     resp.StatusCode,
+		ResponseSHA256: hex.EncodeToString(bodySum[:]),
+		Retryable:      acquisitionStatusRetryable(resp.StatusCode),
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("acquisition execution: connector %s returned status %d: %s", connector.ID, resp.StatusCode, strings.TrimSpace(string(body)))
+		return result, fmt.Errorf("acquisition execution: connector %s returned status %d: %s", connector.ID, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return decodeAcquisitionPreviewItems(body)
+	items, err := decodeAcquisitionPreviewItems(body)
+	if err != nil {
+		result.Retryable = false
+		return result, err
+	}
+	result.Items = items
+	return result, nil
 }
 
 func decodeAcquisitionPreviewItems(body []byte) ([]AcquisitionPreviewItem, error) {
@@ -2898,6 +3015,155 @@ func decodeAcquisitionPreviewItems(body []byte) ([]AcquisitionPreviewItem, error
 		return nil, fmt.Errorf("acquisition execution: decode connector response: %w", err)
 	}
 	return items, nil
+}
+
+func (h *NamespaceHandle) recordAcquisitionExecutionReceipt(ctx context.Context, run AcquisitionConnectorRun, success bool) error {
+	receipt := AcquisitionExecutionReceipt{
+		ReceiptID:        uuid.New(),
+		Namespace:        h.cfg.ID,
+		TaskID:           run.TaskID,
+		TaskType:         run.TaskType,
+		ConnectorID:      run.ConnectorID,
+		ConnectorType:    run.ConnectorType,
+		TargetURL:        run.TargetURL,
+		ExecutedAt:       time.Now().UTC(),
+		Attempt:          run.Attempt,
+		MaxAttempts:      run.MaxAttempts,
+		Success:          success,
+		Retryable:        run.Retryable,
+		NextRetryAfter:   run.NextRetryAfter,
+		StatusCode:       run.StatusCode,
+		PayloadSHA256:    run.PayloadSHA256,
+		ResponseSHA256:   run.ResponseSHA256,
+		IdempotencyKey:   run.IdempotencyKey,
+		Error:            run.Error,
+		WrittenNodeIDs:   append([]uuid.UUID{}, run.WrittenNodeIDs...),
+		AllowedSourceIDs: append([]string{}, run.AllowedSources...),
+	}
+	payload, err := json.Marshal(receipt)
+	if err != nil {
+		return fmt.Errorf("acquisition execution receipt: marshal: %w", err)
+	}
+	event := store.Event{
+		ID:        receipt.ReceiptID,
+		Namespace: h.cfg.ID,
+		Type:      store.EventAcquisitionReceipt,
+		Payload:   payload,
+		TxTime:    receipt.ExecutedAt,
+	}
+	if err := h.db.log.Append(ctx, event); err != nil {
+		return fmt.Errorf("acquisition execution receipt: append event: %w", err)
+	}
+	return nil
+}
+
+// AcquisitionExecutionReceipts returns connector execution receipt audit records after the given time.
+func (h *NamespaceHandle) AcquisitionExecutionReceipts(ctx context.Context, after time.Time) ([]AcquisitionExecutionReceipt, error) {
+	events, err := h.db.log.SinceAll(ctx, h.cfg.ID, after)
+	if err != nil {
+		return nil, fmt.Errorf("acquisition execution receipts: %w", err)
+	}
+	out := make([]AcquisitionExecutionReceipt, 0, len(events))
+	for _, event := range events {
+		if event.Type != store.EventAcquisitionReceipt {
+			continue
+		}
+		var receipt AcquisitionExecutionReceipt
+		if err := json.Unmarshal(event.Payload, &receipt); err != nil {
+			return nil, fmt.Errorf("acquisition execution receipts: decode %s: %w", event.ID, err)
+		}
+		receipt.ReceiptID = event.ID
+		if receipt.Namespace == "" {
+			receipt.Namespace = event.Namespace
+		}
+		if receipt.ExecutedAt.IsZero() {
+			receipt.ExecutedAt = event.TxTime
+		}
+		out = append(out, receipt)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].ExecutedAt.After(out[j].ExecutedAt)
+	})
+	return out, nil
+}
+
+// AcquisitionRetryCandidates returns latest unresolved failed connector attempts without executing retries.
+func (h *NamespaceHandle) AcquisitionRetryCandidates(ctx context.Context, after time.Time) ([]AcquisitionRetryCandidate, error) {
+	receipts, err := h.AcquisitionExecutionReceipts(ctx, after)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(receipts, func(i, j int) bool {
+		return receipts[i].ExecutedAt.Before(receipts[j].ExecutedAt)
+	})
+	candidates := map[string]AcquisitionRetryCandidate{}
+	for _, receipt := range receipts {
+		key := receipt.TaskID + "\x00" + receipt.ConnectorID + "\x00" + receipt.PayloadSHA256
+		candidate := candidates[key]
+		candidate.Attempts++
+		if receipt.Success {
+			delete(candidates, key)
+			continue
+		}
+		candidate.TaskID = receipt.TaskID
+		candidate.ConnectorID = receipt.ConnectorID
+		candidate.ConnectorType = receipt.ConnectorType
+		candidate.TargetURL = receipt.TargetURL
+		candidate.LastReceiptID = receipt.ReceiptID
+		candidate.LastAttemptAt = receipt.ExecutedAt
+		candidate.LastStatusCode = receipt.StatusCode
+		candidate.PayloadSHA256 = receipt.PayloadSHA256
+		candidate.IdempotencyKey = receipt.IdempotencyKey
+		candidate.LastError = receipt.Error
+		candidate.Retryable = receipt.Retryable
+		candidates[key] = candidate
+	}
+	out := make([]AcquisitionRetryCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		out = append(out, candidate)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].LastAttemptAt.After(out[j].LastAttemptAt)
+	})
+	return out, nil
+}
+
+// AcquisitionRetryRecommendations returns read-only backoff guidance for unresolved acquisition failures.
+func (h *NamespaceHandle) AcquisitionRetryRecommendations(ctx context.Context, after time.Time, now time.Time) ([]AcquisitionRetryRecommendation, error) {
+	candidates, err := h.AcquisitionRetryCandidates(ctx, after)
+	if err != nil {
+		return nil, err
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	out := make([]AcquisitionRetryRecommendation, 0, len(candidates))
+	for _, candidate := range candidates {
+		delay := acquisitionRetryBackoff(candidate.Attempts)
+		recommendedAfter := candidate.LastAttemptAt.Add(delay)
+		ready := candidate.Retryable && !now.Before(recommendedAfter)
+		reason := "terminal_failure"
+		if candidate.Retryable {
+			reason = "waiting_for_backoff"
+			if ready {
+				reason = "ready_for_operator_retry"
+			}
+		}
+		out = append(out, AcquisitionRetryRecommendation{
+			AcquisitionRetryCandidate: candidate,
+			RecommendedAfter:          recommendedAfter,
+			DelaySeconds:              int(delay.Seconds()),
+			Ready:                     ready,
+			Reason:                    reason,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Ready != out[j].Ready {
+			return out[i].Ready
+		}
+		return out[i].RecommendedAfter.Before(out[j].RecommendedAfter)
+	})
+	return out, nil
 }
 
 func normalizeAcquisitionConnectors(connectors []AcquisitionConnector) ([]AcquisitionConnector, error) {
@@ -3003,6 +3269,34 @@ func acquisitionMode(dryRun bool) string {
 		return "dry-run"
 	}
 	return "execute"
+}
+
+func acquisitionIdempotencyKey(taskID, connectorID, payloadSHA string) string {
+	sum := sha256.Sum256([]byte(taskID + "\x00" + connectorID + "\x00" + payloadSHA))
+	return hex.EncodeToString(sum[:])
+}
+
+func acquisitionStatusRetryable(statusCode int) bool {
+	switch statusCode {
+	case 408, 425, 429, 500, 502, 503, 504:
+		return true
+	default:
+		return false
+	}
+}
+
+func acquisitionRetryBackoff(attempts int) time.Duration {
+	if attempts <= 1 {
+		return time.Minute
+	}
+	delay := time.Minute
+	for i := 1; i < attempts; i++ {
+		delay *= 2
+		if delay >= time.Hour {
+			return time.Hour
+		}
+	}
+	return delay
 }
 
 func dedupeStrings(in []string) []string {
