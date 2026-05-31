@@ -115,6 +115,95 @@ type adminRankingEvalResult struct {
 	RetrievalSource string              `json:"retrieval_source,omitempty"`
 }
 
+type adminBeliefAuditResponse struct {
+	Node              core.Node                 `json:"Node"`
+	Source            *core.Source              `json:"Source"`
+	Supporters        []observe.EvidenceNode    `json:"Supporters"`
+	Contradictors     []observe.EvidenceNode    `json:"Contradictors"`
+	ProvenanceChain   []observe.EvidenceNode    `json:"ProvenanceChain"`
+	ConfidenceHistory []observe.ConfidencePoint `json:"ConfidenceHistory"`
+	AuditedAt         time.Time                 `json:"AuditedAt"`
+	Epistemics        adminEpistemicsSummary    `json:"epistemics"`
+}
+
+type adminEpistemicsSummary struct {
+	NodeID              string                         `json:"node_id"`
+	Namespace           string                         `json:"namespace"`
+	Text                string                         `json:"text,omitempty"`
+	Labels              []string                       `json:"labels,omitempty"`
+	Source              adminSourceContext             `json:"source"`
+	ConfidenceTimeline  []adminConfidenceTimelinePoint `json:"confidence_timeline"`
+	SourceTrustTimeline []adminSourceTrustPoint        `json:"source_trust_timeline"`
+	ContradictionPaths  []adminContradictionPath       `json:"contradiction_paths"`
+	GraphContext        []adminGraphContextNode        `json:"graph_context"`
+	Counts              adminEpistemicsCounts          `json:"counts"`
+}
+
+type adminSourceContext struct {
+	ID                   string   `json:"id,omitempty"`
+	ExternalID           string   `json:"external_id,omitempty"`
+	Labels               []string `json:"labels,omitempty"`
+	EffectiveCredibility float64  `json:"effective_credibility"`
+	CredibilityVariance  float64  `json:"credibility_variance"`
+	Alpha                float64  `json:"alpha,omitempty"`
+	Beta                 float64  `json:"beta,omitempty"`
+	ClaimsAsserted       int64    `json:"claims_asserted,omitempty"`
+	ClaimsValidated      int64    `json:"claims_validated,omitempty"`
+	ClaimsRefuted        int64    `json:"claims_refuted,omitempty"`
+	UpdatedAt            string   `json:"updated_at,omitempty"`
+}
+
+type adminConfidenceTimelinePoint struct {
+	Time       string  `json:"time"`
+	Confidence float64 `json:"confidence"`
+	Version    uint64  `json:"version"`
+}
+
+type adminSourceTrustPoint struct {
+	Time              string  `json:"time"`
+	SourceID          string  `json:"source_id"`
+	NodeID            string  `json:"node_id"`
+	Action            string  `json:"action"`
+	SourceCredibility float64 `json:"source_credibility"`
+	Reason            string  `json:"reason,omitempty"`
+}
+
+type adminContradictionPath struct {
+	Direction     string  `json:"direction"`
+	Relation      string  `json:"relation"`
+	ClaimID       string  `json:"claim_id"`
+	ClaimText     string  `json:"claim_text,omitempty"`
+	OtherNodeID   string  `json:"other_node_id"`
+	OtherText     string  `json:"other_text,omitempty"`
+	OtherSourceID string  `json:"other_source_id,omitempty"`
+	EdgeID        string  `json:"edge_id"`
+	EdgeWeight    float64 `json:"edge_weight"`
+	Severity      string  `json:"severity"`
+	ConfidenceGap float64 `json:"confidence_gap"`
+}
+
+type adminGraphContextNode struct {
+	NodeID     string   `json:"node_id"`
+	Text       string   `json:"text,omitempty"`
+	SourceID   string   `json:"source_id,omitempty"`
+	Labels     []string `json:"labels,omitempty"`
+	Relation   string   `json:"relation"`
+	Direction  string   `json:"direction"`
+	EdgeType   string   `json:"edge_type"`
+	EdgeWeight float64  `json:"edge_weight"`
+	Confidence float64  `json:"confidence"`
+	ValidFrom  string   `json:"valid_from,omitempty"`
+}
+
+type adminEpistemicsCounts struct {
+	Supporters         int `json:"supporters"`
+	Contradictors      int `json:"contradictors"`
+	Provenance         int `json:"provenance"`
+	GraphNeighbors     int `json:"graph_neighbors"`
+	SourceTrustPoints  int `json:"source_trust_points"`
+	ConfidenceVersions int `json:"confidence_versions"`
+}
+
 func (h *adminHandler) handleRankingEval(w http.ResponseWriter, r *http.Request) {
 	topK, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("top_k")))
 	if err != nil || topK <= 0 {
@@ -471,9 +560,218 @@ func (h *adminHandler) handleBeliefAudit(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "node not found", http.StatusNotFound)
 		return
 	}
+	response, err := h.buildBeliefAuditResponse(r.Context(), ns, audit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(audit)
+	json.NewEncoder(w).Encode(response)
+}
+
+func (h *adminHandler) buildBeliefAuditResponse(ctx context.Context, ns string, audit *observe.BeliefAudit) (adminBeliefAuditResponse, error) {
+	summary, err := h.buildEpistemicsSummary(ctx, ns, audit)
+	if err != nil {
+		return adminBeliefAuditResponse{}, err
+	}
+	return adminBeliefAuditResponse{
+		Node:              audit.Node,
+		Source:            audit.Source,
+		Supporters:        audit.Supporters,
+		Contradictors:     audit.Contradictors,
+		ProvenanceChain:   audit.ProvenanceChain,
+		ConfidenceHistory: audit.ConfidenceHistory,
+		AuditedAt:         audit.AuditedAt,
+		Epistemics:        summary,
+	}, nil
+}
+
+func (h *adminHandler) buildEpistemicsSummary(ctx context.Context, ns string, audit *observe.BeliefAudit) (adminEpistemicsSummary, error) {
+	summary := adminEpistemicsSummary{
+		NodeID:    audit.Node.ID.String(),
+		Namespace: audit.Node.Namespace,
+		Text:      core.NodeText(audit.Node),
+		Labels:    audit.Node.Labels,
+		Counts: adminEpistemicsCounts{
+			Supporters:         len(audit.Supporters),
+			Contradictors:      len(audit.Contradictors),
+			Provenance:         len(audit.ProvenanceChain),
+			ConfidenceVersions: len(audit.ConfidenceHistory),
+		},
+	}
+	if audit.Source != nil {
+		summary.Source = adminSourceContext{
+			ID:                   audit.Source.ID.String(),
+			ExternalID:           audit.Source.ExternalID,
+			Labels:               audit.Source.Labels,
+			EffectiveCredibility: audit.Source.EffectiveCredibility(),
+			CredibilityVariance:  audit.Source.CredibilityVariance(),
+			Alpha:                audit.Source.Alpha,
+			Beta:                 audit.Source.Beta,
+			ClaimsAsserted:       audit.Source.ClaimsAsserted,
+			ClaimsValidated:      audit.Source.ClaimsValidated,
+			ClaimsRefuted:        audit.Source.ClaimsRefuted,
+			UpdatedAt:            formatOptionalTime(audit.Source.UpdatedAt),
+		}
+		timeline, err := h.db.Namespace(ns, "").SourceTrustTimeline(ctx, audit.Source.ExternalID, time.Time{})
+		if err != nil {
+			return summary, err
+		}
+		for _, point := range timeline {
+			summary.SourceTrustTimeline = append(summary.SourceTrustTimeline, adminSourceTrustPoint{
+				Time:              point.TxTime.Format(time.RFC3339),
+				SourceID:          point.SourceID,
+				NodeID:            point.NodeID.String(),
+				Action:            point.Action,
+				SourceCredibility: point.SourceCredibility,
+				Reason:            point.Reason,
+			})
+		}
+		summary.Counts.SourceTrustPoints = len(summary.SourceTrustTimeline)
+	}
+	for _, point := range audit.ConfidenceHistory {
+		summary.ConfidenceTimeline = append(summary.ConfidenceTimeline, adminConfidenceTimelinePoint{
+			Time:       point.Time.Format(time.RFC3339),
+			Confidence: point.Confidence,
+			Version:    point.Version,
+		})
+	}
+	for _, contradictor := range audit.Contradictors {
+		summary.ContradictionPaths = append(summary.ContradictionPaths, buildAdminContradictionPath(audit.Node, contradictor))
+	}
+	graphContext, err := h.buildAdminGraphContext(ctx, ns, audit.Node.ID)
+	if err != nil {
+		return summary, err
+	}
+	summary.GraphContext = graphContext
+	summary.Counts.GraphNeighbors = len(graphContext)
+	return summary, nil
+}
+
+func (h *adminHandler) buildAdminGraphContext(ctx context.Context, ns string, nodeID uuid.UUID) ([]adminGraphContextNode, error) {
+	outgoing, err := h.graph.EdgesFrom(ctx, ns, nodeID, nil)
+	if err != nil {
+		return nil, err
+	}
+	incoming, err := h.graph.EdgesTo(ctx, ns, nodeID, nil)
+	if err != nil {
+		return nil, err
+	}
+	context := make([]adminGraphContextNode, 0, len(outgoing)+len(incoming))
+	for _, edge := range outgoing {
+		node, err := h.graph.GetNode(ctx, ns, edge.Dst)
+		if err != nil {
+			return nil, err
+		}
+		if node == nil {
+			continue
+		}
+		context = append(context, buildAdminGraphContextNode(*node, edge, "outgoing"))
+	}
+	for _, edge := range incoming {
+		node, err := h.graph.GetNode(ctx, ns, edge.Src)
+		if err != nil {
+			return nil, err
+		}
+		if node == nil {
+			continue
+		}
+		context = append(context, buildAdminGraphContextNode(*node, edge, "incoming"))
+	}
+	sort.SliceStable(context, func(i, j int) bool {
+		if context[i].Relation == context[j].Relation {
+			return context[i].NodeID < context[j].NodeID
+		}
+		return context[i].Relation < context[j].Relation
+	})
+	return context, nil
+}
+
+func buildAdminGraphContextNode(node core.Node, edge core.Edge, direction string) adminGraphContextNode {
+	return adminGraphContextNode{
+		NodeID:     node.ID.String(),
+		Text:       core.NodeText(node),
+		SourceID:   nodeSourceID(node),
+		Labels:     node.Labels,
+		Relation:   adminEdgeRelation(edge.Type, direction),
+		Direction:  direction,
+		EdgeType:   edge.Type,
+		EdgeWeight: edge.Weight,
+		Confidence: node.Confidence,
+		ValidFrom:  formatOptionalTime(node.ValidFrom),
+	}
+}
+
+func buildAdminContradictionPath(claim core.Node, evidence observe.EvidenceNode) adminContradictionPath {
+	direction := "incoming"
+	if evidence.Edge.Src == claim.ID {
+		direction = "outgoing"
+	}
+	gap := claim.Confidence - evidence.Node.Confidence
+	if gap < 0 {
+		gap = -gap
+	}
+	return adminContradictionPath{
+		Direction:     direction,
+		Relation:      adminEdgeRelation(evidence.Edge.Type, direction),
+		ClaimID:       claim.ID.String(),
+		ClaimText:     core.NodeText(claim),
+		OtherNodeID:   evidence.Node.ID.String(),
+		OtherText:     core.NodeText(evidence.Node),
+		OtherSourceID: nodeSourceID(evidence.Node),
+		EdgeID:        evidence.Edge.ID.String(),
+		EdgeWeight:    evidence.Edge.Weight,
+		Severity:      adminContradictionSeverity(gap, evidence.Edge.Weight),
+		ConfidenceGap: gap,
+	}
+}
+
+func adminEdgeRelation(edgeType, direction string) string {
+	switch edgeType {
+	case core.EdgeSupports:
+		if direction == "incoming" {
+			return "supported by"
+		}
+		return "supports"
+	case core.EdgeContradicts:
+		if direction == "incoming" {
+			return "contradicted by"
+		}
+		return "contradicts"
+	case core.EdgeDerivedFrom:
+		if direction == "incoming" {
+			return "derived into"
+		}
+		return "derived from"
+	default:
+		if direction == "incoming" {
+			return "linked from"
+		}
+		return "links to"
+	}
+}
+
+func adminContradictionSeverity(confidenceGap, edgeWeight float64) string {
+	strength := edgeWeight
+	if strength == 0 {
+		strength = 1
+	}
+	switch {
+	case confidenceGap >= 0.5 || strength >= 0.9:
+		return "high"
+	case confidenceGap >= 0.2 || strength >= 0.5:
+		return "medium"
+	default:
+		return "low"
+	}
+}
+
+func formatOptionalTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 type searchResult struct {

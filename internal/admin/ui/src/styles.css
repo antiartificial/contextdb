@@ -503,6 +503,17 @@ h3 {
   padding-bottom: 0.5rem;
 }
 
+.debugger .section-heading h2 {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.debugger .section-heading p {
+  color: #8b949e;
+  margin: 0.35rem 0 0;
+}
+
 .search-row,
 .inspect-row {
   display: grid;
@@ -584,6 +595,380 @@ label input {
   padding: 0.75rem;
 }
 
+.epistemics-workbench {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.evidence-claim {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9rem;
+  gap: 1rem;
+  align-items: center;
+}
+
+.evidence-claim h3,
+.evidence-claim p {
+  margin: 0;
+}
+
+.evidence-claim h3 {
+  color: #e1e4e8;
+  font-size: 1.15rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.evidence-claim p,
+.evidence-score span,
+.evidence-score small,
+.eyebrow {
+  color: #8b949e;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 750;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+}
+
+.evidence-score {
+  border-left: 1px solid #30363d;
+  padding-left: 1rem;
+}
+
+.evidence-score strong {
+  color: #7ee787;
+  display: block;
+  font-size: 2rem;
+  line-height: 1;
+  margin: 0.2rem 0;
+}
+
+.evidence-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.evidence-metrics article {
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0f1117;
+  padding: 0.85rem;
+}
+
+.evidence-metrics span,
+.evidence-metrics small {
+  color: #8b949e;
+  display: block;
+}
+
+.evidence-metrics span {
+  font-size: 0.76rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.evidence-metrics strong {
+  color: #58a6ff;
+  display: block;
+  font-size: 1.75rem;
+  line-height: 1.15;
+  margin: 0.25rem 0;
+}
+
+.epistemics-grid,
+.epistemics-main {
+  display: grid;
+  gap: 1rem;
+}
+
+.epistemics-grid {
+  grid-template-columns: minmax(230px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.epistemics-main {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  align-items: start;
+}
+
+.panel-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.panel-title h3 {
+  margin: 0;
+}
+
+.panel-title span {
+  color: #8b949e;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.source-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.source-panel > strong {
+  color: #e1e4e8;
+  overflow-wrap: anywhere;
+}
+
+.source-score {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.source-score span,
+.source-panel dt,
+.source-panel dd {
+  color: #8b949e;
+  font-size: 0.82rem;
+}
+
+.source-score strong {
+  color: #7ee787;
+  font-size: 1.4rem;
+}
+
+.source-panel dl {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.source-panel dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.source-panel dd {
+  color: #e1e4e8;
+  font-weight: 700;
+  margin: 0;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip-row span {
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  color: #8b949e;
+  font-size: 0.76rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.timeline-rail {
+  position: relative;
+  height: 8.5rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(88, 166, 255, 0.08), rgba(15, 17, 23, 0)),
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(48, 54, 61, 0.7) 32px);
+  margin-bottom: 0.8rem;
+}
+
+.timeline-rail::before {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  top: 50%;
+  border-top: 1px solid #30363d;
+}
+
+.timeline-rail.confidence {
+  background:
+    linear-gradient(180deg, rgba(126, 231, 135, 0.08), rgba(15, 17, 23, 0)),
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(48, 54, 61, 0.7) 32px);
+}
+
+.timeline-point {
+  position: absolute;
+  transform: translate(-50%, 50%);
+  border: 1px solid #58a6ff;
+  border-radius: 999px;
+  background: #0f2438;
+  color: #e1e4e8;
+  min-height: 1.85rem;
+  padding: 0 0.45rem;
+  font-size: 0.72rem;
+}
+
+.timeline-rail.confidence .timeline-point {
+  border-color: #7ee787;
+  background: #13251a;
+}
+
+.timeline-events {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.timeline-events div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid #21262d;
+  padding-top: 0.45rem;
+}
+
+.timeline-events strong {
+  color: #e1e4e8;
+}
+
+.timeline-events span {
+  color: #8b949e;
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.path-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  border-top: 1px solid #21262d;
+  padding: 0.85rem 0;
+}
+
+.path-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.path-row strong,
+.path-row p,
+.path-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.path-row strong {
+  color: #e1e4e8;
+  margin: 0.3rem 0;
+  text-transform: capitalize;
+}
+
+.path-row p {
+  color: #c9d1d9;
+  margin: 0;
+}
+
+.path-row small {
+  color: #8b949e;
+  margin-top: 0.35rem;
+}
+
+.severity {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.7;
+  padding: 0 0.48rem;
+  text-transform: uppercase;
+}
+
+.severity.high {
+  background: rgba(248, 81, 73, 0.2);
+  color: #ff7b72;
+}
+
+.severity.medium {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+.severity.low {
+  background: rgba(88, 166, 255, 0.16);
+  color: #79c0ff;
+}
+
+.graph-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.graph-row {
+  width: 100%;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  background: #0f1117;
+  color: #c9d1d9;
+  min-height: 0;
+  padding: 0.7rem;
+  text-align: left;
+}
+
+.graph-row:hover {
+  border-color: #58a6ff;
+  background: #0f2438;
+}
+
+.graph-row .relation {
+  color: #58a6ff;
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.graph-row strong,
+.graph-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-row strong {
+  color: #e1e4e8;
+  margin: 0.2rem 0;
+}
+
+.graph-row small {
+  color: #8b949e;
+  font-size: 0.78rem;
+}
+
+.raw-audit {
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0f1117;
+  margin-top: 1rem;
+  overflow: hidden;
+}
+
+.raw-audit summary {
+  color: #8b949e;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.75rem;
+}
+
+.raw-audit pre {
+  border: 0;
+  border-top: 1px solid #30363d;
+  border-radius: 0;
+}
+
 .ghost {
   background: #21262d;
 }
@@ -622,6 +1007,10 @@ label input {
 
   .topbar,
   .metrics-detail,
+  .evidence-claim,
+  .evidence-metrics,
+  .epistemics-grid,
+  .epistemics-main,
   .ranking-actions,
   .ranking-grid,
   .ranking-main,

@@ -626,11 +626,17 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking evaluation dashboard UI | Implemented | `/admin/api/ranking-eval` runs the representative corpus and the Svelte admin dashboard surfaces MRR, pass/fail totals, category health, query detail, score components, and browser-loaded baseline deltas |
 
+## Completed In v0.104.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Richer debugger / epistemics visualization | Implemented | `/admin/api/belief` keeps the raw audit fields and adds an additive `epistemics` envelope; the Svelte debugger renders source trust timelines, confidence history, source context, contradiction paths, and graph/source context |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
-| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; debugger search completed in v0.89.0; metrics dashboard completed in v0.91.0; Svelte shell completed in v0.92.0; explain-rank compare completed in v0.93.0 |
+| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; debugger search completed in v0.89.0; metrics dashboard completed in v0.91.0; Svelte shell completed in v0.92.0; explain-rank compare completed in v0.93.0; source-trust timeline, contradiction paths, and graph/source context completed in v0.104.0 |
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Snapshot foundation completed in v0.48.0; first-class admin UI completed in v0.103.0; next step is persisted baseline history and manifest-backed run evidence |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
@@ -642,7 +648,7 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:---------------|:------|
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; durable workflow decisions completed in v0.12.0 |
-| Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; anomaly review tasks completed in v0.13.0; next step is richer timeline visualization in the debugger UI |
+| Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; anomaly review tasks completed in v0.13.0; debugger timeline visualization completed in v0.104.0; next step is exportable timeline evidence |
 | Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Completed in v0.9.0; next step is connector-specific acquisition execution |
 | Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Completed in v0.12.0; reviewer filters completed in v0.15.0; next step is escalation rules |
 
@@ -1179,3 +1185,13 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Ranking dashboard failure drilldown | Failed queries are visible, but operators need the fastest path to the cause | Add a failed-only filter plus direct links from a result row to belief audit and explain-rank compare |
 | Manifest-backed reliability lane | The project has several manifest writers; audits need one consistent verification habit | Add a shared manifest verification pattern across ranking baselines, closure bundles, schema catalog entries, and fixture catalogs |
 | Norn admin dashboard link metadata | The Mini-hosted service is discoverable through Norn, but operators should land directly on the admin UI | Extend the Norn service entry with an admin URL and feature tags for ranking eval, metrics, debugger, and manifests |
+
+## Fresh Brainstorm After v0.104.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Debugger graph relation filters | The richer graph context can grow quickly in dense namespaces | Add relation/source/edge-weight filters and a failed-only contradiction view in the debugger panel |
+| Epistemics timeline export | Source trust and confidence traces are useful in incident notes | Add a JSON/Markdown export for the currently inspected node's timelines, contradiction paths, and source summary |
+| Contradiction path depth expansion | One-hop conflict paths are useful, but some contradictions are mediated by derived summaries | Add a bounded depth selector that follows `derived_from`, `supports`, and `contradicts` paths with cycle protection |
+| Ranking-dashboard-to-debugger handoff | Ranking failures should open the exact evidence context behind a surprising top result | Add a button from ranking query detail to inspect the selected top result in the belief debugger |
+| Manifest-backed debugger evidence bundle | Epistemic investigations should leave portable audit evidence | Emit a small manifest for exported debugger evidence with report hash, node ID, source ID, and generated_at |

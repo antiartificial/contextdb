@@ -64,6 +64,86 @@
     match_reason: string
   }
 
+  type EpistemicsSource = {
+    external_id?: string
+    labels?: string[]
+    effective_credibility: number
+    credibility_variance: number
+    alpha?: number
+    beta?: number
+    claims_asserted?: number
+    claims_validated?: number
+    claims_refuted?: number
+    updated_at?: string
+  }
+
+  type TimelinePoint = {
+    time: string
+    confidence?: number
+    version?: number
+    source_credibility?: number
+    action?: string
+    reason?: string
+    node_id?: string
+  }
+
+  type ContradictionPath = {
+    direction: string
+    relation: string
+    claim_id: string
+    claim_text?: string
+    other_node_id: string
+    other_text?: string
+    other_source_id?: string
+    edge_weight: number
+    severity: string
+    confidence_gap: number
+  }
+
+  type GraphContextNode = {
+    node_id: string
+    text?: string
+    source_id?: string
+    labels?: string[]
+    relation: string
+    direction: string
+    edge_type: string
+    edge_weight: number
+    confidence: number
+    valid_from?: string
+  }
+
+  type EpistemicsSummary = {
+    node_id: string
+    namespace: string
+    text?: string
+    labels?: string[]
+    source: EpistemicsSource
+    confidence_timeline: TimelinePoint[]
+    source_trust_timeline: TimelinePoint[]
+    contradiction_paths: ContradictionPath[]
+    graph_context: GraphContextNode[]
+    counts: {
+      supporters: number
+      contradictors: number
+      provenance: number
+      graph_neighbors: number
+      source_trust_points: number
+      confidence_versions: number
+    }
+  }
+
+  type BeliefAudit = {
+    Node?: { ID: string; Confidence?: number; Version?: number; Labels?: string[]; Properties?: Record<string, unknown> }
+    Source?: Record<string, unknown> | null
+    Supporters?: unknown[]
+    Contradictors?: unknown[]
+    ProvenanceChain?: unknown[]
+    ConfidenceHistory?: unknown[]
+    AuditedAt?: string
+    epistemics?: EpistemicsSummary
+  }
+
   type RankExplanation = {
     margin: number
     summary: string
@@ -86,6 +166,7 @@
   let searchMessage = ''
   let debugNamespace = 'default'
   let debugID = ''
+  let debugAudit: BeliefAudit | null = null
   let debugOutput =
     'Enter a namespace and node ID to inspect source, support, contradictions, provenance, and confidence history.'
   let compareLeft = ''
@@ -102,6 +183,12 @@
   const rankText = (query: RankingQuery) => query.correct_rank ? `#${query.correct_rank}` : 'miss'
   const topResult = (query: RankingQuery | null) => query?.top_results?.[0]
   const resultLabel = (result?: RankingResult) => result?.text || result?.node_id || 'No result'
+  const shortID = (value = '') => value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value
+  const formatDate = (value = '') => value ? new Date(value).toLocaleString() : 'n/a'
+  const credibilityLabel = (value = 0) => value >= 0.8 ? 'trusted' : value >= 0.45 ? 'mixed' : 'low trust'
+  const timelineLeft = (index: number, total: number) => total <= 1 ? '50%' : `${(index / (total - 1)) * 100}%`
+  const timelineValue = (point: TimelinePoint) => point.source_credibility ?? point.confidence ?? 0
+  const timelineTitle = (point: TimelinePoint) => `${formatDate(point.time)} · ${score(timelineValue(point))}${point.action ? ` · ${point.action}` : ''}`
 
   $: selectedQuery =
     ranking?.queries.find((query) => query.id === selectedQueryID) || ranking?.queries[0] || null
@@ -175,10 +262,11 @@
     }
   }
 
-  function inspectResult(result: SearchResult) {
+  async function inspectResult(result: SearchResult) {
     activeTab = 'debugger'
     debugNamespace = searchNamespace
     debugID = result.id
+    await inspectNode()
   }
 
   function addCompareTarget(result: SearchResult) {
@@ -192,15 +280,30 @@
 
   async function inspectNode() {
     debugOutput = 'Loading...'
+    debugAudit = null
     try {
       const params = new URLSearchParams({ ns: debugNamespace.trim(), id: debugID.trim() })
       const response = await fetch(`/admin/api/belief?${params}`)
       const text = await response.text()
       if (!response.ok) throw new Error(text || response.statusText)
-      debugOutput = JSON.stringify(JSON.parse(text), null, 2)
+      debugAudit = JSON.parse(text)
+      debugOutput = JSON.stringify(debugAudit, null, 2)
     } catch (error) {
       debugOutput = String(error instanceof Error ? error.message : error)
     }
+  }
+
+  async function inspectGraphNode(node: GraphContextNode) {
+    debugID = node.node_id
+    await inspectNode()
+  }
+
+  function compareContradiction(path: ContradictionPath) {
+    activeTab = 'compare'
+    searchNamespace = debugNamespace
+    compareLeft = path.claim_id
+    compareRight = path.other_node_id
+    compareQuery = path.claim_text || path.other_text || ''
   }
 
   async function compareRank() {
@@ -421,7 +524,12 @@
 
   {#if activeTab === 'debugger'}
     <section class="debugger" aria-labelledby="debugger-heading">
-      <h2 id="debugger-heading">Belief Debugger</h2>
+      <div class="section-heading">
+        <div>
+          <h2 id="debugger-heading">Belief Debugger</h2>
+          <p>Search claims, inspect epistemic evidence, and follow source trust or contradiction paths.</p>
+        </div>
+      </div>
       <div class="tool">
         <div class="search-row">
           <label>Namespace<input bind:value={searchNamespace} autocomplete="off" /></label>
@@ -445,7 +553,146 @@
           <label>Node ID<input bind:value={debugID} placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off" /></label>
           <button type="button" on:click={inspectNode}>Inspect</button>
         </div>
-        <pre>{debugOutput}</pre>
+
+        {#if debugAudit?.epistemics}
+          <div class="epistemics-workbench">
+            <section class="panel evidence-claim">
+              <div>
+                <span class="eyebrow">Selected claim</span>
+                <h3>{debugAudit.epistemics.text || debugAudit.epistemics.node_id}</h3>
+                <p>{debugAudit.epistemics.namespace} · {shortID(debugAudit.epistemics.node_id)}</p>
+              </div>
+              <div class="evidence-score">
+                <span>Confidence</span>
+                <strong>{score(debugAudit.Node?.Confidence || 0)}</strong>
+                <small>v{debugAudit.Node?.Version || 0}</small>
+              </div>
+            </section>
+
+            <section class="evidence-metrics">
+              <article><span>Support</span><strong>{debugAudit.epistemics.counts.supporters}</strong><small>incoming evidence</small></article>
+              <article><span>Contradictions</span><strong>{debugAudit.epistemics.counts.contradictors}</strong><small>conflict paths</small></article>
+              <article><span>Provenance</span><strong>{debugAudit.epistemics.counts.provenance}</strong><small>derived chain</small></article>
+              <article><span>Neighbors</span><strong>{debugAudit.epistemics.counts.graph_neighbors}</strong><small>graph context</small></article>
+            </section>
+
+            <div class="epistemics-grid">
+              <section class="panel source-panel">
+                <div class="panel-title">
+                  <h3>Source Context</h3>
+                  <span>{credibilityLabel(debugAudit.epistemics.source.effective_credibility)}</span>
+                </div>
+                <strong>{debugAudit.epistemics.source.external_id || 'unknown source'}</strong>
+                <div class="source-score">
+                  <span>Credibility</span>
+                  <strong>{score(debugAudit.epistemics.source.effective_credibility)}</strong>
+                  <div class="bar-track"><span style={`width:${width(debugAudit.epistemics.source.effective_credibility)}`}></span></div>
+                </div>
+                <dl>
+                  <div><dt>Beta</dt><dd>{score(debugAudit.epistemics.source.alpha || 0)} / {score(debugAudit.epistemics.source.beta || 0)}</dd></div>
+                  <div><dt>Variance</dt><dd>{score(debugAudit.epistemics.source.credibility_variance)}</dd></div>
+                  <div><dt>Validated</dt><dd>{debugAudit.epistemics.source.claims_validated || 0}</dd></div>
+                  <div><dt>Refuted</dt><dd>{debugAudit.epistemics.source.claims_refuted || 0}</dd></div>
+                </dl>
+                <div class="chip-row">
+                  {#each debugAudit.epistemics.source.labels || ['unlabeled'] as label}
+                    <span>{label}</span>
+                  {/each}
+                </div>
+              </section>
+
+              <section class="panel timeline-panel">
+                <div class="panel-title">
+                  <h3>Source Trust Timeline</h3>
+                  <span>{debugAudit.epistemics.counts.source_trust_points} points</span>
+                </div>
+                {#if debugAudit.epistemics.source_trust_timeline.length > 0}
+                  <div class="timeline-rail">
+                    {#each debugAudit.epistemics.source_trust_timeline as point, index}
+                      <button type="button" class="timeline-point" title={timelineTitle(point)} style={`left:${timelineLeft(index, debugAudit.epistemics.source_trust_timeline.length)}; bottom:${Math.max(8, timelineValue(point) * 82)}%`}>
+                        <span>{score(timelineValue(point))}</span>
+                      </button>
+                    {/each}
+                  </div>
+                  <div class="timeline-events">
+                    {#each debugAudit.epistemics.source_trust_timeline.slice(-4) as point}
+                      <div><strong>{point.action}</strong><span>{score(timelineValue(point))} · {formatDate(point.time)}</span></div>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="muted">No source feedback events yet. Validate or refute claims from this source to build a trust trace.</p>
+                {/if}
+              </section>
+
+              <section class="panel timeline-panel">
+                <div class="panel-title">
+                  <h3>Confidence History</h3>
+                  <span>{debugAudit.epistemics.counts.confidence_versions} versions</span>
+                </div>
+                {#if debugAudit.epistemics.confidence_timeline.length > 0}
+                  <div class="timeline-rail confidence">
+                    {#each debugAudit.epistemics.confidence_timeline as point, index}
+                      <button type="button" class="timeline-point" title={timelineTitle(point)} style={`left:${timelineLeft(index, debugAudit.epistemics.confidence_timeline.length)}; bottom:${Math.max(8, timelineValue(point) * 82)}%`}>
+                        <span>v{point.version}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="muted">No version history is available for this node.</p>
+                {/if}
+              </section>
+            </div>
+
+            <div class="epistemics-main">
+              <section class="panel contradiction-panel">
+                <div class="panel-title">
+                  <h3>Contradiction Paths</h3>
+                  <span>{debugAudit.epistemics.contradiction_paths.length} paths</span>
+                </div>
+                {#if debugAudit.epistemics.contradiction_paths.length > 0}
+                  {#each debugAudit.epistemics.contradiction_paths as path}
+                    <article class="path-row">
+                      <div>
+                        <span class={`severity ${path.severity}`}>{path.severity}</span>
+                        <strong>{path.relation}</strong>
+                        <p>{path.other_text || path.other_node_id}</p>
+                        <small>{shortID(path.claim_id)} -> {path.edge_weight ? score(path.edge_weight) : '1.000'} -> {shortID(path.other_node_id)} · gap {score(path.confidence_gap)}</small>
+                      </div>
+                      <button type="button" class="ghost" on:click={() => compareContradiction(path)}>Compare</button>
+                    </article>
+                  {/each}
+                {:else}
+                  <p class="muted">No contradiction edges were found for this claim.</p>
+                {/if}
+              </section>
+
+              <section class="panel graph-panel">
+                <div class="panel-title">
+                  <h3>Graph & Source Context</h3>
+                  <span>{debugAudit.epistemics.graph_context.length} neighbors</span>
+                </div>
+                {#if debugAudit.epistemics.graph_context.length > 0}
+                  <div class="graph-list">
+                    {#each debugAudit.epistemics.graph_context as node}
+                      <button type="button" class="graph-row" on:click={() => inspectGraphNode(node)}>
+                        <span class="relation">{node.relation}</span>
+                        <strong>{node.text || node.node_id}</strong>
+                        <small>{shortID(node.node_id)} · {node.source_id || 'unknown source'} · confidence {score(node.confidence)}</small>
+                      </button>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="muted">No active graph neighbors were found.</p>
+                {/if}
+              </section>
+            </div>
+          </div>
+        {/if}
+
+        <details class="raw-audit">
+          <summary>Raw audit JSON</summary>
+          <pre>{debugOutput}</pre>
+        </details>
       </div>
     </section>
   {/if}

@@ -64,6 +64,30 @@ func TestAdminBeliefDebuggerAPI(t *testing.T) {
 		ValidFrom: now,
 		TxTime:    now,
 	}))
+	contradictID := uuid.New()
+	contradict := core.Node{
+		ID:         contradictID,
+		Namespace:  ns,
+		Labels:     []string{"Claim"},
+		Properties: map[string]any{"text": "contextdb has no admin surface", "source_id": "chat"},
+		Confidence: 0.31,
+		ValidFrom:  now,
+		TxTime:     now,
+	}
+	is.NoErr(graph.UpsertNode(ctx, contradict))
+	is.NoErr(graph.UpsertEdge(ctx, core.Edge{
+		ID:        uuid.New(),
+		Namespace: ns,
+		Src:       contradictID,
+		Dst:       claimID,
+		Type:      core.EdgeContradicts,
+		Weight:    0.9,
+		ValidFrom: now,
+		TxTime:    now,
+	}))
+	nsHandle := db.Namespace(ns, namespace.ModeGeneral)
+	_, err := nsHandle.ValidateClaim(ctx, claimID)
+	is.NoErr(err)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/belief?ns="+ns+"&id="+claimID.String(), nil)
 	w := httptest.NewRecorder()
@@ -77,6 +101,19 @@ func TestAdminBeliefDebuggerAPI(t *testing.T) {
 	is.Equal(audit.Source.ExternalID, "docs")
 	is.Equal(len(audit.Supporters), 1)
 	is.Equal(audit.Supporters[0].Node.ID, supportID)
+	is.Equal(len(audit.Contradictors), 1)
+
+	var response adminBeliefAuditResponse
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &response))
+	is.Equal(response.Epistemics.NodeID, claimID.String())
+	is.Equal(response.Epistemics.Source.ExternalID, "docs")
+	is.True(response.Epistemics.Source.EffectiveCredibility > 0.5)
+	is.Equal(response.Epistemics.Counts.Supporters, 1)
+	is.Equal(response.Epistemics.Counts.Contradictors, 1)
+	is.True(len(response.Epistemics.SourceTrustTimeline) > 0)
+	is.True(len(response.Epistemics.ConfidenceTimeline) > 0)
+	is.Equal(response.Epistemics.ContradictionPaths[0].OtherNodeID, contradictID.String())
+	is.True(len(response.Epistemics.GraphContext) >= 2)
 }
 
 func TestAdminDashboardIncludesDebugger(t *testing.T) {
@@ -104,6 +141,9 @@ func TestAdminDashboardIncludesDebugger(t *testing.T) {
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/search"))
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/belief"))
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/explain-rank"))
+	is.True(strings.Contains(assetW.Body.String(), "Source Trust Timeline"))
+	is.True(strings.Contains(assetW.Body.String(), "Contradiction Paths"))
+	is.True(strings.Contains(assetW.Body.String(), "Graph & Source Context"))
 	is.True(strings.Contains(assetW.Body.String(), "Ranking Evaluation"))
 	is.True(strings.Contains(assetW.Body.String(), "Belief Debugger"))
 	is.True(strings.Contains(assetW.Body.String(), "Explain Rank Compare"))
