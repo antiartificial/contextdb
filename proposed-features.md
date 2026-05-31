@@ -385,6 +385,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | KV refresh typed derivations | Implemented | `contextdb repair kv-cache --derive recent-nodes --derive-namespace NAME --derive-label LABEL` builds reviewed recent-node session context values from graph data |
 
+## Completed In v0.64.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking baseline retention report | Implemented | `contextdb eval ranking --baseline-retention-dir DIR --baseline-retention-keep N` reports current, retained, and pruneable baseline artifacts without deleting files |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -921,11 +927,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.63.0
+## Fresh Brainstorm After v0.64.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Retry fatigue escalation filter docs | Owner and escalation filters exist, but operators may need examples for common handoff lanes | Add cookbook examples for `owner` and `escalation_level` combinations |
-| Ranking baseline retention report | Versioned ranking baselines will accumulate after repeated releases | Add an optional read-only report that lists retained, current, and pruneable baseline artifacts |
 | Doctor published backup repair hint | Drift reports say what differs, but operators may want a guided next action | Add a dry-run hint that points to lifecycle index publish when local metadata should replace published metadata |
 | KV derivation recipes | The first derived value exists, but operators may need safe examples for naming hot keys | Add cookbook docs for recent-node session context key naming and review flow |
+| Ranking baseline deletion plan | Retention reports identify pruneable artifacts, but deletion should stay reviewable | Add an optional `--emit-delete-script` for pruneable ranking baselines without deleting files |

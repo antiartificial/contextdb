@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.63.0"
+	Version = "0.64.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.63.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.64.0",
 	}
 }
 
@@ -101,6 +101,7 @@ func Features() []Feature {
 		{Name: "ranking-eval-markdown-recap", Status: "stable", Since: "v0.55.0", Description: "CLI ranking eval can emit a compact Markdown recap for release review."},
 		{Name: "ranking-eval-historical-diff", Status: "stable", Since: "v0.56.0", Description: "CLI ranking eval can compare snapshots and emit rank and score movement summaries."},
 		{Name: "ranking-eval-baseline-policy", Status: "stable", Since: "v0.61.0", Description: "CLI ranking eval writes and resolves versioned baseline artifacts for release comparison."},
+		{Name: "ranking-eval-baseline-retention", Status: "stable", Since: "v0.64.0", Description: "CLI ranking eval can report retained and pruneable versioned baseline artifacts."},
 		{Name: "review-escalation-rules", Status: "stable", Since: "v0.37.0", Description: "Review queue escalation metadata flags aged assigned or snoozed items and high-priority source anomaly tasks."},
 		{Name: "review-escalation-digest", Status: "stable", Since: "v0.38.0", Description: "Review escalation digests summarize escalated queue items by owner, source, item type, and escalation level."},
 		{Name: "review-escalation-digest-export", Status: "stable", Since: "v0.39.0", Description: "Review escalation digest export records durable digest snapshots for review handoffs."},

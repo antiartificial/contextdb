@@ -152,6 +152,8 @@ func runEvalRanking(args []string) {
 	comparePath := fs.String("compare", "", "previous JSON ranking eval snapshot to compare")
 	baselineDir := fs.String("baseline-dir", "", "directory for versioned ranking eval baseline artifacts")
 	compareBaselineDir := fs.String("compare-baseline-dir", "", "directory containing previous versioned ranking eval baselines")
+	baselineRetentionDir := fs.String("baseline-retention-dir", "", "directory containing versioned ranking eval baselines to inspect")
+	baselineRetentionKeep := fs.Int("baseline-retention-keep", 5, "number of newest ranking eval baseline versions to retain")
 	diffOutPath := fs.String("diff-out", "", "JSON ranking eval diff to write")
 	diffMarkdownOutPath := fs.String("diff-markdown-out", "", "Markdown ranking eval diff to write")
 	reportOut := fs.Bool("report", false, "print the JSON ranking eval snapshot")
@@ -160,6 +162,16 @@ func runEvalRanking(args []string) {
 	diffMarkdownReportOut := fs.Bool("diff-markdown", false, "print the Markdown ranking eval diff")
 	topK := fs.Int("top-k", 5, "number of ranked results to include per query")
 	_ = fs.Parse(args)
+
+	if strings.TrimSpace(*baselineRetentionDir) != "" {
+		report, err := buildRankingEvalBaselineRetentionReport(*baselineRetentionDir, *baselineRetentionKeep)
+		writeIndentedJSON(report)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	report, err := buildRankingEvalSnapshotReport(context.Background(), rankingEvalSnapshotOptions{
 		TopK:        *topK,
@@ -1266,6 +1278,26 @@ type rankingEvalBaselineArtifacts struct {
 	Dir          string `json:"dir"`
 	JSONPath     string `json:"json_path"`
 	MarkdownPath string `json:"markdown_path"`
+}
+
+type rankingEvalBaselineRetentionReport struct {
+	OK                bool                               `json:"ok"`
+	Dir               string                             `json:"dir"`
+	Keep              int                                `json:"keep"`
+	TotalVersions     int                                `json:"total_versions"`
+	RetainedVersions  int                                `json:"retained_versions"`
+	PruneableVersions int                                `json:"pruneable_versions"`
+	ValidationErrors  []string                           `json:"validation_errors,omitempty"`
+	Baselines         []rankingEvalBaselineRetentionItem `json:"baselines"`
+}
+
+type rankingEvalBaselineRetentionItem struct {
+	Version      string   `json:"version"`
+	Current      bool     `json:"current"`
+	Status       string   `json:"status"`
+	JSONPath     string   `json:"json_path,omitempty"`
+	MarkdownPath string   `json:"markdown_path,omitempty"`
+	Missing      []string `json:"missing,omitempty"`
 }
 
 type rankingEvalBaselineVersion struct {
@@ -2434,6 +2466,103 @@ func rankingEvalBaselineArtifactPaths(dir, version string) (rankingEvalBaselineA
 	}, nil
 }
 
+func buildRankingEvalBaselineRetentionReport(dir string, keep int) (rankingEvalBaselineRetentionReport, error) {
+	dir = strings.TrimSpace(dir)
+	report := rankingEvalBaselineRetentionReport{
+		Dir:  dir,
+		Keep: keep,
+	}
+	if dir == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "baseline retention dir is required")
+		report.OK = false
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if keep < 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "--baseline-retention-keep must be zero or positive")
+		report.OK = false
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read ranking eval baseline dir: %v", err))
+		report.OK = false
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	type artifactSet struct {
+		version  rankingEvalBaselineVersion
+		jsonPath string
+		mdPath   string
+	}
+	artifacts := map[string]artifactSet{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "ranking-eval-") {
+			continue
+		}
+		var kind string
+		versionLabel := strings.TrimPrefix(name, "ranking-eval-")
+		switch {
+		case strings.HasSuffix(versionLabel, ".json"):
+			kind = "json"
+			versionLabel = strings.TrimSuffix(versionLabel, ".json")
+		case strings.HasSuffix(versionLabel, ".md"):
+			kind = "markdown"
+			versionLabel = strings.TrimSuffix(versionLabel, ".md")
+		default:
+			continue
+		}
+		version, ok := parseRankingEvalBaselineVersion(versionLabel)
+		if !ok {
+			continue
+		}
+		normalized := rankingEvalBaselineVersionString(version)
+		set := artifacts[normalized]
+		set.version = version
+		switch kind {
+		case "json":
+			set.jsonPath = filepath.Join(dir, name)
+		case "markdown":
+			set.mdPath = filepath.Join(dir, name)
+		}
+		artifacts[normalized] = set
+	}
+	sets := make([]artifactSet, 0, len(artifacts))
+	for _, set := range artifacts {
+		sets = append(sets, set)
+	}
+	sort.SliceStable(sets, func(i, j int) bool {
+		return compareRankingEvalBaselineVersion(sets[i].version, sets[j].version) > 0
+	})
+	for i, set := range sets {
+		item := rankingEvalBaselineRetentionItem{
+			Version:      rankingEvalBaselineVersionString(set.version),
+			Current:      i == 0,
+			Status:       "pruneable",
+			JSONPath:     set.jsonPath,
+			MarkdownPath: set.mdPath,
+		}
+		if i < keep {
+			item.Status = "retain"
+			report.RetainedVersions++
+		} else {
+			report.PruneableVersions++
+		}
+		if item.JSONPath == "" {
+			item.Missing = append(item.Missing, "json")
+		}
+		if item.MarkdownPath == "" {
+			item.Missing = append(item.Missing, "markdown")
+		}
+		report.Baselines = append(report.Baselines, item)
+	}
+	report.TotalVersions = len(report.Baselines)
+	report.OK = true
+	return report, nil
+}
+
 func resolveRankingEvalBaselineComparePath(dir, currentVersion string) (string, error) {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -2503,6 +2632,10 @@ func parseRankingEvalBaselineVersion(version string) (rankingEvalBaselineVersion
 		return rankingEvalBaselineVersion{}, false
 	}
 	return rankingEvalBaselineVersion{Major: major, Minor: minor, Patch: patch}, true
+}
+
+func rankingEvalBaselineVersionString(version rankingEvalBaselineVersion) string {
+	return fmt.Sprintf("v%d.%d.%d", version.Major, version.Minor, version.Patch)
 }
 
 func compareRankingEvalBaselineVersion(left, right rankingEvalBaselineVersion) int {

@@ -67,6 +67,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Ranking eval Markdown recap | Implemented | v0.55 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --markdown` and `--markdown-out` emit pass/fail totals, MRR, failures, top results, and score breakdowns |
 | Ranking eval historical diff | Implemented | v0.56 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --compare previous.json --diff-markdown` emits MRR, pass, rank, and top-score movements between snapshots |
 | Ranking eval baseline policy | Implemented | v0.61 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --baseline-dir` writes versioned baseline artifacts and `--compare-baseline-dir` resolves the latest previous baseline |
+| Ranking eval baseline retention | Implemented | v0.64 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --baseline-retention-dir` reports current, retained, and pruneable baseline artifacts |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
@@ -90,5 +91,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Ranking baseline retention reports for pruning old release-review artifacts.
-3. Retry fatigue filter cookbook examples for handoff lane playbooks.
+2. Retry fatigue filter cookbook examples for handoff lane playbooks.
+3. Doctor published backup repair hints for drift response playbooks.

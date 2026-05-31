@@ -1251,6 +1251,48 @@ func TestResolveRankingEvalBaselineComparePathRequiresPrevious(t *testing.T) {
 	is.True(strings.Contains(err.Error(), "no previous ranking eval baseline"))
 }
 
+func TestBuildRankingEvalBaselineRetentionReport(t *testing.T) {
+	is := is.New(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{
+		"ranking-eval-v0.61.0.json",
+		"ranking-eval-v0.61.0.md",
+		"ranking-eval-v0.62.0.json",
+		"ranking-eval-v0.63.0.json",
+		"ranking-eval-v0.63.0.md",
+		"ranking-eval-not-semver.json",
+	} {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0o644))
+	}
+
+	report, err := buildRankingEvalBaselineRetentionReport(dir, 2)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.TotalVersions, 3)
+	is.Equal(report.RetainedVersions, 2)
+	is.Equal(report.PruneableVersions, 1)
+	is.Equal(report.Baselines[0].Version, "v0.63.0")
+	is.True(report.Baselines[0].Current)
+	is.Equal(report.Baselines[0].Status, "retain")
+	is.Equal(report.Baselines[1].Version, "v0.62.0")
+	is.Equal(report.Baselines[1].Status, "retain")
+	is.Equal(report.Baselines[1].Missing[0], "markdown")
+	is.Equal(report.Baselines[2].Version, "v0.61.0")
+	is.Equal(report.Baselines[2].Status, "pruneable")
+}
+
+func TestBuildRankingEvalBaselineRetentionReportRejectsNegativeKeep(t *testing.T) {
+	is := is.New(t)
+
+	report, err := buildRankingEvalBaselineRetentionReport(t.TempDir(), -1)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "zero or positive"))
+}
+
 func copyRankingEvalSnapshotReport(report rankingEvalSnapshotReport) rankingEvalSnapshotReport {
 	report.Queries = append([]rankingEvalSnapshotQuery(nil), report.Queries...)
 	for i := range report.Queries {
