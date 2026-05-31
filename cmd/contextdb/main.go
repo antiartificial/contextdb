@@ -299,9 +299,19 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 	fs := flag.NewFlagSet("contextdb eval ranking baseline manifest verify", flag.ExitOnError)
 	manifestPath := fs.String("manifest", "", "JSON ranking baseline artifact manifest to verify")
 	reportOut := fs.Bool("report", false, "print a JSON ranking baseline manifest verification report")
+	markdownOut := fs.Bool("markdown", false, "print a Markdown ranking baseline manifest verification summary")
+	markdownOutPath := fs.String("markdown-out", "", "Markdown ranking baseline manifest verification summary to write")
 	_ = fs.Parse(args)
 
 	report, err := verifyRankingEvalBaselineArtifactManifest(*manifestPath)
+	if strings.TrimSpace(*markdownOutPath) != "" {
+		if writeErr := writeTextFile(*markdownOutPath, buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report)); writeErr != nil && err == nil {
+			err = writeErr
+		}
+	}
+	if *markdownOut {
+		fmt.Print(buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report))
+	}
 	if *reportOut || err != nil {
 		writeIndentedJSON(report)
 	}
@@ -309,7 +319,7 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest verify: %v\n", err)
 		os.Exit(1)
 	}
-	if !*reportOut {
+	if !*reportOut && !*markdownOut && strings.TrimSpace(*markdownOutPath) == "" {
 		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
@@ -3102,6 +3112,56 @@ func verifyRankingEvalBaselineArtifactManifest(manifestPath string) (rankingEval
 		return report, fmt.Errorf("ranking baseline artifact manifest verification failed: %s", strings.Join(report.ValidationErrors, "; "))
 	}
 	return report, nil
+}
+
+func buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report rankingEvalBaselineArtifactManifestVerifyReport) string {
+	var b strings.Builder
+	b.WriteString("# Ranking Baseline Manifest Verification\n\n")
+	status := "passed"
+	if !report.OK {
+		status = "failed"
+	}
+	fmt.Fprintf(&b, "- Status: `%s`\n", status)
+	fmt.Fprintf(&b, "- Manifest: `%s`\n", markdownInline(report.ManifestFile))
+	if strings.TrimSpace(report.ManifestGeneratedAt) != "" {
+		fmt.Fprintf(&b, "- Generated at: `%s`\n", markdownInline(report.ManifestGeneratedAt))
+	}
+	if strings.TrimSpace(report.ContextDBVersion) != "" {
+		fmt.Fprintf(&b, "- contextdb: `%s`\n", markdownInline(report.ContextDBVersion))
+	}
+	fmt.Fprintf(&b, "- Artifacts: `%d` total, `%d` verified, `%d` expected missing\n\n", report.TotalArtifacts, report.VerifiedArtifacts, report.MissingArtifacts)
+	if len(report.ValidationErrors) > 0 {
+		b.WriteString("## Validation Errors\n\n")
+		for _, err := range report.ValidationErrors {
+			fmt.Fprintf(&b, "- %s\n", markdownInline(err))
+		}
+		b.WriteByte('\n')
+	}
+	b.WriteString("## Artifact Summary\n\n")
+	b.WriteString("| Version | Kind | Status | Result | Bytes |\n")
+	b.WriteString("|:--------|:-----|:-------|:-------|------:|\n")
+	for _, item := range report.ArtifactVerifications {
+		result := "verified"
+		switch {
+		case len(item.ValidationErrors) > 0:
+			result = "failed"
+		case item.ExpectedMissing:
+			result = "expected missing"
+		case !item.Exists:
+			result = "missing"
+		}
+		bytes := item.ActualBytes
+		if bytes == 0 {
+			bytes = item.ExpectedBytes
+		}
+		fmt.Fprintf(&b, "| `%s` | `%s` | `%s` | `%s` | %d |\n",
+			markdownInline(item.Version),
+			markdownInline(item.Kind),
+			markdownInline(item.Status),
+			markdownInline(result),
+			bytes)
+	}
+	return b.String()
 }
 
 func artifactManifestValidationPrefix(item rankingEvalBaselineArtifactManifestVerifyReportItem, msg string) string {

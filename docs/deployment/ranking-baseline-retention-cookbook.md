@@ -55,10 +55,11 @@ Verify the inventory later with:
 ```bash
 contextdb eval ranking baseline manifest verify \
   --manifest ranking-baseline-manifest.json \
-  --report
+  --report \
+  --markdown-out ranking-baseline-manifest-verification.md
 ```
 
-The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash.
+The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash. Use `--markdown` for a stdout recap or `--markdown-out` to save the artifact summary beside the JSON report.
 
 ## Review Retention
 

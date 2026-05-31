@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.83.0"
+	Version = "0.84.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.83.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.84.0",
 	}
 }
 
@@ -135,6 +135,7 @@ func Features() []Feature {
 		{Name: "review-handoff-retry-fatigue-preset-docs-test", Status: "stable", Since: "v0.81.0", Description: "Tests verify retry fatigue cookbook preset rows stay aligned with SDK metadata."},
 		{Name: "doctor-published-backup-receipt-verify", Status: "stable", Since: "v0.82.0", Description: "Doctor can verify published backup repair receipts against the local lifecycle index."},
 		{Name: "kv-derived-refresh-receipt", Status: "stable", Since: "v0.83.0", Description: "Executed derived KV refreshes can write receipts with value hashes and doctor confirmation commands."},
+		{Name: "ranking-baseline-manifest-verify-markdown", Status: "stable", Since: "v0.84.0", Description: "Ranking baseline manifest verification can emit Markdown release summaries."},
 	}
 }
 

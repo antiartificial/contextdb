@@ -82,6 +82,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Ranking baseline retention cookbook | Implemented | v0.72 | `ranking`, `release`, `inspectability` | Deployment docs provide keep-count, CI artifact, review, and delete-script recipes for ranking baseline history |
 | Ranking baseline artifact manifest | Implemented | v0.76 | `ranking`, `release`, `audit` | `contextdb eval ranking --baseline-manifest-out` writes artifact inventory JSON with bytes and SHA-256 hashes |
 | Ranking baseline artifact manifest verify | Implemented | v0.80 | `ranking`, `release`, `audit` | `contextdb eval ranking baseline manifest verify --manifest` verifies inventory paths, byte sizes, and SHA-256 hashes |
+| Ranking baseline manifest verification Markdown | Implemented | v0.84 | `ranking`, `release`, `audit` | `contextdb eval ranking baseline manifest verify --markdown-out` writes compact verification recaps |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
@@ -110,5 +111,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Ranking baseline manifest summary export for CI release notes.
-3. Retry fatigue preset API schema fixture for REST/SDK parity.
+2. Retry fatigue preset API schema fixture for REST/SDK parity.
+3. Doctor backup receipt runbook lane for repair closure checklists.

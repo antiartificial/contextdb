@@ -1581,6 +1581,35 @@ func TestVerifyRankingEvalBaselineArtifactManifest(t *testing.T) {
 	is.Equal(report.MissingArtifacts, 1)
 }
 
+func TestBuildRankingEvalBaselineArtifactManifestVerifyMarkdown(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	files := map[string]string{
+		"ranking-eval-v0.61.0.json": `{"version":"0.61.0"}`,
+		"ranking-eval-v0.61.0.md":   "# v0.61.0\n",
+		"ranking-eval-v0.62.0.json": `{"version":"0.62.0"}`,
+	}
+	for name, content := range files {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+	is.NoErr(err)
+
+	markdown := buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report)
+
+	is.True(strings.Contains(markdown, "# Ranking Baseline Manifest Verification"))
+	is.True(strings.Contains(markdown, "- Status: `passed`"))
+	is.True(strings.Contains(markdown, "Artifacts: `4` total, `3` verified, `1` expected missing"))
+	is.True(strings.Contains(markdown, "| `v0.62.0` | `json` | `retain` | `verified` |"))
+	is.True(strings.Contains(markdown, "| `v0.62.0` | `markdown` | `retain` | `expected missing` |"))
+}
+
 func TestVerifyRankingEvalBaselineArtifactManifestDetectsHashDrift(t *testing.T) {
 	is := is.New(t)
 	dir := t.TempDir()
