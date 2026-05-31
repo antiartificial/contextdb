@@ -57,6 +57,16 @@ contextdb doctor --backup-marker /var/lib/contextdb/.last-backup --max-backup-ag
 
 The JSON report includes a `backup_readiness` check with the observed marker age.
 
+If your lifecycle index metadata is published for Norn or another ops surface, add a published catalog freshness check to the same doctor report:
+
+```bash
+contextdb doctor \
+  --published-backup-url https://ops.example/contextdb/lifecycle-index.json \
+  --max-published-backup-age 24h
+```
+
+The check fetches the published metadata, validates its `generated_at`, and reports `published_backup_freshness` without downloading backup contents.
+
 ### Store Consistency
 
 Add `--store-consistency` when doctor runs on the same host and environment as the local contextdb data directory:

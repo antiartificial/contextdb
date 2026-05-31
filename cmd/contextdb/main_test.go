@@ -1022,6 +1022,54 @@ func TestBuildSnapshotLifecycleIndexPublishFreshnessReportStale(t *testing.T) {
 	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "exceeds max age"))
 }
 
+func TestBuildPublishedBackupFreshnessCheck(t *testing.T) {
+	is := is.New(t)
+	payload := snapshotLifecycleIndexPublishPayload{
+		Kind:        "contextdb.lifecycle.index",
+		GeneratedAt: "2026-06-01T11:30:00Z",
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Header.Get("Authorization"), "Bearer index-token")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer srv.Close()
+
+	check := buildPublishedBackupFreshnessCheck(context.Background(), srv.Client(), snapshotLifecycleIndexPublishFreshnessOptions{
+		PublishedURL: srv.URL,
+		Token:        "index-token",
+		MaxAge:       time.Hour,
+		Now:          time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.True(check.OK)
+	is.Equal(check.Name, "published_backup_freshness")
+	is.True(strings.Contains(check.Detail, "age_seconds=1800"))
+	is.True(strings.Contains(check.Detail, "max_age_seconds=3600"))
+}
+
+func TestBuildPublishedBackupFreshnessCheckReportsStale(t *testing.T) {
+	is := is.New(t)
+	payload := snapshotLifecycleIndexPublishPayload{
+		Kind:        "contextdb.lifecycle.index",
+		GeneratedAt: "2026-06-01T10:30:00Z",
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(snapshotLifecycleIndexPublishReport{Payload: payload})
+	}))
+	defer srv.Close()
+
+	check := buildPublishedBackupFreshnessCheck(context.Background(), srv.Client(), snapshotLifecycleIndexPublishFreshnessOptions{
+		PublishedURL: srv.URL,
+		MaxAge:       time.Hour,
+		Now:          time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.True(!check.OK)
+	is.Equal(check.Name, "published_backup_freshness")
+	is.True(strings.Contains(check.Detail, "age_seconds=5400"))
+	is.True(strings.Contains(check.Detail, "exceeds max age"))
+}
+
 func TestBuildRankingEvalSnapshotReport(t *testing.T) {
 	is := is.New(t)
 

@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.56.0"
+	Version = "0.57.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.56.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.57.0",
 	}
 }
 
@@ -57,6 +57,7 @@ func Features() []Feature {
 		{Name: "doctor-sample-write", Status: "stable", Since: "v0.4.1", Description: "Opt-in doctor write/retrieve probe for live REST deployments."},
 		{Name: "doctor-store-consistency", Status: "stable", Since: "v0.49.0", Description: "Opt-in local doctor check samples graph nodes and reports vector rebuild candidates."},
 		{Name: "doctor-kv-consistency", Status: "stable", Since: "v0.54.0", Description: "Opt-in doctor KV hot-key sampling reports missing cache refresh candidates."},
+		{Name: "doctor-published-backup-freshness", Status: "stable", Since: "v0.57.0", Description: "Opt-in doctor check verifies published backup catalog freshness with a max age."},
 		{Name: "vector-index-repair", Status: "stable", Since: "v0.50.0", Description: "Dry-run-first CLI repair reindexes reviewed vector rebuild candidates from graph nodes."},
 		{Name: "feedback-event-log", Status: "stable", Since: "v0.5.0", Description: "Durable feedback audit events exposed through the Go SDK, REST, and GraphQL."},
 		{Name: "source-trust-timeline", Status: "stable", Since: "v0.6.0", Description: "Source credibility timeline points derived from durable feedback events."},

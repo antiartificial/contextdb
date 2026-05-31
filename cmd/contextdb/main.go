@@ -2480,6 +2480,25 @@ func buildKVConsistencyCheck(ctx context.Context, kv store.KVStore, keys []strin
 	return doctor.CheckResult{Name: "kv_consistency", OK: true, Detail: detail}
 }
 
+func buildPublishedBackupFreshnessCheck(ctx context.Context, client *http.Client, opts snapshotLifecycleIndexPublishFreshnessOptions) doctor.CheckResult {
+	report, err := buildSnapshotLifecycleIndexPublishFreshnessReport(ctx, client, opts)
+	detail := fmt.Sprintf("url=%s status=%s generated_at=%s age_seconds=%d max_age_seconds=%d",
+		report.PublishedURL,
+		report.Status,
+		report.GeneratedAt,
+		report.AgeSeconds,
+		report.MaxAgeSeconds)
+	if err != nil {
+		if len(report.ValidationErrors) > 0 {
+			detail += ": " + strings.Join(report.ValidationErrors, "; ")
+		} else {
+			detail += ": " + err.Error()
+		}
+		return doctor.CheckResult{Name: "published_backup_freshness", OK: false, Detail: strings.TrimSpace(detail)}
+	}
+	return doctor.CheckResult{Name: "published_backup_freshness", OK: true, Detail: strings.TrimSpace(detail)}
+}
+
 func buildVectorIndexRepairReport(ctx context.Context, graph store.GraphStore, vecs store.VectorIndex, namespace string, sampleLimit int, execute bool) (vectorIndexRepairReport, error) {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
@@ -3471,6 +3490,11 @@ func runDoctor(args []string) {
 	sampleNamespace := fs.String("sample-namespace", "_doctor", "namespace to use with --sample-write")
 	backupMarker := fs.String("backup-marker", "", "path to a backup marker file to check for recency")
 	maxBackupAge := fs.Duration("max-backup-age", 24*time.Hour, "maximum acceptable age for --backup-marker")
+	publishedBackupURL := fs.String("published-backup-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL"), "published backup index metadata URL to check for freshness")
+	publishedBackupMethod := fs.String("published-backup-method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_METHOD", http.MethodGet), "HTTP method for fetching published backup metadata")
+	publishedBackupToken := fs.String("published-backup-token", os.Getenv("NORN_TOKEN"), "optional bearer token for the published backup metadata endpoint")
+	maxPublishedBackupAge := fs.Duration("max-published-backup-age", 24*time.Hour, "maximum acceptable age for --published-backup-url")
+	publishedBackupTimeout := fs.Duration("published-backup-timeout", 5*time.Second, "published backup metadata request timeout")
 	storeConsistency := fs.Bool("store-consistency", false, "check local graph, vector, and fingerprint consistency")
 	storeNamespace := fs.String("store-namespace", "default", "namespace to check with --store-consistency")
 	storeSample := fs.Int("store-sample", 100, "maximum valid graph nodes to sample with --store-consistency")
@@ -3488,6 +3512,24 @@ func runDoctor(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb doctor: %v\n", err)
 		os.Exit(2)
+	}
+	if strings.TrimSpace(*publishedBackupURL) != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), *publishedBackupTimeout)
+		defer cancel()
+		report.Checks = append(report.Checks, buildPublishedBackupFreshnessCheck(ctx, http.DefaultClient, snapshotLifecycleIndexPublishFreshnessOptions{
+			PublishedURL: *publishedBackupURL,
+			Method:       *publishedBackupMethod,
+			Token:        *publishedBackupToken,
+			MaxAge:       *maxPublishedBackupAge,
+			Now:          time.Now(),
+		}))
+		report.OK = true
+		for _, check := range report.Checks {
+			if !check.OK {
+				report.OK = false
+				break
+			}
+		}
 	}
 	if *storeConsistency || len(kvKeys) > 0 {
 		db := openSnapshotDB()

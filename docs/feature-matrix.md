@@ -35,6 +35,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb doctor --backup-marker` | Implemented, opt-in readiness check | v0.10 | `operations`, `backup`, `durability` | CLI verifies a backup marker file exists and is newer than `--max-backup-age` |
 | `contextdb doctor --store-consistency` | Implemented, opt-in local check | v0.49 | `operations`, `durability` | CLI samples valid graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
 | `contextdb doctor --kv-key` | Implemented, opt-in local check | v0.54 | `operations`, `durability` | CLI samples expected KV hot keys and reports missing cache refresh candidates |
+| `contextdb doctor --published-backup-url` | Implemented, opt-in readiness check | v0.57 | `operations`, `backup`, `durability` | CLI reuses published backup catalog freshness checks inside the combined doctor report |
 | `contextdb repair vector-index` | Implemented, dry-run first | v0.50 | `operations`, `durability` | CLI reports vector rebuild candidates and reindexes reviewed graph-node vectors only with `--execute` |
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
@@ -84,4 +85,4 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
 2. KV refresh plan execution for reviewed missing hot keys.
-3. Backup freshness doctor integration for combined operator health checks.
+3. Retry fatigue owner grouping for workload-specific handoff pressure.
