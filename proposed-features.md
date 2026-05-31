@@ -187,6 +187,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Backup lifecycle retention report | Implemented | `contextdb snapshot lifecycle retention --dir PATH --namespace NAME --keep N --report` groups lifecycle bundles and marks newest artifacts to keep versus older pruneable bundles without deleting files |
 
+## Completed In v0.31.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Backup retention delete plan | Implemented | `contextdb snapshot lifecycle retention --emit-delete-script` prints reviewed `rm -- ...` commands for existing artifacts in pruneable bundles without deleting files |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -224,6 +230,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup lifecycle bundle | Gives operators one copyable backup-to-promotion workflow | Completed in v0.28.0 with guarded lifecycle script and summary output |
 | Lifecycle summary verifier | Checks the end-to-end artifact bundle after lifecycle scripts run | Completed in v0.29.0 with `contextdb snapshot lifecycle verify --summary --report` |
 | Backup lifecycle retention report | Helps operators decide which verified bundles can be pruned | Completed in v0.30.0 with dry-run retention reports grouped by lifecycle summary |
+| Backup retention delete plan | Converts retention review into shell commands without deleting files | Completed in v0.31.0 with `contextdb snapshot lifecycle retention --emit-delete-script` |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -460,7 +467,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Backup retention delete plan | Retention reports are dry-run; operators may eventually want a generated deletion script | Add an explicit `--emit-delete-script` option that prints commands but still does not delete files |
+| Backup retention delete plan | Retention reports are dry-run; operators may eventually want a generated deletion script | Completed in v0.31.0 with `contextdb snapshot lifecycle retention --emit-delete-script` |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.31.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Backup lifecycle manifest index | Retention reports scan a directory each time; operators may want one compact index of known bundles | Add a command that writes `contextdb-backups.index.json` with bundle timestamps, namespaces, decisions, and artifact hashes |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |

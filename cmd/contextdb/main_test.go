@@ -571,6 +571,7 @@ func TestBuildSnapshotLifecycleRetentionReport(t *testing.T) {
 	is.Equal(len(report.Bundles[0].Artifacts), 6)
 	is.True(report.Bundles[0].Artifacts[0].Exists)
 	is.Equal(report.Bundles[0].Artifacts[0].Kind, "summary")
+	is.True(len(report.DeleteCommands) > 0)
 }
 
 func TestBuildSnapshotLifecycleRetentionReportFiltersNamespace(t *testing.T) {
@@ -595,6 +596,22 @@ func TestBuildSnapshotLifecycleRetentionReportRejectsInvalidKeep(t *testing.T) {
 	is.True(err != nil)
 	is.True(!report.OK)
 	is.True(len(report.ValidationErrors) > 0)
+}
+
+func TestBuildSnapshotLifecycleDeleteScript(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	writeLifecycleFixture(t, dir, "prod", "2026-05-31T23:30:00Z", false)
+
+	report, err := buildSnapshotLifecycleRetentionReport(dir, "prod", 1)
+	is.NoErr(err)
+	script := buildSnapshotLifecycleDeleteScript(report)
+
+	is.True(strings.HasPrefix(script, "#!/usr/bin/env bash\n"))
+	is.True(strings.Contains(script, "rm -- "))
+	is.True(strings.Contains(script, "prod-20260530T233000.lifecycle.json"))
+	is.True(!strings.Contains(script, "prod-20260531T233000.lifecycle.json"))
 }
 
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {

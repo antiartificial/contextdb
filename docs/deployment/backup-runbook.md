@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.30.0",
+  "contextdb_version": "0.31.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -300,6 +300,18 @@ contextdb snapshot lifecycle retention \
 ```
 
 The retention report scans `*.lifecycle.json` summaries, groups each lifecycle summary with its backup, manifest, rehearsal, promotion, and receipt-check artifacts, then marks the newest bundles as `keep` and older bundles as `pruneable`. It does not delete files.
+
+When you want a reviewable cleanup plan, emit a shell script instead of JSON:
+
+```bash
+contextdb snapshot lifecycle retention \
+  --dir "$CONTEXTDB_BACKUP_DIR" \
+  --namespace "$CONTEXTDB_NAMESPACE" \
+  --keep 14 \
+  --emit-delete-script
+```
+
+The generated script contains only `rm -- ...` commands for existing artifacts in `pruneable` bundles. Review it before running it; contextdb still does not delete files.
 
 A local cleanup pass can then remove old namespace backups after a successful export, lifecycle verification, off-host copy, and retention review:
 
