@@ -1715,6 +1715,101 @@ func TestWriteRankingEvalBaselineArtifactManifestVerifyBundle(t *testing.T) {
 	is.True(index.Artifacts[0].SHA256 != "")
 }
 
+func TestVerifyRankingEvalBaselineArtifactManifestVerifyBundleIndex(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	files := map[string]string{
+		"ranking-eval-v0.61.0.json": `{"version":"0.61.0"}`,
+		"ranking-eval-v0.61.0.md":   "# v0.61.0\n",
+	}
+	for name, content := range files {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+	is.NoErr(err)
+	bundleDir := filepath.Join(dir, "verification-bundle")
+	is.NoErr(writeRankingEvalBaselineArtifactManifestVerifyBundle(bundleDir, report))
+
+	verifyReport, err := verifyRankingEvalBaselineArtifactManifestVerifyBundleIndex(filepath.Join(bundleDir, "ranking-baseline-manifest-verification-index.json"))
+
+	is.NoErr(err)
+	is.True(verifyReport.OK)
+	is.Equal(verifyReport.Status, "passed")
+	is.Equal(verifyReport.TotalArtifacts, 3)
+	is.Equal(verifyReport.VerifiedArtifacts, 3)
+}
+
+func TestVerifyRankingEvalBaselineArtifactManifestVerifyBundleIndexDetectsArtifactDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	files := map[string]string{
+		"ranking-eval-v0.61.0.json": `{"version":"0.61.0"}`,
+		"ranking-eval-v0.61.0.md":   "# v0.61.0\n",
+	}
+	for name, content := range files {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+	is.NoErr(err)
+	bundleDir := filepath.Join(dir, "verification-bundle")
+	is.NoErr(writeRankingEvalBaselineArtifactManifestVerifyBundle(bundleDir, report))
+	is.NoErr(os.WriteFile(filepath.Join(bundleDir, "ranking-baseline-manifest-verification.md"), []byte("# changed\n"), 0o644))
+
+	verifyReport, err := verifyRankingEvalBaselineArtifactManifestVerifyBundleIndex(filepath.Join(bundleDir, "ranking-baseline-manifest-verification-index.json"))
+
+	is.True(err != nil)
+	is.True(!verifyReport.OK)
+	is.True(strings.Contains(strings.Join(verifyReport.ValidationErrors, "\n"), "artifact sha256 mismatch"))
+}
+
+func TestVerifyRankingEvalBaselineArtifactManifestVerifyBundleIndexDetectsJSONStatusDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	files := map[string]string{
+		"ranking-eval-v0.61.0.json": `{"version":"0.61.0"}`,
+		"ranking-eval-v0.61.0.md":   "# v0.61.0\n",
+	}
+	for name, content := range files {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+	is.NoErr(err)
+	bundleDir := filepath.Join(dir, "verification-bundle")
+	is.NoErr(writeRankingEvalBaselineArtifactManifestVerifyBundle(bundleDir, report))
+	indexPath := filepath.Join(bundleDir, "ranking-baseline-manifest-verification-index.json")
+	indexData, err := os.ReadFile(indexPath)
+	is.NoErr(err)
+	var index rankingEvalBaselineArtifactManifestVerifyBundleIndex
+	is.NoErr(json.Unmarshal(indexData, &index))
+	index.OK = false
+	index.Status = "failed"
+	is.NoErr(writeJSONFile(indexPath, index))
+
+	verifyReport, err := verifyRankingEvalBaselineArtifactManifestVerifyBundleIndex(indexPath)
+
+	is.True(err != nil)
+	is.True(!verifyReport.OK)
+	is.True(strings.Contains(strings.Join(verifyReport.ValidationErrors, "\n"), "does not match JSON report ok=true"))
+}
+
 func TestBuildRankingEvalBaselineDeleteScript(t *testing.T) {
 	is := is.New(t)
 

@@ -542,6 +542,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking/debugger search integration | Implemented | `/admin/api/search?ns=NS&q=QUERY&limit=N` finds recent valid graph nodes by text, source, label, or ID and the admin UI can open results in the belief debugger |
 
+## Completed In v0.90.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking baseline bundle index verifier | Implemented | `contextdb eval ranking baseline manifest bundle verify --index PATH --report` re-hashes verification bundle artifacts and confirms index status matches the JSON report |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1078,11 +1084,10 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.89.0
+## Fresh Brainstorm After v0.90.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Ranking baseline bundle index verifier | Bundle indexes now point to report artifacts, but downstream jobs may want integrity checks | Add a verifier that re-hashes the bundle files and confirms the index status matches the JSON report |
 | Retry fatigue preset API schema fixture | Preset docs now have drift coverage, but API examples could use a small schema fixture | Add a test fixture for retry fatigue preset JSON fields across SDK and REST |
 | Doctor backup receipt runbook lane | Receipt verification is in doctor, but teams may want a full incident checklist | Add a deployment recipe combining freshness, drift, receipt verify, and repair closure |
 | KV derived refresh receipt verifier | Refresh receipts now exist, but incident review may need later integrity checks | Add a verifier that recomputes report/value hash and checks written-key doctor commands |

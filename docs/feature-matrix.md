@@ -86,6 +86,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Ranking manifest failure annotations | Implemented | v0.85 | `ranking`, `release`, `ci` | `contextdb eval ranking baseline manifest verify --annotations` and `--annotations-out` emit CI annotation lines for failed artifacts |
 | Ranking manifest annotation workflow docs | Implemented | v0.86 | `ranking`, `release`, `ci` | Deployment docs include a GitHub Actions recipe for JSON, Markdown, and annotation artifacts |
 | Ranking baseline verification bundle | Implemented | v0.87 | `ranking`, `release`, `audit` | `contextdb eval ranking baseline manifest verify --bundle-dir DIR` writes JSON, Markdown, and annotation files with stable names |
+| Ranking bundle index verifier | Implemented | v0.90 | `ranking`, `release`, `audit` | `contextdb eval ranking baseline manifest bundle verify --index PATH` re-hashes bundle artifacts and checks JSON report status consistency |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
@@ -114,6 +115,6 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 ## Next Candidates
 
-1. Ranking baseline bundle index verifier for CI integrity checks.
-2. Retry fatigue preset API schema fixture for REST/SDK parity.
-3. Doctor backup receipt runbook lane for repair closure checklists.
+1. Retry fatigue preset API schema fixture for REST/SDK parity.
+2. Doctor backup receipt runbook lane for repair closure checklists.
+3. KV derived refresh receipt verifier for incident evidence.

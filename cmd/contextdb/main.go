@@ -289,6 +289,8 @@ func runEvalRankingBaselineManifest(args []string) {
 	switch args[0] {
 	case "verify":
 		runEvalRankingBaselineManifestVerify(args[1:])
+	case "bundle":
+		runEvalRankingBaselineManifestBundle(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -341,6 +343,39 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 		os.Exit(1)
 	}
 	if !*reportOut && !*markdownOut && strings.TrimSpace(*markdownOutPath) == "" && !*annotationsOut && strings.TrimSpace(*annotationsOutPath) == "" && strings.TrimSpace(*bundleDir) == "" {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runEvalRankingBaselineManifestBundle(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb eval ranking baseline manifest bundle: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runEvalRankingBaselineManifestBundleVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest bundle: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runEvalRankingBaselineManifestBundleVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb eval ranking baseline manifest bundle verify", flag.ExitOnError)
+	indexPath := fs.String("index", "", "ranking baseline verification bundle index JSON to verify")
+	reportOut := fs.Bool("report", false, "print a JSON ranking baseline verification bundle report")
+	_ = fs.Parse(args)
+
+	report, err := verifyRankingEvalBaselineArtifactManifestVerifyBundleIndex(*indexPath)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest bundle verify: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
 		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
@@ -1559,6 +1594,34 @@ type rankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact struct {
 	Path   string `json:"path"`
 	Bytes  int64  `json:"bytes"`
 	SHA256 string `json:"sha256"`
+}
+
+type rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReport struct {
+	OK                    bool                                                                   `json:"ok"`
+	IndexFile             string                                                                 `json:"index_file"`
+	IndexKind             string                                                                 `json:"index_kind,omitempty"`
+	SchemaVersion         int                                                                    `json:"schema_version,omitempty"`
+	GeneratedAt           string                                                                 `json:"generated_at,omitempty"`
+	Status                string                                                                 `json:"status,omitempty"`
+	BundleOK              bool                                                                   `json:"bundle_ok"`
+	ManifestFile          string                                                                 `json:"manifest_file,omitempty"`
+	ContextDBVersion      string                                                                 `json:"contextdb_version,omitempty"`
+	TotalArtifacts        int                                                                    `json:"total_artifacts"`
+	VerifiedArtifacts     int                                                                    `json:"verified_artifacts"`
+	ValidationErrors      []string                                                               `json:"validation_errors,omitempty"`
+	ArtifactVerifications []rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReportItem `json:"artifact_verifications"`
+}
+
+type rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReportItem struct {
+	Kind             string   `json:"kind"`
+	Path             string   `json:"path"`
+	ResolvedPath     string   `json:"resolved_path,omitempty"`
+	Exists           bool     `json:"exists"`
+	ExpectedBytes    int64    `json:"expected_bytes,omitempty"`
+	ActualBytes      int64    `json:"actual_bytes,omitempty"`
+	ExpectedSHA256   string   `json:"expected_sha256,omitempty"`
+	ActualSHA256     string   `json:"actual_sha256,omitempty"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
 }
 
 type rankingEvalBaselineVersion struct {
@@ -3294,6 +3357,172 @@ func buildRankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact(kind, pat
 		Bytes:  int64(len(data)),
 		SHA256: hex.EncodeToString(sum[:]),
 	}, nil
+}
+
+func verifyRankingEvalBaselineArtifactManifestVerifyBundleIndex(indexPath string) (rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReport, error) {
+	indexPath = strings.TrimSpace(indexPath)
+	report := rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReport{
+		IndexFile: indexPath,
+	}
+	if indexPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--index is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read ranking baseline verification bundle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	var index rankingEvalBaselineArtifactManifestVerifyBundleIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode ranking baseline verification bundle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.IndexKind = index.Kind
+	report.SchemaVersion = index.SchemaVersion
+	report.GeneratedAt = index.GeneratedAt
+	report.Status = index.Status
+	report.BundleOK = index.OK
+	report.ManifestFile = index.ManifestFile
+	report.ContextDBVersion = index.ContextDBVersion
+	report.TotalArtifacts = len(index.Artifacts)
+	if index.Kind != "contextdb.ranking.baseline.verification_bundle" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported bundle index kind %q", index.Kind))
+	}
+	if index.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported bundle index schema_version %d", index.SchemaVersion))
+	}
+	expectedStatus := "failed"
+	if index.OK {
+		expectedStatus = "passed"
+	}
+	if index.Status != expectedStatus {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("bundle index status %q does not match ok=%t", index.Status, index.OK))
+	}
+
+	seenKinds := map[string]bool{}
+	var jsonReport *rankingEvalBaselineArtifactManifestVerifyReport
+	for _, artifact := range index.Artifacts {
+		item := verifyRankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact(indexPath, artifact)
+		seenKinds[item.Kind] = true
+		if len(item.ValidationErrors) == 0 {
+			report.VerifiedArtifacts++
+		} else {
+			for _, validationErr := range item.ValidationErrors {
+				report.ValidationErrors = append(report.ValidationErrors, bundleIndexValidationPrefix(item, validationErr))
+			}
+		}
+		if artifact.Kind == "json_report" && len(item.ValidationErrors) == 0 {
+			parsed, parseErr := readRankingEvalBaselineArtifactManifestVerifyBundleJSONReport(item.ResolvedPath)
+			if parseErr != nil {
+				msg := parseErr.Error()
+				item.ValidationErrors = append(item.ValidationErrors, msg)
+				report.ValidationErrors = append(report.ValidationErrors, bundleIndexValidationPrefix(item, msg))
+				report.VerifiedArtifacts--
+			} else {
+				jsonReport = &parsed
+			}
+		}
+		report.ArtifactVerifications = append(report.ArtifactVerifications, item)
+	}
+	for _, requiredKind := range []string{"json_report", "markdown_summary", "ci_annotations"} {
+		if !seenKinds[requiredKind] {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("bundle index missing %s artifact", requiredKind))
+		}
+	}
+	if jsonReport != nil {
+		if jsonReport.OK != index.OK {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("bundle index ok=%t does not match JSON report ok=%t", index.OK, jsonReport.OK))
+		}
+		if strings.TrimSpace(index.ManifestFile) != "" && strings.TrimSpace(jsonReport.ManifestFile) != "" && index.ManifestFile != jsonReport.ManifestFile {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("bundle index manifest_file %q does not match JSON report manifest_file %q", index.ManifestFile, jsonReport.ManifestFile))
+		}
+		if strings.TrimSpace(index.ContextDBVersion) != "" && strings.TrimSpace(jsonReport.ContextDBVersion) != "" && index.ContextDBVersion != jsonReport.ContextDBVersion {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("bundle index contextdb_version %q does not match JSON report contextdb_version %q", index.ContextDBVersion, jsonReport.ContextDBVersion))
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("ranking baseline verification bundle index failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func verifyRankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact(indexPath string, artifact rankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact) rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReportItem {
+	item := rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReportItem{
+		Kind:           artifact.Kind,
+		Path:           artifact.Path,
+		ExpectedBytes:  artifact.Bytes,
+		ExpectedSHA256: artifact.SHA256,
+	}
+	if strings.TrimSpace(item.Kind) == "" {
+		item.ValidationErrors = append(item.ValidationErrors, "artifact kind is empty")
+	}
+	path := strings.TrimSpace(artifact.Path)
+	if path == "" {
+		item.ValidationErrors = append(item.ValidationErrors, "artifact path is empty")
+		return item
+	}
+	resolvedPath := resolveRankingEvalBaselineVerificationBundleArtifactPath(indexPath, path)
+	item.ResolvedPath = resolvedPath
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("stat artifact: %v", err))
+		return item
+	}
+	if info.IsDir() {
+		item.ValidationErrors = append(item.ValidationErrors, "artifact path is a directory")
+		return item
+	}
+	content, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("read artifact: %v", err))
+		return item
+	}
+	sum := sha256.Sum256(content)
+	item.Exists = true
+	item.ActualBytes = int64(len(content))
+	item.ActualSHA256 = hex.EncodeToString(sum[:])
+	if artifact.Bytes != item.ActualBytes {
+		item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("artifact byte size mismatch: expected %d got %d", artifact.Bytes, item.ActualBytes))
+	}
+	if !strings.EqualFold(strings.TrimSpace(artifact.SHA256), item.ActualSHA256) {
+		item.ValidationErrors = append(item.ValidationErrors, "artifact sha256 mismatch")
+	}
+	return item
+}
+
+func resolveRankingEvalBaselineVerificationBundleArtifactPath(indexPath, artifactPath string) string {
+	if filepath.IsAbs(artifactPath) {
+		return artifactPath
+	}
+	if _, err := os.Stat(artifactPath); err == nil {
+		return artifactPath
+	}
+	return filepath.Join(filepath.Dir(indexPath), filepath.Base(artifactPath))
+}
+
+func readRankingEvalBaselineArtifactManifestVerifyBundleJSONReport(path string) (rankingEvalBaselineArtifactManifestVerifyReport, error) {
+	var report rankingEvalBaselineArtifactManifestVerifyReport
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return report, fmt.Errorf("read JSON report: %w", err)
+	}
+	if err := json.Unmarshal(data, &report); err != nil {
+		return report, fmt.Errorf("decode JSON report: %w", err)
+	}
+	return report, nil
+}
+
+func bundleIndexValidationPrefix(item rankingEvalBaselineArtifactManifestVerifyBundleIndexVerifyReportItem, msg string) string {
+	label := strings.TrimSpace(item.Kind)
+	if label == "" {
+		label = "artifact"
+	}
+	if strings.TrimSpace(item.Path) != "" {
+		return fmt.Sprintf("%s %s: %s", label, item.Path, msg)
+	}
+	return fmt.Sprintf("%s: %s", label, msg)
 }
 
 func artifactManifestValidationPrefix(item rankingEvalBaselineArtifactManifestVerifyReportItem, msg string) string {
