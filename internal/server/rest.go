@@ -59,6 +59,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/retry", s.handleReviewHandoffWebhookRetry)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoff-webhooks/receipts", s.handleReviewHandoffWebhookReceipts)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoff-webhooks/retry-candidates", s.handleReviewHandoffWebhookRetryCandidates)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoff-webhooks/retry-recommendations", s.handleReviewHandoffWebhookRetryRecommendations)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalation-digests", s.handleReviewEscalationDigests)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/escalation-digests", s.handleRecordReviewEscalationDigest)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
@@ -302,6 +303,10 @@ type reviewHandoffDeliveryReceiptsResponse struct {
 
 type reviewHandoffRetryCandidatesResponse struct {
 	Candidates []client.ReviewHandoffRetryCandidate `json:"candidates"`
+}
+
+type reviewHandoffRetryRecommendationsResponse struct {
+	Recommendations []client.ReviewHandoffRetryRecommendation `json:"recommendations"`
 }
 
 type reviewDecisionsResponse struct {
@@ -992,6 +997,30 @@ func (s *RESTServer) handleReviewHandoffWebhookRetryCandidates(w http.ResponseWr
 		return
 	}
 	writeJSON(w, http.StatusOK, reviewHandoffRetryCandidatesResponse{Candidates: candidates})
+}
+
+func (s *RESTServer) handleReviewHandoffWebhookRetryRecommendations(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	var after time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
+			return
+		}
+		after = t
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	recommendations, err := h.ReviewHandoffRetryRecommendations(r.Context(), after, time.Time{})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewHandoffRetryRecommendationsResponse{Recommendations: recommendations})
 }
 
 func (s *RESTServer) handleRecordReviewEscalationDigest(w http.ResponseWriter, r *http.Request) {

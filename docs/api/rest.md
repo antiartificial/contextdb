@@ -26,6 +26,7 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/deliver` | Execute opted-in review handoff webhook deliveries |
 | `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/receipts` | List review handoff webhook delivery receipts |
 | `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry-candidates` | List unresolved failed handoff webhook deliveries |
+| `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry-recommendations` | List retry pacing recommendations for failed handoff webhook deliveries |
 | `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry` | Retry one unresolved failed handoff webhook delivery |
 | `GET` | `/v1/namespaces/{ns}/review/decisions` | Review workflow decision history |
 | `POST` | `/v1/namespaces/{ns}/review/decisions` | Record review assignment, snooze, or resolution |
@@ -209,9 +210,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.45.0",
+  "version": "0.46.0",
   "api_version": "v1",
-  "docs_version": "0.45.0",
+  "docs_version": "0.46.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -478,6 +479,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.45.0",
       "description": "Review handoff retry execution resends unresolved failed handoff deliveries with explicit operator control."
+    },
+    {
+      "name": "review-handoff-retry-backoff",
+      "status": "stable",
+      "since": "v0.46.0",
+      "description": "Review handoff retry backoff recommendations provide read-only pacing guidance from delivery receipt history."
     }
   ],
   "migrations": [
@@ -485,7 +492,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.45.0"
+  "release_notes_path": "/contextdb/releases/v0.46.0"
 }
 ```
 
@@ -846,6 +853,14 @@ curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-c
 ```
 
 Retry candidates group failed receipts by digest event and target URL, omit groups with a later success, and expose the last status, error, attempt count, and payload hash.
+
+List retry pacing recommendations without sending retries:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-recommendations"
+```
+
+Recommendations include the retry candidate fields plus `recommended_after`, `delay_seconds`, `ready`, and `reason`. The first failed attempt waits 60 seconds, later attempts use capped exponential backoff, and successful later receipts remove the recommendation.
 
 Retry one unresolved failed delivery explicitly:
 

@@ -447,6 +447,20 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(candidate["attempts"], float64(1))
 	is.Equal(candidate["last_status_code"], float64(http.StatusBadGateway))
 	is.True(candidate["last_error"].(string) != "")
+	reqRetryRecommendations := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-recommendations", nil)
+	wRetryRecommendations := httptest.NewRecorder()
+	handler.ServeHTTP(wRetryRecommendations, reqRetryRecommendations)
+	is.Equal(wRetryRecommendations.Code, http.StatusOK)
+	var retryRecommendationsResp map[string]any
+	is.NoErr(json.Unmarshal(wRetryRecommendations.Body.Bytes(), &retryRecommendationsResp))
+	recommendations := retryRecommendationsResp["recommendations"].([]any)
+	is.Equal(len(recommendations), 1)
+	recommendation := recommendations[0].(map[string]any)
+	is.Equal(recommendation["target_url"], failedWebhookTarget.URL)
+	is.Equal(recommendation["attempts"], float64(1))
+	is.Equal(recommendation["delay_seconds"], float64(60))
+	is.Equal(recommendation["ready"], false)
+	is.Equal(recommendation["reason"], "waiting_for_backoff")
 	failRESTWebhook = false
 	retryBody, _ := json.Marshal(map[string]any{
 		"digest_event_id": candidate["digest_event_id"],
@@ -914,6 +928,37 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(retryCandidate["targetUrl"], graphQLRetryTarget.URL)
 	is.Equal(retryCandidate["attempts"], float64(1))
 	is.Equal(retryCandidate["lastStatusCode"], float64(http.StatusBadGateway))
+	retryRecommendationsBody, _ := json.Marshal(map[string]any{
+		"query": `query {
+			reviewHandoffRetryRecommendations(namespace: "graphql-test") {
+				digestEventId
+				targetUrl
+				attempts
+				delaySeconds
+				ready
+				reason
+			}
+		}`,
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(retryRecommendationsBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql retry recommendation errors: %v", errs)
+	}
+	retryRecommendations := resp["data"].(map[string]any)["reviewHandoffRetryRecommendations"].([]any)
+	is.Equal(len(retryRecommendations), 1)
+	retryRecommendation := retryRecommendations[0].(map[string]any)
+	is.Equal(retryRecommendation["digestEventId"], retryCandidate["digestEventId"])
+	is.Equal(retryRecommendation["targetUrl"], graphQLRetryTarget.URL)
+	is.Equal(retryRecommendation["attempts"], float64(1))
+	is.Equal(retryRecommendation["delaySeconds"], float64(60))
+	is.Equal(retryRecommendation["ready"], false)
+	is.Equal(retryRecommendation["reason"], "waiting_for_backoff")
 	failGraphQLWebhook = false
 
 	retryWebhookBody, _ := json.Marshal(map[string]any{
@@ -1044,6 +1089,11 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				payloadSha256
 				lastError
 			}
+			reviewHandoffRetryRecommendations(namespace: "graphql-test") {
+				targetUrl
+				ready
+				reason
+			}
 			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
 				id
 				type
@@ -1159,6 +1209,8 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.True(graphQLReceipt["responseSha256"].(string) != "")
 	graphQLRetryCandidates := data["reviewHandoffRetryCandidates"].([]any)
 	is.Equal(len(graphQLRetryCandidates), 0)
+	graphQLRetryRecommendations := data["reviewHandoffRetryRecommendations"].([]any)
+	is.Equal(len(graphQLRetryRecommendations), 0)
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)

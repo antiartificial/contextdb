@@ -811,6 +811,15 @@ type ReviewHandoffRetryCandidate struct {
 	LastError       string    `json:"last_error,omitempty"`
 }
 
+// ReviewHandoffRetryRecommendation adds dry-run retry pacing guidance to a failed delivery candidate.
+type ReviewHandoffRetryRecommendation struct {
+	ReviewHandoffRetryCandidate
+	RecommendedAfter time.Time `json:"recommended_after"`
+	DelaySeconds     int       `json:"delay_seconds"`
+	Ready            bool      `json:"ready"`
+	Reason           string    `json:"reason"`
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -2149,6 +2158,55 @@ func (h *NamespaceHandle) ReviewHandoffRetryCandidates(ctx context.Context, afte
 		return out[i].LastAttemptAt.After(out[j].LastAttemptAt)
 	})
 	return out, nil
+}
+
+// ReviewHandoffRetryRecommendations returns read-only backoff guidance for unresolved failed handoff deliveries.
+func (h *NamespaceHandle) ReviewHandoffRetryRecommendations(ctx context.Context, after time.Time, now time.Time) ([]ReviewHandoffRetryRecommendation, error) {
+	candidates, err := h.ReviewHandoffRetryCandidates(ctx, after)
+	if err != nil {
+		return nil, err
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	out := make([]ReviewHandoffRetryRecommendation, 0, len(candidates))
+	for _, candidate := range candidates {
+		delay := reviewHandoffRetryBackoff(candidate.Attempts)
+		recommendedAfter := candidate.LastAttemptAt.Add(delay)
+		ready := !now.Before(recommendedAfter)
+		reason := "waiting_for_backoff"
+		if ready {
+			reason = "ready_for_operator_retry"
+		}
+		out = append(out, ReviewHandoffRetryRecommendation{
+			ReviewHandoffRetryCandidate: candidate,
+			RecommendedAfter:            recommendedAfter,
+			DelaySeconds:                int(delay.Seconds()),
+			Ready:                       ready,
+			Reason:                      reason,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Ready != out[j].Ready {
+			return out[i].Ready
+		}
+		return out[i].RecommendedAfter.Before(out[j].RecommendedAfter)
+	})
+	return out, nil
+}
+
+func reviewHandoffRetryBackoff(attempts int) time.Duration {
+	if attempts <= 1 {
+		return time.Minute
+	}
+	delay := time.Minute
+	for i := 1; i < attempts; i++ {
+		delay *= 2
+		if delay >= time.Hour {
+			return time.Hour
+		}
+	}
+	return delay
 }
 
 // Explain returns a narrative report explaining what is known about a node.

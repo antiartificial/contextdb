@@ -355,6 +355,24 @@ query {
 }
 ```
 
+List retry pacing recommendations without sending retries:
+
+```graphql
+query {
+  reviewHandoffRetryRecommendations(namespace: "my-app") {
+    digestEventId
+    targetUrl
+    attempts
+    recommendedAfter
+    delaySeconds
+    ready
+    reason
+  }
+}
+```
+
+Recommendations add read-only backoff guidance to retry candidates. They do not schedule or send retries.
+
 Retry one unresolved failed delivery explicitly:
 
 ```graphql

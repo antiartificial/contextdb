@@ -549,6 +549,21 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(retryCandidates[0].LastStatusCode, http.StatusBadGateway)
 	is.Equal(retryCandidates[0].PayloadSHA256, failed[0].PayloadSHA256)
 	is.True(retryCandidates[0].LastError != "")
+	recommendations, err := ns.ReviewHandoffRetryRecommendations(ctx, start, retryCandidates[0].LastAttemptAt)
+	is.NoErr(err)
+	is.Equal(len(recommendations), 1)
+	is.Equal(recommendations[0].DigestEventID, recordedDigest.EventID)
+	is.Equal(recommendations[0].TargetURL, failingServer.URL)
+	is.Equal(recommendations[0].Attempts, 1)
+	is.Equal(recommendations[0].DelaySeconds, 60)
+	is.Equal(recommendations[0].RecommendedAfter, retryCandidates[0].LastAttemptAt.Add(time.Minute))
+	is.Equal(recommendations[0].Ready, false)
+	is.Equal(recommendations[0].Reason, "waiting_for_backoff")
+	readyRecommendations, err := ns.ReviewHandoffRetryRecommendations(ctx, start, retryCandidates[0].LastAttemptAt.Add(2*time.Minute))
+	is.NoErr(err)
+	is.Equal(len(readyRecommendations), 1)
+	is.Equal(readyRecommendations[0].Ready, true)
+	is.Equal(readyRecommendations[0].Reason, "ready_for_operator_retry")
 	failDelivery = false
 	retry, err := ns.ReviewHandoffWebhookRetry(ctx, client.ReviewHandoffRetryRequest{
 		After:         start,

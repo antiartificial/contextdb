@@ -67,6 +67,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff delivery receipts | Implemented | v0.43 | `review`, `operations`, `audit` | Executed handoff webhooks append durable receipts with target URL, status, payload hash, response hash, and errors |
 | Review handoff retry candidates | Implemented | v0.44 | `review`, `operations`, `audit` | Failed handoff receipts are grouped by digest and target URL for retry review without sending retries |
 | Review handoff retry execution | Implemented | v0.45 | `review`, `operations`, `audit` | Failed handoff candidates can be resent explicitly by digest event ID and target URL with a new receipt recorded |
+| Review handoff retry backoff | Implemented | v0.46 | `review`, `operations`, `audit` | Failed handoff candidates include read-only retry pacing recommendations based on attempt history |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates

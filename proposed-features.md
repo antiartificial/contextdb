@@ -277,6 +277,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review handoff retry execution | Implemented | Go SDK, REST, and GraphQL resend one unresolved failed handoff delivery by digest event ID and target URL, require explicit `execute`, and record the retry receipt |
 
+## Completed In v0.46.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Review handoff retry backoff policy | Implemented | Go SDK, REST, and GraphQL expose read-only retry recommendations with recommended time, delay, readiness, and reason derived from receipt history |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -329,6 +335,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review handoff delivery receipts | Makes executed handoff delivery auditable | Completed in v0.43.0 with append-only receipt events and list APIs |
 | Review handoff retry queue | Helps operators identify failed handoff deliveries that still need action | Completed in v0.44.0 with read-only retry candidates |
 | Review handoff retry execution | Lets operators resend a reviewed failed handoff without introducing automatic background retries | Completed in v0.45.0 with explicit digest/target retry execution and receipt recording |
+| Review handoff retry backoff policy | Helps operators pace repeated retries without adding background scheduling | Completed in v0.46.0 with read-only recommendations from receipt history |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -705,7 +712,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Review handoff retry backoff policy | Explicit retry exists, but repeated failures still need operator-safe pacing guidance | Add a dry-run backoff recommendation from receipt history without scheduling sends |
+| Review handoff retry backoff policy | Explicit retry exists, but repeated failures still need operator-safe pacing guidance | Completed in v0.46.0 with dry-run backoff recommendations from receipt history |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.46.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+| Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need to see repeated failures by endpoint | Group retry recommendation counts by target URL and status family |
