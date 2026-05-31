@@ -212,9 +212,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.105.0",
+  "version": "0.106.0",
   "api_version": "v1",
-  "docs_version": "0.105.0",
+  "docs_version": "0.106.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -319,6 +319,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.105.0",
       "description": "Acquisition planner tasks can be previewed and executed through configured search or crawler connectors with source constraints."
+    },
+    {
+      "name": "acquisition-provider-connectors",
+      "status": "stable",
+      "since": "v0.106.0",
+      "description": "The connector server provides OpenAI, xAI, and Anthropic search/crawler adapters for acquisition execution."
     },
     {
       "name": "doctor-backup-readiness",
@@ -859,6 +865,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.105.0",
       "description": "Acquisition planner tasks can be previewed and executed through configured search or crawler connectors with source constraints."
+    },
+    {
+      "name": "acquisition-provider-connectors",
+      "status": "stable",
+      "since": "v0.106.0",
+      "description": "The connector server provides OpenAI, xAI, and Anthropic search/crawler adapters for acquisition execution."
     }
   ],
   "migrations": [
@@ -866,7 +878,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.105.0"
+  "release_notes_path": "/contextdb/releases/v0.106.0"
 }
 ```
 
@@ -1364,6 +1376,50 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/acquisition/execute \
 ```
 
 Add `"execute": true` only after reviewing the dry-run plan. During execution, contextdb sends each connector a JSON body containing `task_id`, `task_type`, `query`, `prompt`, `allowed_source_ids`, `max_results`, `connector_id`, and `connector_type`. Connectors should return either an array of items or `{ "items": [...] }` where each item may include `title`, `url`, `snippet`, `content`, `source_id`, `labels`, `confidence`, and `metadata`. Returned items outside the request/connector source allow-list are ignored before writes.
+
+### Provider Connector Server
+
+contextdb also ships first-party provider adapters that speak the same connector contract. Start them separately from the main contextdb API:
+
+```bash
+OPENAI_API_KEY=... \
+XAI_API_KEY=... \
+ANTHROPIC_API_KEY=... \
+contextdb connectors serve \
+  --addr :7780 \
+  --providers openai,xai,anthropic \
+  --allowed-domains docs.example.com,github.com
+```
+
+The server exposes:
+
+| Endpoint | Provider | Notes |
+|:---------|:---------|:------|
+| `POST /openai/search` | OpenAI | Uses the Responses API with web-search tooling |
+| `POST /xai/search` | xAI | Uses the xAI Responses-compatible API with web-search tooling |
+| `POST /anthropic/search` | Anthropic | Uses Messages with the web search tool |
+
+Then point acquisition execution at the local adapter:
+
+```json
+{
+  "budget": 2,
+  "max_results": 3,
+  "allowed_source_ids": ["openai:web"],
+  "connectors": [
+    {
+      "id": "openai-web",
+      "type": "search",
+      "endpoint": "http://localhost:7780/openai/search",
+      "allowed_source_ids": ["openai:web"],
+      "default_labels": ["acquired", "provider:openai"]
+    }
+  ]
+}
+```
+
+Provider defaults can be overridden with `CONTEXTDB_OPENAI_CONNECTOR_MODEL`, `CONTEXTDB_XAI_CONNECTOR_MODEL`, `CONTEXTDB_ANTHROPIC_CONNECTOR_MODEL`, `CONTEXTDB_OPENAI_BASE_URL`, `CONTEXTDB_XAI_BASE_URL`, and `CONTEXTDB_ANTHROPIC_BASE_URL`.
+Provider domain allow/block lists are mutually exclusive; pass only one of `--allowed-domains` or `--blocked-domains` for a connector server process.
 
 **Response:**
 

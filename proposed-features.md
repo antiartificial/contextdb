@@ -638,6 +638,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Knowledge acquisition execution connectors | Implemented | Go SDK, REST, TypeScript, and Python expose dry-run-first `/acquisition/execute` workflows for configured `search` and `crawler` connectors; execution requires explicit opt-in and writes only connector results that satisfy source allow-lists |
 
+## Completed In v0.106.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| First-party acquisition provider connectors | Implemented | `contextdb connectors serve` exposes OpenAI, xAI, and Anthropic search/crawler adapter endpoints that normalize provider web-search responses into acquisition connector items |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -655,7 +661,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Feedback event log | Makes validate/refute/useful/stale auditable as explicit events | Completed in v0.5.0; next step is source trust timeline views |
 | Claim review queue | Turns contradictions, low confidence, and stale claims into operator tasks | Completed in v0.7.0; durable workflow decisions completed in v0.12.0 |
 | Source trust timeline | Shows how source credibility changed over time | Completed in v0.6.0; anomaly review tasks completed in v0.13.0; debugger timeline visualization completed in v0.104.0; next step is exportable timeline evidence |
-| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Planner completed in v0.9.0; connector-specific dry-run and execution workflows completed in v0.105.0; next step is connector receipts and scheduled acquisition runs |
+| Knowledge acquisition planner | Converts knowledge gaps into suggested crawl/search/research tasks | Planner completed in v0.9.0; connector-specific dry-run and execution workflows completed in v0.105.0; provider adapters completed in v0.106.0; next step is connector receipts and scheduled acquisition runs |
 | Review workflow persistence | Tracks review status, owners, decisions, and re-check schedules | Completed in v0.12.0; reviewer filters completed in v0.15.0; next step is escalation rules |
 
 ## Durability And Operations
@@ -1210,3 +1216,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Scheduled acquisition runs | Operators will want recurring gap filling without hand-running previews | Add a dry-run schedule plan and explicit enablement for namespaces with reviewed connectors |
 | Connector result scoring | Not every crawler/search result should be ingested at the same confidence | Add optional connector-level confidence floors, result rank weighting, and duplicate-source suppression |
 | Acquisition-to-review handoff | Acquired evidence should often be reviewed before it affects belief | Add a mode that writes connector results into review queue candidates before validation |
+
+## Fresh Brainstorm After v0.106.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Provider connector receipts | Provider-backed search should be auditable like backup and webhook execution | Record provider, model, endpoint route, payload hash, response item hashes, and written node IDs |
+| Connector auth scopes | Provider adapters may be run as shared internal services | Add optional bearer token verification before provider routes accept connector calls |
+| Provider-specific citation enrichment | Providers expose citations differently | Preserve provider citation IDs, result titles, and URL-level snippets in item metadata |

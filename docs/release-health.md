@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.106.0 | Passed | Passed | Corpus coverage present | Provider connector normalization coverage added | CLI connector server and provider adapter tests added | Adds OpenAI, xAI, and Anthropic acquisition connector adapters |
 | v0.105.0 | Passed | Passed | Corpus coverage present | Source-constrained acquisition execution coverage added | Go SDK, REST, TypeScript, and Python connector surfaces added | Adds dry-run-first search/crawler acquisition connector workflows |
 | v0.104.0 | Passed | Passed | Corpus coverage present | Epistemics debugger coverage added | Admin belief API additive-envelope tests added | Adds source-trust timeline, contradiction path, and graph/source context visualizations |
 | v0.103.0 | Passed | Passed | Admin ranking eval API and dashboard coverage added | Corpus coverage present | Admin ranking API and embedded asset tests added | Adds first-class ranking evaluation dashboard with baseline comparison |
