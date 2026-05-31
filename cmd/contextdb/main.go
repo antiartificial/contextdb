@@ -499,6 +499,10 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 		runSnapshotLifecycleIndexPublishDrift(args[1:])
 		return
 	}
+	if len(args) > 0 && args[0] == "freshness" {
+		runSnapshotLifecycleIndexPublishFreshness(args[1:])
+		return
+	}
 	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish", flag.ExitOnError)
 	inPath := fs.String("in", "", "JSON lifecycle index to publish")
 	publishURL := fs.String("publish-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL"), "backup index metadata publish endpoint")
@@ -565,6 +569,41 @@ func runSnapshotLifecycleIndexPublishDrift(args []string) {
 		fmt.Fprintln(os.Stdout, "drift detected")
 	} else {
 		fmt.Fprintln(os.Stdout, "no drift")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishFreshness(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish freshness", flag.ExitOnError)
+	publishedURL := fs.String("published-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL"), "published backup index metadata URL")
+	method := fs.String("method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_METHOD", http.MethodGet), "HTTP method for fetching published metadata")
+	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the published metadata endpoint")
+	maxAge := fs.Duration("max-age", 24*time.Hour, "maximum acceptable age for published generated_at")
+	reportOut := fs.Bool("report", false, "print a JSON backup index publish freshness report")
+	timeout := fs.Duration("timeout", 5*time.Second, "published metadata request timeout")
+	_ = fs.Parse(args)
+
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	report, err := buildSnapshotLifecycleIndexPublishFreshnessReport(ctx, http.DefaultClient, snapshotLifecycleIndexPublishFreshnessOptions{
+		PublishedURL: *publishedURL,
+		Method:       *method,
+		Token:        *token,
+		MaxAge:       *maxAge,
+		Now:          time.Now(),
+	})
+	if err != nil {
+		if *reportOut && (report.PublishedURL != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish freshness: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if report.Fresh {
+		fmt.Fprintln(os.Stdout, "fresh")
+	} else {
+		fmt.Fprintln(os.Stdout, "stale")
 	}
 }
 
@@ -870,6 +909,14 @@ type snapshotLifecycleIndexPublishDriftOptions struct {
 	Token        string
 }
 
+type snapshotLifecycleIndexPublishFreshnessOptions struct {
+	PublishedURL string
+	Method       string
+	Token        string
+	MaxAge       time.Duration
+	Now          time.Time
+}
+
 type snapshotLifecycleIndex struct {
 	SchemaVersion    int                                `json:"schema_version"`
 	IndexFile        string                             `json:"index_file"`
@@ -961,6 +1008,20 @@ type snapshotLifecycleIndexPublishDriftReport struct {
 	LocalPayload     snapshotLifecycleIndexPublishPayload `json:"local_payload"`
 	PublishedPayload snapshotLifecycleIndexPublishPayload `json:"published_payload"`
 	Differences      []string                             `json:"differences,omitempty"`
+	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishFreshnessReport struct {
+	OK               bool                                 `json:"ok"`
+	Fresh            bool                                 `json:"fresh"`
+	PublishedURL     string                               `json:"published_url,omitempty"`
+	Method           string                               `json:"method,omitempty"`
+	Status           string                               `json:"status,omitempty"`
+	GeneratedAt      string                               `json:"generated_at,omitempty"`
+	CheckedAt        string                               `json:"checked_at"`
+	MaxAgeSeconds    int64                                `json:"max_age_seconds"`
+	AgeSeconds       int64                                `json:"age_seconds,omitempty"`
+	PublishedPayload snapshotLifecycleIndexPublishPayload `json:"published_payload"`
 	ValidationErrors []string                             `json:"validation_errors,omitempty"`
 }
 
@@ -1661,6 +1722,55 @@ func buildSnapshotLifecycleIndexPublishDriftReport(ctx context.Context, client *
 	report.OK = !report.Drift
 	if report.Drift {
 		return report, fmt.Errorf("published lifecycle index drift found: %s", strings.Join(report.Differences, "; "))
+	}
+	return report, nil
+}
+
+func buildSnapshotLifecycleIndexPublishFreshnessReport(ctx context.Context, client *http.Client, opts snapshotLifecycleIndexPublishFreshnessOptions) (snapshotLifecycleIndexPublishFreshnessReport, error) {
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	maxAge := opts.MaxAge
+	if maxAge <= 0 {
+		maxAge = 24 * time.Hour
+	}
+	report := snapshotLifecycleIndexPublishFreshnessReport{
+		PublishedURL:  strings.TrimSpace(opts.PublishedURL),
+		Method:        strings.ToUpper(strings.TrimSpace(opts.Method)),
+		CheckedAt:     now.UTC().Format(time.RFC3339),
+		MaxAgeSeconds: int64(maxAge.Seconds()),
+	}
+	if report.Method == "" {
+		report.Method = http.MethodGet
+	}
+	if report.PublishedURL == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--published-url or CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	published, status, err := fetchSnapshotLifecycleIndexPublishedPayload(ctx, client, report.PublishedURL, report.Method, opts.Token)
+	report.Status = status
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	report.PublishedPayload = published
+	generatedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(published.GeneratedAt))
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("published generated_at is invalid: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.GeneratedAt = generatedAt.UTC().Format(time.RFC3339)
+	age := now.Sub(generatedAt)
+	if age < 0 {
+		age = 0
+	}
+	report.AgeSeconds = int64(age.Seconds())
+	report.Fresh = age <= maxAge
+	report.OK = report.Fresh
+	if !report.Fresh {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("published generated_at age %s exceeds max age %s", age.Round(time.Second), maxAge.Round(time.Second)))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
 	}
 	return report, nil
 }

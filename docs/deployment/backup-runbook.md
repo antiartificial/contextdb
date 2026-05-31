@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.51.0",
+  "contextdb_version": "0.52.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -369,6 +369,18 @@ contextdb snapshot lifecycle index publish drift \
 ```
 
 Publish drift compares the local publish payload to the fetched published payload and exits non-zero when bundle counts, retention decisions, artifact counts, bytes, or indexed hash coverage differ.
+
+Check that the published backup catalog is fresh enough for operations dashboards:
+
+```bash
+contextdb snapshot lifecycle index publish freshness \
+  --published-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" \
+  --max-age 24h \
+  --token "$NORN_TOKEN" \
+  --report
+```
+
+Freshness reads the published payload only, compares its `generated_at` timestamp with `--max-age`, and exits non-zero when the publication is stale or malformed.
 
 A local cleanup pass can then remove old namespace backups after a successful export, lifecycle verification, off-host copy, and retention review:
 

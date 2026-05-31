@@ -969,6 +969,59 @@ func TestBuildSnapshotLifecycleIndexPublishDriftReportFindsDrift(t *testing.T) {
 	is.True(strings.Contains(strings.Join(report.Differences, "\n"), "decision differs"))
 }
 
+func TestBuildSnapshotLifecycleIndexPublishFreshnessReportFresh(t *testing.T) {
+	is := is.New(t)
+	payload := snapshotLifecycleIndexPublishPayload{
+		Kind:        "contextdb.lifecycle.index",
+		GeneratedAt: "2026-06-01T11:30:00Z",
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Method, http.MethodGet)
+		is.Equal(r.Header.Get("Authorization"), "Bearer index-token")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer srv.Close()
+
+	report, err := buildSnapshotLifecycleIndexPublishFreshnessReport(context.Background(), srv.Client(), snapshotLifecycleIndexPublishFreshnessOptions{
+		PublishedURL: srv.URL,
+		Token:        "index-token",
+		MaxAge:       time.Hour,
+		Now:          time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.Fresh)
+	is.Equal(report.Status, "200 OK")
+	is.Equal(report.GeneratedAt, "2026-06-01T11:30:00Z")
+	is.Equal(report.AgeSeconds, int64(1800))
+	is.Equal(report.MaxAgeSeconds, int64(3600))
+}
+
+func TestBuildSnapshotLifecycleIndexPublishFreshnessReportStale(t *testing.T) {
+	is := is.New(t)
+	payload := snapshotLifecycleIndexPublishPayload{
+		Kind:        "contextdb.lifecycle.index",
+		GeneratedAt: "2026-06-01T10:30:00Z",
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(snapshotLifecycleIndexPublishReport{Payload: payload})
+	}))
+	defer srv.Close()
+
+	report, err := buildSnapshotLifecycleIndexPublishFreshnessReport(context.Background(), srv.Client(), snapshotLifecycleIndexPublishFreshnessOptions{
+		PublishedURL: srv.URL,
+		MaxAge:       time.Hour,
+		Now:          time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(!report.Fresh)
+	is.Equal(report.AgeSeconds, int64(5400))
+	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "exceeds max age"))
+}
+
 func TestBuildRankingEvalSnapshotReport(t *testing.T) {
 	is := is.New(t)
 

@@ -313,6 +313,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Retry fatigue summary | Implemented | Go SDK, REST, and GraphQL group unresolved review handoff retry pressure by target endpoint with attempts, readiness, status families, and latest failure |
 
+## Completed In v0.52.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Backup publish freshness monitor | Implemented | `contextdb snapshot lifecycle index publish freshness --published-url URL --max-age 24h --report` checks published backup catalog `generated_at` age |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -357,6 +363,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Norn manifest publish | Lets operators validate and then publish the generated service entry | Completed in v0.35.0 with dry-run-first `contextdb norn publish` |
 | Backup index publish to Norn | Shares backup catalog state with ops tooling without moving backup contents | Completed in v0.36.0 with dry-run-first lifecycle index metadata publishing |
 | Backup publish drift watch | Detects whether published backup catalog metadata still matches the latest local lifecycle index | Completed in v0.47.0 with `contextdb snapshot lifecycle index publish drift` |
+| Backup publish freshness monitor | Detects stale published backup catalog metadata | Completed in v0.52.0 with read-only `contextdb snapshot lifecycle index publish freshness` |
 | Review escalation rules | Highlights assigned, due snoozed, and high-priority source anomaly tasks that have aged past thresholds | Completed in v0.37.0 with review queue escalation metadata |
 | Review escalation digest | Summarizes escalated review work for dashboards and handoffs | Completed in v0.38.0 with grouped digest APIs |
 | Review escalation digest export | Preserves escalation handoff snapshots for later audit | Completed in v0.39.0 with durable digest events |
@@ -755,7 +762,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Store repair execution | Doctor can now identify vector rebuild candidates, but operators still need an explicit repair action | Completed in v0.50.0 with dry-run-first vector reindexing for reviewed candidates |
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need to see repeated failures by endpoint | Group retry recommendation counts by target URL and status family |
-| Backup publish freshness monitor | Drift comparison exists on demand, but operators still need freshness thresholds | Add a non-mutating check that compares published generated_at with a max age |
+| Backup publish freshness monitor | Drift comparison exists on demand, but operators still need freshness thresholds | Completed in v0.52.0 with a read-only check that compares published generated_at with a max age |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
 
 ## Fresh Brainstorm After v0.50.0
@@ -763,7 +770,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need endpoint-level fatigue signals | Completed in v0.51.0 with grouped retry recommendation counts by target URL, status family, readiness, and last error |
-| Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Add a read-only freshness check for published `generated_at` with `--max-age` |
+| Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Completed in v0.52.0 with a read-only freshness check for published `generated_at` and `--max-age` |
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
 
@@ -771,7 +778,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Add a read-only freshness check for published `generated_at` with `--max-age` |
+| Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Completed in v0.52.0 with a read-only freshness check for published `generated_at` and `--max-age` |
 | Retry fatigue markdown export | Endpoint fatigue summaries are useful, but handoffs often need human-readable incident notes | Emit Markdown from retry fatigue with top failing endpoint, readiness counts, and latest errors |
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+
+## Fresh Brainstorm After v0.52.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Retry fatigue markdown export | Endpoint fatigue summaries are useful, but handoffs often need human-readable incident notes | Emit Markdown from retry fatigue with top failing endpoint, readiness counts, and latest errors |
+| KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |

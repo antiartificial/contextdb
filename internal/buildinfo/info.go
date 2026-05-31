@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.51.0"
+	Version = "0.52.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.51.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.52.0",
 	}
 }
 
@@ -91,6 +91,7 @@ func Features() []Feature {
 		{Name: "norn-manifest-publish", Status: "stable", Since: "v0.35.0", Description: "Norn manifest publish validates a dry-run plan by default and can explicitly publish the service entry to a configured Norn endpoint."},
 		{Name: "lifecycle-index-publish", Status: "stable", Since: "v0.36.0", Description: "Snapshot lifecycle index publish validates and optionally sends backup catalog metadata to a configured ops endpoint without uploading backup contents."},
 		{Name: "lifecycle-index-publish-drift", Status: "stable", Since: "v0.47.0", Description: "Snapshot lifecycle index publish drift compares local backup catalog metadata with the published ops payload."},
+		{Name: "lifecycle-index-publish-freshness", Status: "stable", Since: "v0.52.0", Description: "Snapshot lifecycle index publish freshness checks published backup catalog generated_at against a max age."},
 		{Name: "ranking-eval-snapshots", Status: "stable", Since: "v0.48.0", Description: "Ranking eval snapshots emit JSON score-drift reports for the representative corpus."},
 		{Name: "review-escalation-rules", Status: "stable", Since: "v0.37.0", Description: "Review queue escalation metadata flags aged assigned or snoozed items and high-priority source anomaly tasks."},
 		{Name: "review-escalation-digest", Status: "stable", Since: "v0.38.0", Description: "Review escalation digests summarize escalated queue items by owner, source, item type, and escalation level."},

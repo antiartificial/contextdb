@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.52.0 | Passed | Passed | Corpus coverage present | Publish freshness coverage added | CLI publish freshness tests added | Adds read-only freshness checks for published backup catalog metadata |
 | v0.51.0 | Passed | Passed | Corpus coverage present | Retry fatigue coverage added | Go SDK, REST, and GraphQL retry fatigue tests added | Adds read-only endpoint-level fatigue summaries for failed review handoff retries |
 | v0.50.0 | Passed | Passed | Corpus coverage present | Vector repair coverage added | CLI vector repair report tests added | Adds dry-run-first vector index repair execution for reviewed rebuild candidates |
 | v0.49.0 | Passed | Passed | Corpus coverage present | Store consistency coverage added | CLI doctor store consistency tests added | Adds opt-in local doctor checks for fingerprint lookups and vector rebuild candidates |

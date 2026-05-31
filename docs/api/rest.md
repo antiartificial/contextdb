@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.51.0",
+  "version": "0.52.0",
   "api_version": "v1",
-  "docs_version": "0.51.0",
+  "docs_version": "0.52.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -446,6 +446,12 @@ curl http://localhost:7701/v1/version
       "description": "Snapshot lifecycle index publish drift compares local backup catalog metadata with the published ops payload."
     },
     {
+      "name": "lifecycle-index-publish-freshness",
+      "status": "stable",
+      "since": "v0.52.0",
+      "description": "Snapshot lifecycle index publish freshness checks published backup catalog generated_at against a max age."
+    },
+    {
       "name": "ranking-eval-snapshots",
       "status": "stable",
       "since": "v0.48.0",
@@ -523,7 +529,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.51.0"
+  "release_notes_path": "/contextdb/releases/v0.52.0"
 }
 ```
 
