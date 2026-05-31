@@ -5,9 +5,9 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.107.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.107.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.108.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.108.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
-**Current release:** `v0.107.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+**Current release:** `v0.108.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
 
 ## What & Why
@@ -254,6 +254,8 @@ diff, _ := retrieval.ComputeBeliefDiff(ctx, graph, "ops", nil)
 **[Knowledge acquisition planner](docs/api/rest.md#knowledge-acquisition-plan)** -- Gap reports and weak claims become prioritized research, crawl, and verification tasks; connector execution can dry-run or execute source-constrained search/crawler acquisition through custom endpoints or bundled OpenAI, xAI, and Anthropic adapters. *Typical vector DBs: acquisition planning is separate from retrieval.*
 
 **[Admin UI](docs/api/rest.md#admin-ui)** -- Built-in dashboard on the observe port with ranking evaluation, metrics, baseline deltas, score components, source-trust timelines, contradiction paths, graph/source context, and explain-rank comparison. *Typical vector DBs: external tooling.*
+
+**[Reliability release tooling](docs/releases/v0.108.0.md)** -- CI-backed release health artifacts, Docker-backed Postgres integration, race/soak durability lanes, schema catalog drift annotations, closure bundle manifest verification, public fixture catalogs, and dry-run-first source quarantine. *Typical vector DBs: release confidence is assembled outside the database project.*
 
 ## Scoring function
 

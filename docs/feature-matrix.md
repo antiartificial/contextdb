@@ -140,6 +140,6 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 1. Filter debugger graph context by relation and source trust bands.
 2. Persist ranking dashboard baseline runs locally so operators can compare without selecting a file every time.
-3. Schema catalog docs badge or CI annotation for published schema drift.
-4. Closure bundle verify command for rechecking saved manifest hashes.
-5. KV receipt fixture catalog entry for machine-readable fixture discovery.
+3. Failure-injection variants for the Postgres integration harness.
+4. Longer scheduled soak lanes for storage and retrieval concurrency.
+5. UI affordances for reviewing and executing source quarantine plans.
