@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.96.0",
+  "version": "0.97.0",
   "api_version": "v1",
-  "docs_version": "0.96.0",
+  "docs_version": "0.97.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -764,6 +764,12 @@ curl http://localhost:7701/v1/version
       "description": "Retry fatigue preset JSON shape is guarded by a shared schema fixture across SDK and REST tests."
     },
     {
+      "name": "review-handoff-retry-fatigue-preset-schema-publication",
+      "status": "stable",
+      "since": "v0.97.0",
+      "description": "Retry fatigue preset JSON schema is published with the docs site for dashboard and automation consumers."
+    },
+    {
       "name": "admin-observe-dashboard",
       "status": "stable",
       "since": "v0.88.0",
@@ -805,7 +811,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.96.0"
+  "release_notes_path": "/contextdb/releases/v0.97.0"
 }
 ```
 
@@ -1181,7 +1187,7 @@ Summarize repeated retry pressure by endpoint without sending retries:
 curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue"
 ```
 
-The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, owner counts, escalation-level counts, status-family counts, the latest failure detail for each endpoint, and stable `presets` metadata for repeated owner and escalation lanes. Each preset includes `example_rest_query` and `example_graphql` snippets so dashboards can show copyable filters. The preset JSON shape is guarded by the shared fixture at `testdata/fixtures/retry-fatigue-presets.schema.json`.
+The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, owner counts, escalation-level counts, status-family counts, the latest failure detail for each endpoint, and stable `presets` metadata for repeated owner and escalation lanes. Each preset includes `example_rest_query` and `example_graphql` snippets so dashboards can show copyable filters. The preset JSON shape is guarded by the shared fixture at `testdata/fixtures/retry-fatigue-presets.schema.json` and published for docs consumers at [`/schemas/retry-fatigue-presets.schema.json`](/schemas/retry-fatigue-presets.schema.json).
 
 Add `owner`, `escalation_level`, or `preset` query parameters when the handoff should focus on a specific workload owner, escalation class, or named lane.
 
