@@ -3,6 +3,7 @@ bin/
 *.out
 /tmp/
 *.html
+!internal/admin/ui/index.html
 !docs/**/*.html
 !docs/**/*.scss
 
