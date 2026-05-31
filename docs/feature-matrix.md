@@ -46,6 +46,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Promotion receipt verify | Implemented | v0.27 | `operations`, `backup`, `audit` | `contextdb snapshot receipt verify --promotion-report --manifest` compares promotion receipts with artifact manifests |
 | Backup lifecycle bundle | Implemented | v0.28 | `operations`, `backup`, `audit` | Backup runbook provides a guarded script for export, verify, rehearse, doctor, optional promotion, receipt verification, and lifecycle summary |
 | Lifecycle summary verify | Implemented | v0.29 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle verify --summary --report` checks a lifecycle summary and its referenced backup, manifest, rehearsal, promotion, and receipt-check artifacts |
+| Lifecycle retention report | Implemented | v0.30 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle retention --dir --keep --report` groups lifecycle bundles and marks newest artifacts to keep versus older pruneable bundles without deleting files |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -547,6 +548,90 @@ func TestVerifySnapshotLifecycleSummaryRejectsBadReceiptCheck(t *testing.T) {
 	is.True(!report.OK)
 	is.True(!report.ReceiptCheckOK)
 	is.True(len(report.ValidationErrors) > 0)
+}
+
+func TestBuildSnapshotLifecycleRetentionReport(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	writeLifecycleFixture(t, dir, "prod", "2026-05-31T23:30:00Z", true)
+	writeLifecycleFixture(t, dir, "prod", "2026-06-01T23:30:00Z", false)
+
+	report, err := buildSnapshotLifecycleRetentionReport(dir, "prod", 2)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.TotalBundles, 3)
+	is.Equal(report.KeepBundles, 2)
+	is.Equal(report.PruneableBundles, 1)
+	is.Equal(report.Bundles[0].Decision, "keep")
+	is.Equal(report.Bundles[0].CreatedAt, "2026-06-01T23:30:00Z")
+	is.Equal(report.Bundles[1].Decision, "keep")
+	is.Equal(report.Bundles[2].Decision, "pruneable")
+	is.Equal(len(report.Bundles[0].Artifacts), 6)
+	is.True(report.Bundles[0].Artifacts[0].Exists)
+	is.Equal(report.Bundles[0].Artifacts[0].Kind, "summary")
+}
+
+func TestBuildSnapshotLifecycleRetentionReportFiltersNamespace(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	writeLifecycleFixture(t, dir, "staging", "2026-05-31T23:30:00Z", false)
+
+	report, err := buildSnapshotLifecycleRetentionReport(dir, "prod", 1)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.TotalBundles, 1)
+	is.Equal(report.Bundles[0].Namespace, "prod")
+}
+
+func TestBuildSnapshotLifecycleRetentionReportRejectsInvalidKeep(t *testing.T) {
+	is := is.New(t)
+
+	report, err := buildSnapshotLifecycleRetentionReport(t.TempDir(), "", 0)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(len(report.ValidationErrors) > 0)
+}
+
+func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
+	t.Helper()
+	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])
+	prefix := filepath.Join(dir, namespace+"-"+stamp)
+	files := map[string]string{
+		"backup":    prefix + ".ndjson",
+		"manifest":  prefix + ".manifest.json",
+		"rehearsal": prefix + ".rehearsal.json",
+	}
+	if promoted {
+		files["promotion"] = prefix + ".promotion.json"
+		files["receipt_check"] = prefix + ".receipt-check.json"
+	}
+	for _, path := range files {
+		if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summary := snapshotLifecycleSummary{
+		Namespace:    namespace,
+		CreatedAt:    createdAt,
+		Backup:       files["backup"],
+		Manifest:     files["manifest"],
+		Rehearsal:    files["rehearsal"],
+		Promotion:    files["promotion"],
+		ReceiptCheck: files["receipt_check"],
+		Promoted:     promoted,
+	}
+	data, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(prefix+".lifecycle.json", data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestBuildNornDriftReportMatches(t *testing.T) {

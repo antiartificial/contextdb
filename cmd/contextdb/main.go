@@ -32,6 +32,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -326,12 +327,14 @@ func runSnapshotReceiptVerify(args []string) {
 
 func runSnapshotLifecycle(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle: expected verify")
+		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle: expected verify or retention")
 		os.Exit(2)
 	}
 	switch args[0] {
 	case "verify":
 		runSnapshotLifecycleVerify(args[1:])
+	case "retention":
+		runSnapshotLifecycleRetention(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -350,6 +353,29 @@ func runSnapshotLifecycleVerify(args []string) {
 			writeIndentedJSON(report)
 		}
 		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycleRetention(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle retention", flag.ExitOnError)
+	dir := fs.String("dir", "", "directory containing lifecycle summary files")
+	namespace := fs.String("namespace", "", "optional namespace filter")
+	keep := fs.Int("keep", 14, "number of newest lifecycle bundles to keep")
+	reportOut := fs.Bool("report", false, "print a JSON retention report")
+	_ = fs.Parse(args)
+
+	report, err := buildSnapshotLifecycleRetentionReport(*dir, *namespace, *keep)
+	if err != nil {
+		if *reportOut && (report.Dir != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle retention: %v\n", err)
 		os.Exit(1)
 	}
 	if *reportOut {
@@ -538,6 +564,36 @@ type snapshotLifecycleVerifyReport struct {
 	ReceiptCheck     string   `json:"receipt_check,omitempty"`
 	ReceiptCheckOK   bool     `json:"receipt_check_ok"`
 	ValidationErrors []string `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleRetentionReport struct {
+	OK               bool                               `json:"ok"`
+	Dir              string                             `json:"dir"`
+	Namespace        string                             `json:"namespace,omitempty"`
+	Keep             int                                `json:"keep"`
+	TotalBundles     int                                `json:"total_bundles"`
+	KeepBundles      int                                `json:"keep_bundles"`
+	PruneableBundles int                                `json:"pruneable_bundles"`
+	Bundles          []snapshotLifecycleRetentionBundle `json:"bundles"`
+	ValidationErrors []string                           `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleRetentionBundle struct {
+	Namespace string                               `json:"namespace"`
+	CreatedAt string                               `json:"created_at"`
+	Summary   string                               `json:"summary"`
+	Promoted  bool                                 `json:"promoted"`
+	Decision  string                               `json:"decision"`
+	Reason    string                               `json:"reason"`
+	Artifacts []snapshotLifecycleRetentionArtifact `json:"artifacts"`
+	sortTime  time.Time
+}
+
+type snapshotLifecycleRetentionArtifact struct {
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
+	Bytes  int64  `json:"bytes,omitempty"`
 }
 
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
@@ -760,6 +816,107 @@ func verifySnapshotLifecycleSummary(summaryPath string) (snapshotLifecycleVerify
 		return report, fmt.Errorf("lifecycle summary verification failed: %s", strings.Join(report.ValidationErrors, "; "))
 	}
 	return report, nil
+}
+
+func buildSnapshotLifecycleRetentionReport(dir, namespace string, keep int) (snapshotLifecycleRetentionReport, error) {
+	dir = strings.TrimSpace(dir)
+	namespace = strings.TrimSpace(namespace)
+	report := snapshotLifecycleRetentionReport{
+		Dir:       dir,
+		Namespace: namespace,
+		Keep:      keep,
+	}
+	if dir == "" {
+		return report, fmt.Errorf("--dir is required")
+	}
+	if keep < 1 {
+		report.ValidationErrors = append(report.ValidationErrors, "--keep must be at least 1")
+		report.OK = false
+		return report, fmt.Errorf("lifecycle retention report failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return report, fmt.Errorf("read lifecycle directory: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".lifecycle.json") {
+			continue
+		}
+		summaryPath := filepath.Join(dir, entry.Name())
+		var summary snapshotLifecycleSummary
+		if err := readJSONFile(summaryPath, &summary); err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode lifecycle summary %s: %v", summaryPath, err))
+			continue
+		}
+		if namespace != "" && summary.Namespace != namespace {
+			continue
+		}
+		info, _ := entry.Info()
+		report.Bundles = append(report.Bundles, buildSnapshotLifecycleRetentionBundle(dir, summaryPath, summary, info))
+	}
+	sort.SliceStable(report.Bundles, func(i, j int) bool {
+		if report.Bundles[i].sortTime.Equal(report.Bundles[j].sortTime) {
+			return report.Bundles[i].Summary > report.Bundles[j].Summary
+		}
+		return report.Bundles[i].sortTime.After(report.Bundles[j].sortTime)
+	})
+	for i := range report.Bundles {
+		if i < keep {
+			report.Bundles[i].Decision = "keep"
+			report.Bundles[i].Reason = "within newest lifecycle bundles to keep"
+			report.KeepBundles++
+		} else {
+			report.Bundles[i].Decision = "pruneable"
+			report.Bundles[i].Reason = "older than newest lifecycle bundles to keep"
+			report.PruneableBundles++
+		}
+	}
+	report.TotalBundles = len(report.Bundles)
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("lifecycle retention report failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func buildSnapshotLifecycleRetentionBundle(baseDir, summaryPath string, summary snapshotLifecycleSummary, info os.FileInfo) snapshotLifecycleRetentionBundle {
+	sortTime := time.Time{}
+	if createdAt, err := time.Parse(time.RFC3339, strings.TrimSpace(summary.CreatedAt)); err == nil {
+		sortTime = createdAt
+	} else if info != nil {
+		sortTime = info.ModTime()
+	}
+	return snapshotLifecycleRetentionBundle{
+		Namespace: summary.Namespace,
+		CreatedAt: summary.CreatedAt,
+		Summary:   summaryPath,
+		Promoted:  summary.Promoted,
+		Artifacts: []snapshotLifecycleRetentionArtifact{
+			snapshotLifecycleRetentionArtifactFor("summary", summaryPath),
+			snapshotLifecycleRetentionArtifactFor("backup", resolveLifecycleSummaryPath(baseDir, summary.Backup)),
+			snapshotLifecycleRetentionArtifactFor("manifest", resolveLifecycleSummaryPath(baseDir, summary.Manifest)),
+			snapshotLifecycleRetentionArtifactFor("rehearsal", resolveLifecycleSummaryPath(baseDir, summary.Rehearsal)),
+			snapshotLifecycleRetentionArtifactFor("promotion", resolveLifecycleSummaryPath(baseDir, summary.Promotion)),
+			snapshotLifecycleRetentionArtifactFor("receipt_check", resolveLifecycleSummaryPath(baseDir, summary.ReceiptCheck)),
+		},
+		sortTime: sortTime,
+	}
+}
+
+func snapshotLifecycleRetentionArtifactFor(kind, path string) snapshotLifecycleRetentionArtifact {
+	artifact := snapshotLifecycleRetentionArtifact{
+		Kind: kind,
+		Path: strings.TrimSpace(path),
+	}
+	if artifact.Path == "" {
+		return artifact
+	}
+	info, err := os.Stat(artifact.Path)
+	if err == nil && !info.IsDir() {
+		artifact.Exists = true
+		artifact.Bytes = info.Size()
+	}
+	return artifact
 }
 
 func resolveLifecycleSummaryPath(baseDir, path string) string {

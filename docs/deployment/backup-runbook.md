@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.29.0",
+  "contextdb_version": "0.30.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -289,7 +289,19 @@ Norn drift tells you whether the live service registration still matches the exp
 
 ## Retention
 
-Keep at least one recent local backup, one recent off-host copy, and the latest marker file. A simple local retention pass can remove old namespace backups after a successful export, preview, and doctor check:
+Keep at least one recent local backup, one recent off-host copy, and the latest marker file. Start with a dry-run lifecycle retention report before deleting anything:
+
+```bash
+contextdb snapshot lifecycle retention \
+  --dir "$CONTEXTDB_BACKUP_DIR" \
+  --namespace "$CONTEXTDB_NAMESPACE" \
+  --keep 14 \
+  --report
+```
+
+The retention report scans `*.lifecycle.json` summaries, groups each lifecycle summary with its backup, manifest, rehearsal, promotion, and receipt-check artifacts, then marks the newest bundles as `keep` and older bundles as `pruneable`. It does not delete files.
+
+A local cleanup pass can then remove old namespace backups after a successful export, lifecycle verification, off-host copy, and retention review:
 
 ```bash
 find "$CONTEXTDB_BACKUP_DIR" \
