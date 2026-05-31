@@ -100,9 +100,11 @@ func TestAdminDashboardIncludesDebugger(t *testing.T) {
 	New(db).ServeHTTP(assetW, assetReq)
 	is.Equal(assetW.Code, http.StatusOK)
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/metrics"))
+	is.True(strings.Contains(assetW.Body.String(), "/admin/api/ranking-eval"))
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/search"))
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/belief"))
 	is.True(strings.Contains(assetW.Body.String(), "/admin/api/explain-rank"))
+	is.True(strings.Contains(assetW.Body.String(), "Ranking Evaluation"))
 	is.True(strings.Contains(assetW.Body.String(), "Belief Debugger"))
 	is.True(strings.Contains(assetW.Body.String(), "Explain Rank Compare"))
 }
@@ -142,6 +144,41 @@ func TestAdminMetricsAPI(t *testing.T) {
 	is.True(body.Ingest.AdmissionRate > 0)
 	is.True(body.Retrieval.Total >= 1)
 	is.True(len(body.Health.Signals) > 0)
+}
+
+func TestAdminRankingEvalAPI(t *testing.T) {
+	is := is.New(t)
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/ranking-eval?top_k=5", nil)
+	w := httptest.NewRecorder()
+	New(db).ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	var body adminRankingEvalReport
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &body))
+	is.Equal(body.SchemaVersion, 1)
+	is.Equal(body.Corpus, "representative")
+	is.Equal(body.TopK, 5)
+	is.True(body.TotalQueries > 0)
+	is.Equal(body.TotalQueries, len(body.Queries))
+	is.True(body.PassedQueries > 0)
+	is.True(body.MeanReciprocal > 0)
+	is.True(len(body.Categories) > 0)
+	is.True(len(body.Queries[0].TopResults) > 0)
+}
+
+func TestAdminRankingEvalAPIRejectsHugeTopK(t *testing.T) {
+	is := is.New(t)
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/ranking-eval?top_k=100", nil)
+	w := httptest.NewRecorder()
+	New(db).ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusBadRequest)
 }
 
 func TestAdminSearchAPI(t *testing.T) {

@@ -6,8 +6,10 @@
 package admin
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"sort"
@@ -17,10 +19,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/antiartificial/contextdb/internal/buildinfo"
 	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/observe"
+	"github.com/antiartificial/contextdb/internal/retrieval"
 	"github.com/antiartificial/contextdb/internal/store"
 	"github.com/antiartificial/contextdb/pkg/client"
+	"github.com/antiartificial/contextdb/testdata"
 )
 
 // adminHandler serves the admin dashboard.
@@ -50,6 +56,7 @@ func New(db *client.DB) http.Handler {
 	h.mux.HandleFunc("GET /admin/debugger", h.handleIndex)
 	h.mux.HandleFunc("GET /admin/api/stats", h.handleStats)
 	h.mux.HandleFunc("GET /admin/api/metrics", h.handleMetrics)
+	h.mux.HandleFunc("GET /admin/api/ranking-eval", h.handleRankingEval)
 	h.mux.HandleFunc("GET /admin/api/belief", h.handleBeliefAudit)
 	h.mux.HandleFunc("POST /admin/api/explain-rank", h.handleExplainRank)
 	h.mux.HandleFunc("GET /admin/api/search", h.handleSearch)
@@ -57,6 +64,204 @@ func New(db *client.DB) http.Handler {
 	h.mux.HandleFunc("GET /admin/api/diff", h.handleDiff)
 
 	return h
+}
+
+type adminRankingEvalReport struct {
+	SchemaVersion    int                        `json:"schema_version"`
+	GeneratedAt      string                     `json:"generated_at"`
+	ContextDBVersion string                     `json:"contextdb_version"`
+	Corpus           string                     `json:"corpus"`
+	TopK             int                        `json:"top_k"`
+	TotalQueries     int                        `json:"total_queries"`
+	PassedQueries    int                        `json:"passed_queries"`
+	FailedQueries    int                        `json:"failed_queries"`
+	MeanReciprocal   float64                    `json:"mean_reciprocal_rank"`
+	Categories       []adminRankingEvalCategory `json:"categories"`
+	Queries          []adminRankingEvalQuery    `json:"queries"`
+}
+
+type adminRankingEvalCategory struct {
+	Category       string  `json:"category"`
+	TotalQueries   int     `json:"total_queries"`
+	PassedQueries  int     `json:"passed_queries"`
+	FailedQueries  int     `json:"failed_queries"`
+	PassRate       float64 `json:"pass_rate"`
+	MeanReciprocal float64 `json:"mean_reciprocal_rank"`
+}
+
+type adminRankingEvalQuery struct {
+	ID                 string                   `json:"id"`
+	Description        string                   `json:"description"`
+	Namespace          string                   `json:"namespace"`
+	Category           string                   `json:"category"`
+	ExpectedRankCutoff int                      `json:"expected_rank_cutoff"`
+	CorrectRank        int                      `json:"correct_rank,omitempty"`
+	ReciprocalRank     float64                  `json:"reciprocal_rank"`
+	Passed             bool                     `json:"passed"`
+	TopResults         []adminRankingEvalResult `json:"top_results"`
+}
+
+type adminRankingEvalResult struct {
+	Rank            int                 `json:"rank"`
+	NodeID          string              `json:"node_id"`
+	Text            string              `json:"text,omitempty"`
+	Expected        bool                `json:"expected"`
+	Score           float64             `json:"score"`
+	SimilarityScore float64             `json:"similarity_score"`
+	ConfidenceScore float64             `json:"confidence_score"`
+	RecencyScore    float64             `json:"recency_score"`
+	UtilityScore    float64             `json:"utility_score"`
+	ScoreBreakdown  core.ScoreBreakdown `json:"score_breakdown"`
+	RetrievalSource string              `json:"retrieval_source,omitempty"`
+}
+
+func (h *adminHandler) handleRankingEval(w http.ResponseWriter, r *http.Request) {
+	topK, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("top_k")))
+	if err != nil || topK <= 0 {
+		topK = 5
+	}
+	if topK > 25 {
+		http.Error(w, "top_k must be 25 or less", http.StatusBadRequest)
+		return
+	}
+	report, err := buildAdminRankingEvalReport(r.Context(), topK, time.Now().UTC())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(report)
+}
+
+func buildAdminRankingEvalReport(ctx context.Context, topK int, generatedAt time.Time) (adminRankingEvalReport, error) {
+	if topK <= 0 {
+		topK = 5
+	}
+	if generatedAt.IsZero() {
+		generatedAt = time.Now().UTC()
+	}
+	corpus := testdata.Build()
+	engine := retrieval.Engine{
+		Graph:   corpus.Graph,
+		Vectors: corpus.Vecs,
+		KV:      corpus.KV,
+	}
+	report := adminRankingEvalReport{
+		SchemaVersion:    1,
+		GeneratedAt:      generatedAt.UTC().Format(time.RFC3339),
+		ContextDBVersion: buildinfo.Version,
+		Corpus:           "representative",
+		TopK:             topK,
+		TotalQueries:     len(corpus.QuerySet),
+	}
+	reciprocalSum := 0.0
+	categoryStats := map[string]*adminRankingEvalCategory{}
+	for _, query := range corpus.QuerySet {
+		cfg := namespace.Defaults(query.Namespace, adminRankingEvalCorpusMode(query.Namespace))
+		results, err := engine.Retrieve(ctx, retrieval.Query{
+			Namespace:   query.Namespace,
+			Vector:      query.Vector,
+			TopK:        topK,
+			Strategy:    retrieval.HybridStrategy{VectorWeight: 1, Traversal: cfg.Traversal, MaxDepth: cfg.MaxDepth},
+			ScoreParams: cfg.ScoreParams,
+		})
+		if err != nil {
+			return report, fmt.Errorf("ranking eval %s: %w", query.ID, err)
+		}
+		queryReport := adminRankingEvalQuery{
+			ID:                 query.ID,
+			Description:        query.Description,
+			Namespace:          query.Namespace,
+			Category:           query.Category,
+			ExpectedRankCutoff: adminRankingEvalExpectedRankCutoff(query.Category),
+		}
+		if queryReport.ExpectedRankCutoff > len(results) {
+			queryReport.ExpectedRankCutoff = len(results)
+		}
+		for i, result := range results {
+			rank := i + 1
+			expected := adminRankingEvalContainsNode(query.CorrectNodeIDs, result.Node.ID)
+			if expected && queryReport.CorrectRank == 0 {
+				queryReport.CorrectRank = rank
+				queryReport.ReciprocalRank = 1 / float64(rank)
+				reciprocalSum += queryReport.ReciprocalRank
+			}
+			text, _ := result.Node.Properties["text"].(string)
+			queryReport.TopResults = append(queryReport.TopResults, adminRankingEvalResult{
+				Rank:            rank,
+				NodeID:          result.Node.ID.String(),
+				Text:            text,
+				Expected:        expected,
+				Score:           result.Score,
+				SimilarityScore: result.SimilarityScore,
+				ConfidenceScore: result.ConfidenceScore,
+				RecencyScore:    result.RecencyScore,
+				UtilityScore:    result.UtilityScore,
+				ScoreBreakdown:  result.Breakdown,
+				RetrievalSource: result.RetrievalSource,
+			})
+		}
+		queryReport.Passed = queryReport.CorrectRank > 0 && queryReport.CorrectRank <= queryReport.ExpectedRankCutoff
+		if queryReport.Passed {
+			report.PassedQueries++
+		}
+		report.Queries = append(report.Queries, queryReport)
+		stats := categoryStats[queryReport.Category]
+		if stats == nil {
+			stats = &adminRankingEvalCategory{Category: queryReport.Category}
+			categoryStats[queryReport.Category] = stats
+		}
+		stats.TotalQueries++
+		if queryReport.Passed {
+			stats.PassedQueries++
+		}
+		stats.MeanReciprocal += queryReport.ReciprocalRank
+	}
+	report.FailedQueries = report.TotalQueries - report.PassedQueries
+	if report.TotalQueries > 0 {
+		report.MeanReciprocal = reciprocalSum / float64(report.TotalQueries)
+	}
+	for _, stats := range categoryStats {
+		stats.FailedQueries = stats.TotalQueries - stats.PassedQueries
+		stats.PassRate = ratio(float64(stats.PassedQueries), float64(stats.TotalQueries))
+		stats.MeanReciprocal = ratio(stats.MeanReciprocal, float64(stats.TotalQueries))
+		report.Categories = append(report.Categories, *stats)
+	}
+	sort.SliceStable(report.Categories, func(i, j int) bool {
+		return report.Categories[i].Category < report.Categories[j].Category
+	})
+	return report, nil
+}
+
+func adminRankingEvalExpectedRankCutoff(category string) int {
+	switch category {
+	case "poisoning", "temporal", "procedural":
+		return 1
+	default:
+		return 3
+	}
+}
+
+func adminRankingEvalCorpusMode(ns string) namespace.Mode {
+	switch ns {
+	case testdata.NSChannel:
+		return namespace.ModeBeliefSystem
+	case testdata.NSAgent:
+		return namespace.ModeAgentMemory
+	case testdata.NSProcedural:
+		return namespace.ModeProcedural
+	default:
+		return namespace.ModeGeneral
+	}
+}
+
+func adminRankingEvalContainsNode(ids []uuid.UUID, id uuid.UUID) bool {
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *adminHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

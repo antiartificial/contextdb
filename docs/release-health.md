@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.103.0 | Passed | Passed | Admin ranking eval API and dashboard coverage added | Corpus coverage present | Admin ranking API and embedded asset tests added | Adds first-class ranking evaluation dashboard with baseline comparison |
 | v0.102.0 | Passed | Passed | Corpus coverage present | KV receipt fixture coverage added | Public fixture verifier tests added | Publishes passing and failing KV refresh receipt fixtures for integrations |
 | v0.101.0 | Passed | Passed | Corpus coverage present | Closure bundle manifest coverage added | CLI manifest tests added | Adds hashed manifests for published backup repair closure bundles |
 | v0.100.0 | Passed | Passed | Corpus coverage present | Schema catalog drift covered | Public schema catalog test added | Publishes a docs schema index for dashboard and automation consumers |

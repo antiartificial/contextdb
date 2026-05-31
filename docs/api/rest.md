@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.102.0",
+  "version": "0.103.0",
   "api_version": "v1",
-  "docs_version": "0.102.0",
+  "docs_version": "0.103.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -834,6 +834,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.93.0",
       "description": "The admin debugger can compare two nodes with explain-rank factors from the Svelte dashboard."
+    },
+    {
+      "name": "admin-ranking-eval-dashboard",
+      "status": "stable",
+      "since": "v0.103.0",
+      "description": "The admin dashboard runs the representative ranking evaluation and surfaces MRR, pass/fail, category health, query evidence, score components, and baseline deltas."
     }
   ],
   "migrations": [
@@ -841,7 +847,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.102.0"
+  "release_notes_path": "/contextdb/releases/v0.103.0"
 }
 ```
 
@@ -1381,6 +1387,9 @@ curl http://localhost:7702/admin/api/stats
 # Admin metrics API
 curl http://localhost:7702/admin/api/metrics
 
+# Ranking evaluation dashboard API
+curl "http://localhost:7702/admin/api/ranking-eval?top_k=5"
+
 # Belief debugger API
 curl "http://localhost:7702/admin/api/belief?ns=my-app&id=NODE_UUID"
 
@@ -1393,7 +1402,7 @@ curl -X POST http://localhost:7702/admin/api/explain-rank \
   -d '{"namespace":"my-app","node_id":"NODE_UUID","other_node_id":"OTHER_NODE_UUID","text":"optional query"}'
 ```
 
-The dashboard displays health signals, ingest and retrieval rates, latency snapshots, raw metrics JSON, links to metrics and profiling endpoints, and a belief debugger for source, support, contradiction, provenance, confidence-history evidence, and explain-rank comparison between two nodes. The UI is built as a Svelte app and embedded into the Go binary; after editing files under `internal/admin/ui`, run `npm run admin:build` before Go tests or release builds. The debugger search API scans recent valid graph nodes by text, labels, source ID, or node ID so operators can open an audit or compare ranking factors without first copying UUIDs from another tool.
+The dashboard displays the representative ranking evaluation as a first-class workspace: MRR, pass/fail totals, category health, query-level top-k evidence, score component bars, and browser-loaded baseline deltas. It also includes health signals, ingest and retrieval rates, latency snapshots, raw metrics JSON, links to metrics and profiling endpoints, and a belief debugger for source, support, contradiction, provenance, confidence-history evidence, and explain-rank comparison between two nodes. The UI is built as a Svelte app and embedded into the Go binary; after editing files under `internal/admin/ui`, run `npm run admin:build` before Go tests or release builds. The debugger search API scans recent valid graph nodes by text, labels, source ID, or node ID so operators can open an audit or compare ranking factors without first copying UUIDs from another tool.
 
 ## Observability
 

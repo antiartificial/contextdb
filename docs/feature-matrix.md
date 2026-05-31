@@ -124,9 +124,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Admin metrics dashboard | Implemented | v0.91 | `inspectability`, `operations`, `metrics` | `/admin/` surfaces health signals, ingest/retrieval rates, latency, and raw `/admin/api/metrics` JSON |
 | Svelte admin shell | Implemented | v0.92 | `inspectability`, `operations`, `ui` | `/admin/` is served from an embedded Svelte app bundle while preserving metrics, search, and belief debugger APIs |
 | Debugger explain-rank compare | Implemented | v0.93 | `inspectability`, `ranking`, `ui` | `/admin/api/explain-rank` and the Svelte dashboard compare two nodes with rank summary and factor deltas |
+| Ranking evaluation dashboard | Implemented | v0.103 | `inspectability`, `ranking`, `ui` | `/admin/api/ranking-eval` and `/admin/` surface MRR, pass/fail, category health, query evidence, score components, and baseline deltas |
 
 ## Next Candidates
 
-1. Schema catalog docs badge or CI annotation for published schema drift.
-2. Closure bundle verify command for rechecking saved manifest hashes.
-3. KV receipt fixture catalog entry for machine-readable fixture discovery.
+1. Persist ranking dashboard baseline runs locally so operators can compare without selecting a file every time.
+2. Schema catalog docs badge or CI annotation for published schema drift.
+3. Closure bundle verify command for rechecking saved manifest hashes.
+4. KV receipt fixture catalog entry for machine-readable fixture discovery.

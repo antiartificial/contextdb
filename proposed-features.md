@@ -620,12 +620,18 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | KV receipt verification fixture bundle | Implemented | `docs/public/fixtures/kv-refresh/valid-receipt.json`, `valid-value.json`, and `mismatched-value.json` give integrations passing and failing verifier examples; CLI tests run `verifyKVRefreshReceipt` over both paths |
 
+## Completed In v0.103.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking evaluation dashboard UI | Implemented | `/admin/api/ranking-eval` runs the representative corpus and the Svelte admin dashboard surfaces MRR, pass/fail totals, category health, query detail, score components, and browser-loaded baseline deltas |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
 | Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; debugger search completed in v0.89.0; metrics dashboard completed in v0.91.0; Svelte shell completed in v0.92.0; explain-rank compare completed in v0.93.0 |
-| Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Snapshot foundation completed in v0.48.0; next step is dashboard/UI |
+| Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Snapshot foundation completed in v0.48.0; first-class admin UI completed in v0.103.0; next step is persisted baseline history and manifest-backed run evidence |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
 | Local Norn registration helper | Reduces drift between live services and docs | Completed in v0.14.0; live drift check completed in v0.16.0; next step is optionally posting to Norn when an authenticated API is available |
@@ -1163,3 +1169,13 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Schema catalog drift annotations | The catalog is tested, but CI consumers may want direct failure annotations | Emit a compact annotation line when a public schema catalog entry points to a missing or mismatched artifact |
 | Closure bundle manifest verify | Manifests are written, but later audits should recheck saved hashes | Add `closure-bundle verify --manifest PATH` to compare saved byte counts and SHA-256 values against the bundle directory |
 | KV receipt fixture catalog entry | Fixtures are public, but tooling needs discoverability without scraping docs | Add a fixtures catalog JSON that lists valid and mismatched KV receipt artifacts with expected verifier outcomes |
+
+## Fresh Brainstorm After v0.103.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Ranking dashboard baseline persistence | Baseline upload is useful for one-off checks, but release review wants a remembered local history | Store recent ranking eval reports on disk with a small manifest and let `/admin/` choose latest, previous, or uploaded baselines |
+| Ranking evaluation run manifest | Dashboard runs should be auditable like CLI artifacts | Add an optional manifest with corpus ID, top-k, version, query count, MRR, report hash, and generated_at for each saved admin run |
+| Ranking dashboard failure drilldown | Failed queries are visible, but operators need the fastest path to the cause | Add a failed-only filter plus direct links from a result row to belief audit and explain-rank compare |
+| Manifest-backed reliability lane | The project has several manifest writers; audits need one consistent verification habit | Add a shared manifest verification pattern across ranking baselines, closure bundles, schema catalog entries, and fixture catalogs |
+| Norn admin dashboard link metadata | The Mini-hosted service is discoverable through Norn, but operators should land directly on the admin UI | Extend the Norn service entry with an admin URL and feature tags for ranking eval, metrics, debugger, and manifests |
