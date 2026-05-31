@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.72.0 | Passed | Passed | Corpus coverage present | Ranking retention cookbook docs added | Docs build coverage | Adds keep-count and CI artifact recipes for ranking baseline retention |
 | v0.71.0 | Passed | Passed | Corpus coverage present | KV derived freshness coverage added | CLI doctor derived KV freshness tests added | Adds an opt-in doctor check for stale derived KV generated_at metadata |
 | v0.70.0 | Passed | Passed | Corpus coverage present | Published backup repair guard docs added | Docs build coverage | Adds safety checks before executing published backup catalog replacement |
 | v0.69.0 | Passed | Passed | Corpus coverage present | Retry fatigue preset coverage added | SDK, REST, and GraphQL preset tests added | Adds stable preset names for repeated retry fatigue owner and escalation lanes |
