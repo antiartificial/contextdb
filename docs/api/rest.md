@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.64.0",
+  "version": "0.65.0",
   "api_version": "v1",
-  "docs_version": "0.64.0",
+  "docs_version": "0.65.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -594,6 +594,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.60.0",
       "description": "Retry fatigue summaries can be filtered by owner and escalation level."
+    },
+    {
+      "name": "review-handoff-retry-fatigue-cookbook",
+      "status": "stable",
+      "since": "v0.65.0",
+      "description": "Docs include owner and escalation lane recipes for retry fatigue handoffs."
     }
   ],
   "migrations": [
@@ -601,7 +607,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.64.0"
+  "release_notes_path": "/contextdb/releases/v0.65.0"
 }
 ```
 
@@ -986,6 +992,8 @@ Export the same fatigue view as Markdown for incident handoffs:
 ```bash
 curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue?format=markdown"
 ```
+
+See the [retry fatigue cookbook](/deployment/retry-fatigue-cookbook) for common owner and escalation-lane filter combinations.
 
 Retry one unresolved failed delivery explicitly:
 

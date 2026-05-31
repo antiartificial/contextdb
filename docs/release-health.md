@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.65.0 | Passed | Passed | Corpus coverage present | Cookbook docs added | Docs build coverage | Adds retry fatigue owner and escalation-lane cookbook examples for handoff routing |
 | v0.64.0 | Passed | Passed | Baseline retention coverage added | Corpus coverage present | CLI ranking baseline retention tests added | Adds read-only retained/current/pruneable reports for versioned ranking baselines |
 | v0.63.0 | Passed | Passed | Corpus coverage present | KV derived value coverage added | CLI KV derived recent-node tests added | Adds dry-run-first recent-node session context derivation for KV cache repair |
 | v0.62.0 | Passed | Passed | Corpus coverage present | Published backup drift doctor coverage added | CLI doctor published drift tests added | Adds opt-in local-vs-published backup catalog drift checks to combined doctor reports |

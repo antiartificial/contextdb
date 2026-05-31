@@ -401,7 +401,7 @@ query {
 }
 ```
 
-Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures. Optional `owner` and `escalationLevel` arguments scope the view, while owner and escalation-level counts help route workload-specific handoffs.
+Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures. Optional `owner` and `escalationLevel` arguments scope the view, while owner and escalation-level counts help route workload-specific handoffs. See the [retry fatigue cookbook](/deployment/retry-fatigue-cookbook) for common owner and escalation-lane filter combinations.
 
 Retry one unresolved failed delivery explicitly:
 

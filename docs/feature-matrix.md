@@ -86,10 +86,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff retry fatigue Markdown | Implemented | v0.53 | `review`, `operations`, `handoff` | REST `retry-fatigue?format=markdown` and Go helper render endpoint fatigue summaries for incident notes |
 | Review handoff retry fatigue owner groups | Implemented | v0.58 | `review`, `operations`, `handoff` | Retry fatigue summaries include owner and escalation-level counts in JSON, GraphQL, and Markdown |
 | Review handoff retry fatigue filters | Implemented | v0.60 | `review`, `operations`, `handoff` | REST, GraphQL, and Go SDK can filter retry fatigue by owner and escalation level |
+| Review handoff retry fatigue cookbook | Implemented | v0.65 | `review`, `operations`, `handoff` | Deployment docs provide owner and escalation-lane recipes for retry fatigue handoffs |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Retry fatigue filter cookbook examples for handoff lane playbooks.
-3. Doctor published backup repair hints for drift response playbooks.
+2. Doctor published backup repair hints for drift response playbooks.
+3. KV derivation recipes for reviewed hot-key naming.
