@@ -966,6 +966,28 @@ func TestBuildSnapshotLifecycleIndexPublishDriftReportFindsDrift(t *testing.T) {
 	is.True(strings.Contains(strings.Join(report.Differences, "\n"), "decision differs"))
 }
 
+func TestBuildRankingEvalSnapshotReport(t *testing.T) {
+	is := is.New(t)
+
+	report, err := buildRankingEvalSnapshotReport(context.Background(), rankingEvalSnapshotOptions{
+		TopK:        5,
+		GeneratedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.NoErr(err)
+	is.Equal(report.SchemaVersion, 1)
+	is.Equal(report.GeneratedAt, "2026-06-01T12:00:00Z")
+	is.Equal(report.Corpus, "representative")
+	is.Equal(report.TopK, 5)
+	is.True(report.TotalQueries > 0)
+	is.Equal(report.PassedQueries, report.TotalQueries)
+	is.Equal(report.FailedQueries, 0)
+	is.True(report.MeanReciprocal > 0)
+	is.Equal(len(report.Queries), report.TotalQueries)
+	is.True(len(report.Queries[0].TopResults) > 0)
+	is.True(report.Queries[0].TopResults[0].Score > 0)
+}
+
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
 	t.Helper()
 	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])

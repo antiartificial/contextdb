@@ -289,12 +289,18 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Backup publish drift watch | Implemented | `contextdb snapshot lifecycle index publish drift --in PATH --published-url URL --report` compares local backup catalog metadata with the published ops payload |
 
+## Completed In v0.48.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking eval snapshots | Implemented | `contextdb eval ranking --out PATH --report` emits JSON top-k, expected rank, reciprocal rank, MRR, and score breakdowns for the representative corpus |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
 | Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Back it with the existing GraphQL surface |
-| Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Useful before changing score weights or fusion logic |
+| Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Snapshot foundation completed in v0.48.0; next step is dashboard/UI |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
 | Local Norn registration helper | Reduces drift between live services and docs | Completed in v0.14.0; live drift check completed in v0.16.0; next step is optionally posting to Norn when an authenticated API is available |
@@ -721,14 +727,14 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Review handoff retry backoff policy | Explicit retry exists, but repeated failures still need operator-safe pacing guidance | Completed in v0.46.0 with dry-run backoff recommendations from receipt history |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Completed in v0.47.0 with a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
-| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Completed in v0.48.0 with JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
 
-## Fresh Brainstorm After v0.47.0
+## Fresh Brainstorm After v0.48.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need to see repeated failures by endpoint | Group retry recommendation counts by target URL and status family |
 | Backup publish freshness monitor | Drift comparison exists on demand, but operators still need freshness thresholds | Add a non-mutating check that compares published generated_at with a max age |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |

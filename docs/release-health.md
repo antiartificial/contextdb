@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.48.0 | Passed | Passed | Ranking eval snapshot coverage added | Restart coverage present | CLI ranking eval snapshot test added | Adds JSON score-drift reports for the representative corpus |
 | v0.47.0 | Passed | Passed | Corpus coverage present | Lifecycle index publish drift coverage added | CLI lifecycle index publish drift tests added | Adds dry-run comparison between local and published backup catalog metadata |
 | v0.46.0 | Passed | Passed | Corpus coverage present | Review handoff retry backoff coverage added | Go SDK, REST, and GraphQL retry recommendation tests added | Adds read-only retry pacing recommendations from delivery receipt history |
 | v0.45.0 | Passed | Passed | Corpus coverage present | Review handoff retry execution coverage added | Go SDK, REST, and GraphQL retry execution tests added | Adds explicit operator-triggered resend for unresolved failed handoff deliveries |

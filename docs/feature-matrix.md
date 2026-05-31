@@ -55,6 +55,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Lifecycle index publish drift | Implemented | v0.47 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index publish drift --in --published-url --report` compares local and published backup catalog metadata |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
+| Ranking eval snapshots | Implemented | v0.48 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --out --report` emits top-k, MRR, expected rank, and score breakdowns for the representative corpus |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
@@ -74,5 +75,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Ranking eval snapshots for release-to-release score drift visibility.
+2. Store repair/index rebuild for deeper live consistency checks.
 3. Deeper doctor store/index consistency checks.

@@ -23,7 +23,14 @@ make longmemeval
 
 # Fitness evaluation suite
 make fitness
+
+# Representative corpus ranking snapshot
+contextdb eval ranking --out ranking-eval.json --report
 ```
+
+## Ranking Eval Snapshots
+
+`contextdb eval ranking` emits a JSON snapshot for the representative corpus in `testdata/corpus.go`. The report includes top-k results for each labelled query, expected rank, reciprocal rank, MRR, raw score components, weighted score breakdowns, and retrieval source. Use it before and after ranking changes to review score drift even when the golden corpus still passes.
 
 ## MTEB retrieval quality
 

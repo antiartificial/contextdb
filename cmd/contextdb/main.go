@@ -42,10 +42,14 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/antiartificial/contextdb/internal/buildinfo"
+	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/doctor"
 	"github.com/antiartificial/contextdb/internal/federation"
+	"github.com/antiartificial/contextdb/internal/namespace"
+	"github.com/antiartificial/contextdb/internal/retrieval"
 	"github.com/antiartificial/contextdb/internal/server"
 	"github.com/antiartificial/contextdb/pkg/client"
+	"github.com/antiartificial/contextdb/testdata"
 )
 
 func main() {
@@ -59,6 +63,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "snapshot" {
 		runSnapshot(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "eval" {
+		runEval(os.Args[2:])
 		return
 	}
 
@@ -115,6 +123,46 @@ func main() {
 
 	logger.Info("shutting down...")
 	srv.Stop()
+}
+
+func runEval(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb eval: expected ranking")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "ranking":
+		runEvalRanking(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb eval: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runEvalRanking(args []string) {
+	fs := flag.NewFlagSet("contextdb eval ranking", flag.ExitOnError)
+	outPath := fs.String("out", "", "JSON ranking eval snapshot to write")
+	reportOut := fs.Bool("report", false, "print the JSON ranking eval snapshot")
+	topK := fs.Int("top-k", 5, "number of ranked results to include per query")
+	_ = fs.Parse(args)
+
+	report, err := buildRankingEvalSnapshotReport(context.Background(), rankingEvalSnapshotOptions{
+		TopK:        *topK,
+		GeneratedAt: time.Now(),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+		os.Exit(1)
+	}
+	if strings.TrimSpace(*outPath) != "" {
+		if err := writeJSONFile(*outPath, report); err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if *reportOut || strings.TrimSpace(*outPath) == "" {
+		writeIndentedJSON(report)
+	}
 }
 
 func runSnapshot(args []string) {
@@ -899,6 +947,50 @@ type snapshotLifecycleIndexPublishBundleSummary struct {
 	IndexedSHA256s int    `json:"indexed_sha256s,omitempty"`
 }
 
+type rankingEvalSnapshotOptions struct {
+	TopK        int
+	GeneratedAt time.Time
+}
+
+type rankingEvalSnapshotReport struct {
+	SchemaVersion    int                        `json:"schema_version"`
+	GeneratedAt      string                     `json:"generated_at"`
+	ContextDBVersion string                     `json:"contextdb_version"`
+	Corpus           string                     `json:"corpus"`
+	TopK             int                        `json:"top_k"`
+	TotalQueries     int                        `json:"total_queries"`
+	PassedQueries    int                        `json:"passed_queries"`
+	FailedQueries    int                        `json:"failed_queries"`
+	MeanReciprocal   float64                    `json:"mean_reciprocal_rank"`
+	Queries          []rankingEvalSnapshotQuery `json:"queries"`
+}
+
+type rankingEvalSnapshotQuery struct {
+	ID                 string                      `json:"id"`
+	Description        string                      `json:"description"`
+	Namespace          string                      `json:"namespace"`
+	Category           string                      `json:"category"`
+	ExpectedRankCutoff int                         `json:"expected_rank_cutoff"`
+	CorrectRank        int                         `json:"correct_rank,omitempty"`
+	ReciprocalRank     float64                     `json:"reciprocal_rank"`
+	Passed             bool                        `json:"passed"`
+	TopResults         []rankingEvalSnapshotResult `json:"top_results"`
+}
+
+type rankingEvalSnapshotResult struct {
+	Rank            int                 `json:"rank"`
+	NodeID          string              `json:"node_id"`
+	Text            string              `json:"text,omitempty"`
+	Expected        bool                `json:"expected"`
+	Score           float64             `json:"score"`
+	SimilarityScore float64             `json:"similarity_score"`
+	ConfidenceScore float64             `json:"confidence_score"`
+	RecencyScore    float64             `json:"recency_score"`
+	UtilityScore    float64             `json:"utility_score"`
+	ScoreBreakdown  core.ScoreBreakdown `json:"score_breakdown"`
+	RetrievalSource string              `json:"retrieval_source,omitempty"`
+}
+
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -1625,6 +1717,119 @@ func diffSnapshotLifecycleIndexPublishPayloads(local, published snapshotLifecycl
 
 func publishBundleKey(bundle snapshotLifecycleIndexPublishBundleSummary) string {
 	return bundle.Namespace + "\x00" + bundle.CreatedAt + "\x00" + bundle.Summary
+}
+
+func buildRankingEvalSnapshotReport(ctx context.Context, opts rankingEvalSnapshotOptions) (rankingEvalSnapshotReport, error) {
+	topK := opts.TopK
+	if topK <= 0 {
+		topK = 5
+	}
+	generatedAt := opts.GeneratedAt
+	if generatedAt.IsZero() {
+		generatedAt = time.Now()
+	}
+	corpus := testdata.Build()
+	engine := retrieval.Engine{
+		Graph:   corpus.Graph,
+		Vectors: corpus.Vecs,
+		KV:      corpus.KV,
+	}
+	report := rankingEvalSnapshotReport{
+		SchemaVersion:    1,
+		GeneratedAt:      generatedAt.UTC().Format(time.RFC3339),
+		ContextDBVersion: buildinfo.Version,
+		Corpus:           "representative",
+		TopK:             topK,
+		TotalQueries:     len(corpus.QuerySet),
+	}
+	reciprocalSum := 0.0
+	for _, query := range corpus.QuerySet {
+		cfg := namespace.Defaults(query.Namespace, rankingEvalCorpusMode(query.Namespace))
+		results, err := engine.Retrieve(ctx, retrieval.Query{
+			Namespace:   query.Namespace,
+			Vector:      query.Vector,
+			TopK:        topK,
+			Strategy:    retrieval.HybridStrategy{VectorWeight: 1, Traversal: cfg.Traversal, MaxDepth: cfg.MaxDepth},
+			ScoreParams: cfg.ScoreParams,
+		})
+		if err != nil {
+			return report, fmt.Errorf("ranking eval %s: %w", query.ID, err)
+		}
+		queryReport := rankingEvalSnapshotQuery{
+			ID:                 query.ID,
+			Description:        query.Description,
+			Namespace:          query.Namespace,
+			Category:           query.Category,
+			ExpectedRankCutoff: rankingEvalExpectedRankCutoff(query.Category),
+		}
+		if queryReport.ExpectedRankCutoff > len(results) {
+			queryReport.ExpectedRankCutoff = len(results)
+		}
+		for i, result := range results {
+			rank := i + 1
+			expected := rankingEvalContainsNode(query.CorrectNodeIDs, result.Node.ID)
+			if expected && queryReport.CorrectRank == 0 {
+				queryReport.CorrectRank = rank
+				queryReport.ReciprocalRank = 1 / float64(rank)
+				reciprocalSum += queryReport.ReciprocalRank
+			}
+			text, _ := result.Node.Properties["text"].(string)
+			queryReport.TopResults = append(queryReport.TopResults, rankingEvalSnapshotResult{
+				Rank:            rank,
+				NodeID:          result.Node.ID.String(),
+				Text:            text,
+				Expected:        expected,
+				Score:           result.Score,
+				SimilarityScore: result.SimilarityScore,
+				ConfidenceScore: result.ConfidenceScore,
+				RecencyScore:    result.RecencyScore,
+				UtilityScore:    result.UtilityScore,
+				ScoreBreakdown:  result.Breakdown,
+				RetrievalSource: result.RetrievalSource,
+			})
+		}
+		queryReport.Passed = queryReport.CorrectRank > 0 && queryReport.CorrectRank <= queryReport.ExpectedRankCutoff
+		if queryReport.Passed {
+			report.PassedQueries++
+		}
+		report.Queries = append(report.Queries, queryReport)
+	}
+	report.FailedQueries = report.TotalQueries - report.PassedQueries
+	if report.TotalQueries > 0 {
+		report.MeanReciprocal = reciprocalSum / float64(report.TotalQueries)
+	}
+	return report, nil
+}
+
+func rankingEvalExpectedRankCutoff(category string) int {
+	switch category {
+	case "poisoning", "temporal", "procedural":
+		return 1
+	default:
+		return 3
+	}
+}
+
+func rankingEvalCorpusMode(ns string) namespace.Mode {
+	switch ns {
+	case testdata.NSChannel:
+		return namespace.ModeBeliefSystem
+	case testdata.NSAgent:
+		return namespace.ModeAgentMemory
+	case testdata.NSProcedural:
+		return namespace.ModeProcedural
+	default:
+		return namespace.ModeGeneral
+	}
+}
+
+func rankingEvalContainsNode(ids []uuid.UUID, id uuid.UUID) bool {
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 func readSnapshotLifecycleIndex(path string) (snapshotLifecycleIndex, error) {
@@ -2509,6 +2714,15 @@ func writeIndentedJSON(v any) {
 		fmt.Fprintf(os.Stderr, "contextdb: encode json: %v\n", err)
 		os.Exit(2)
 	}
+}
+
+func writeJSONFile(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode json: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
 }
 
 func runDoctor(args []string) {
