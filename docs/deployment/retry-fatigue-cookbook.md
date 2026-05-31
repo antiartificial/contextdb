@@ -36,6 +36,18 @@ curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-f
 
 Built-in presets are `review-overdue`, `source-trust-anomaly`, and `unassigned-review-overdue`. JSON responses include the same preset metadata so clients can render the available lanes without hard-coding descriptions.
 
+## Preset Reference
+
+Dashboards can read the same preset metadata from retry fatigue JSON responses, but this table is the compact reference for operators and handoff tooling:
+
+| Preset | Expanded filters | Intended handoff audience |
+|:-------|:-----------------|:--------------------------|
+| `review-overdue` | `escalation_level=review_overdue` | Review owners or coordinators handling assigned or snoozed work that missed its review window |
+| `source-trust-anomaly` | `escalation_level=source_trust_anomaly` | Source-quality reviewers investigating credibility drops, repeated refutations, or trust anomalies |
+| `unassigned-review-overdue` | `owner=unassigned`, `escalation_level=review_overdue` | Queue triage or on-call reviewers who need to claim overdue work with no explicit owner |
+
+Explicit `owner` or `escalation_level` query parameters can narrow or override a preset-expanded value. Keep preset names stable in dashboards and scripts; change the expanded filters in one place when the handoff lane changes.
+
 ## Focus An Owner And Lane
 
 Combine both filters when the incident is specific to one owner inside one escalation class:

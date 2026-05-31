@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.72.0",
+  "version": "0.73.0",
   "api_version": "v1",
-  "docs_version": "0.72.0",
+  "docs_version": "0.73.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -638,6 +638,12 @@ curl http://localhost:7701/v1/version
       "description": "Docs include keep-count and CI artifact recipes for ranking baseline retention."
     },
     {
+      "name": "review-handoff-retry-fatigue-preset-discovery-docs",
+      "status": "stable",
+      "since": "v0.73.0",
+      "description": "Docs include a compact retry fatigue preset table with expanded filters and handoff audiences."
+    },
+    {
       "name": "published-backup-repair-guard",
       "status": "stable",
       "since": "v0.70.0",
@@ -649,7 +655,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.72.0"
+  "release_notes_path": "/contextdb/releases/v0.73.0"
 }
 ```
 
@@ -1035,7 +1041,7 @@ Export the same fatigue view as Markdown for incident handoffs:
 curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue?format=markdown"
 ```
 
-See the [retry fatigue cookbook](/deployment/retry-fatigue-cookbook) for common owner and escalation-lane filter combinations.
+See the [retry fatigue cookbook](/deployment/retry-fatigue-cookbook) for common owner and escalation-lane filter combinations, including the built-in preset reference table.
 
 Retry one unresolved failed delivery explicitly:
 
