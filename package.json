@@ -1,6 +1,6 @@
 {
   "name": "contextdb",
-  "version": "0.91.0",
+  "version": "0.92.0",
   "description": "**[Documentation](docs/) | [Architecture](docs/architecture/) | [API](docs/api/) | [Quick Start](docs/quick-start.md)**",
   "main": "index.js",
   "directories": {
@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "admin:build": "vite build --config internal/admin/ui/vite.config.ts",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
@@ -25,7 +26,10 @@
   },
   "homepage": "https://github.com/antiartificial/contextdb#readme",
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "mermaid": "^11.13.0",
+    "svelte": "^5.56.0",
+    "typescript": "^6.0.3",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17"
   },

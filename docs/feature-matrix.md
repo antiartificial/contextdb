@@ -113,9 +113,10 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Admin/debug UI | Implemented | v0.88 | `inspectability`, `operations` | Observe port serves `/admin/` with runtime stats and a belief debugger backed by `/admin/api/belief` |
 | Admin debugger search | Implemented | v0.89 | `inspectability`, `operations` | `/admin/api/search` finds recent valid graph nodes by text, source, label, or ID and the UI can open them in the debugger |
 | Admin metrics dashboard | Implemented | v0.91 | `inspectability`, `operations`, `metrics` | `/admin/` surfaces health signals, ingest/retrieval rates, latency, and raw `/admin/api/metrics` JSON |
+| Svelte admin shell | Implemented | v0.92 | `inspectability`, `operations`, `ui` | `/admin/` is served from an embedded Svelte app bundle while preserving metrics, search, and belief debugger APIs |
 
 ## Next Candidates
 
-1. Svelte admin app shell for richer dashboard/debugger workflows.
-2. Debugger explain-rank compare for side-by-side ranking questions.
-3. Retry fatigue preset API schema fixture for REST/SDK parity.
+1. Debugger explain-rank compare for side-by-side ranking questions.
+2. Retry fatigue preset API schema fixture for REST/SDK parity.
+3. Doctor backup receipt runbook lane for repair closure checklists.

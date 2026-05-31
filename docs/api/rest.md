@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.91.0",
+  "version": "0.92.0",
   "api_version": "v1",
-  "docs_version": "0.91.0",
+  "docs_version": "0.92.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -768,6 +768,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.91.0",
       "description": "The admin dashboard surfaces health, ingest, retrieval, latency, and raw metrics through /admin/api/metrics."
+    },
+    {
+      "name": "admin-svelte-shell",
+      "status": "stable",
+      "since": "v0.92.0",
+      "description": "The admin dashboard is built as an embedded Svelte app while preserving the /admin/ route and debugger APIs."
     }
   ],
   "migrations": [
@@ -775,7 +781,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.91.0"
+  "release_notes_path": "/contextdb/releases/v0.92.0"
 }
 ```
 
@@ -1322,7 +1328,7 @@ curl "http://localhost:7702/admin/api/belief?ns=my-app&id=NODE_UUID"
 curl "http://localhost:7702/admin/api/search?ns=my-app&q=auth&limit=10"
 ```
 
-The dashboard displays health signals, ingest and retrieval rates, latency snapshots, raw metrics JSON, links to metrics and profiling endpoints, and a belief debugger for source, support, contradiction, provenance, and confidence-history evidence. The debugger search API scans recent valid graph nodes by text, labels, source ID, or node ID so operators can open an audit without first copying a UUID from another tool.
+The dashboard displays health signals, ingest and retrieval rates, latency snapshots, raw metrics JSON, links to metrics and profiling endpoints, and a belief debugger for source, support, contradiction, provenance, and confidence-history evidence. The UI is built as a Svelte app and embedded into the Go binary; after editing files under `internal/admin/ui`, run `npm run admin:build` before Go tests or release builds. The debugger search API scans recent valid graph nodes by text, labels, source ID, or node ID so operators can open an audit without first copying a UUID from another tool.
 
 ## Observability
 

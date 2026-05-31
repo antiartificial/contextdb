@@ -6,8 +6,9 @@
 package admin
 
 import (
+	"embed"
 	"encoding/json"
-	"html/template"
+	"io/fs"
 	"net/http"
 	"sort"
 	"strconv"
@@ -27,8 +28,10 @@ type adminHandler struct {
 	db    *client.DB
 	graph store.GraphStore
 	mux   *http.ServeMux
-	tmpl  *template.Template
 }
+
+//go:embed dist/index.html dist/assets/*
+var adminDist embed.FS
 
 // New creates an http.Handler that serves the admin UI at /admin/.
 func New(db *client.DB) http.Handler {
@@ -38,7 +41,10 @@ func New(db *client.DB) http.Handler {
 		graph: graph,
 		mux:   http.NewServeMux(),
 	}
-	h.tmpl = template.Must(template.New("index").Parse(indexHTML))
+	staticFS, err := fs.Sub(adminDist, "dist")
+	if err == nil {
+		h.mux.Handle("GET /admin/assets/", http.StripPrefix("/admin/", http.FileServer(http.FS(staticFS))))
+	}
 
 	h.mux.HandleFunc("GET /admin/", h.handleIndex)
 	h.mux.HandleFunc("GET /admin/debugger", h.handleIndex)
@@ -67,9 +73,13 @@ func parseTime(s string) (time.Time, error) {
 
 // handleIndex serves the main dashboard HTML page.
 func (h *adminHandler) handleIndex(w http.ResponseWriter, r *http.Request) {
-	stats := h.db.Stats()
+	index, err := adminDist.ReadFile("dist/index.html")
+	if err != nil {
+		http.Error(w, "admin UI is not built; run npm run admin:build", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	h.tmpl.Execute(w, stats)
+	w.Write(index)
 }
 
 // handleStats returns JSON stats for the dashboard.
@@ -429,267 +439,3 @@ func (h *adminHandler) handleDiff(w http.ResponseWriter, r *http.Request) {
 		"changes":   diffs,
 	})
 }
-
-const indexHTML = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>contextdb admin</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: #0f1117; color: #e1e4e8; line-height: 1.6; }
-  .container { max-width: 1180px; margin: 0 auto; padding: 2rem; }
-  .header { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 1.5rem; }
-  h1 { font-size: 1.5rem; color: #e1e4e8; }
-  h2 { font-size: 1.1rem; color: #8b949e; margin-bottom: 1rem; border-bottom: 1px solid #21262d; padding-bottom: 0.5rem; }
-  .status { color: #8b949e; font-size: 0.86rem; text-align: right; }
-  .status strong { color: #58a6ff; text-transform: capitalize; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
-  .dashboard { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr); gap: 1rem; margin-bottom: 2rem; }
-  .card, .panel { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
-  .card .label { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
-  .card .value { font-size: 1.8rem; font-weight: 600; color: #58a6ff; margin-top: 0.25rem; }
-  .card .sub { color: #8b949e; font-size: 0.78rem; }
-  .bars { display: grid; gap: 0.8rem; }
-  .bar-label { display: flex; justify-content: space-between; color: #8b949e; font-size: 0.82rem; margin-bottom: 0.28rem; }
-  .bar-track { height: 0.55rem; background: #0f1117; border: 1px solid #30363d; border-radius: 999px; overflow: hidden; }
-  .bar-fill { height: 100%; width: 0%; background: #58a6ff; }
-  .bar-fill.warn { background: #d29922; }
-  .signals { margin-top: 1rem; color: #8b949e; font-size: 0.86rem; }
-  .signals li { margin-left: 1rem; }
-  .links { list-style: none; }
-  .links li { padding: 0.5rem 0; border-bottom: 1px solid #21262d; }
-  .links a { color: #58a6ff; text-decoration: none; }
-  .links a:hover { text-decoration: underline; }
-  .tool { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; margin-bottom: 2rem; }
-  .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: end; }
-  .search-row { display: grid; grid-template-columns: 1fr 1fr 7rem auto; gap: 0.75rem; align-items: end; margin-bottom: 0.75rem; }
-  label { display: block; font-size: 0.8rem; color: #8b949e; margin-bottom: 0.25rem; }
-  input { width: 100%; background: #0f1117; color: #e1e4e8; border: 1px solid #30363d; border-radius: 4px; padding: 0.55rem; }
-  button { background: #238636; color: white; border: 0; border-radius: 4px; padding: 0.62rem 0.9rem; cursor: pointer; }
-  button:hover { background: #2ea043; }
-  .results { border: 1px solid #30363d; border-radius: 6px; overflow: hidden; margin-bottom: 0.75rem; }
-  .result { display: grid; grid-template-columns: 1fr auto; gap: 1rem; padding: 0.75rem; border-bottom: 1px solid #30363d; background: #0f1117; }
-  .result:last-child { border-bottom: 0; }
-  .result strong { display: block; color: #e1e4e8; overflow-wrap: anywhere; }
-  .meta { color: #8b949e; font-size: 0.78rem; overflow-wrap: anywhere; }
-  .ghost { background: #21262d; }
-  .ghost:hover { background: #30363d; }
-  pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0f1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; max-height: 28rem; overflow: auto; }
-  .footer { margin-top: 2rem; font-size: 0.8rem; color: #484f58; }
-  @media (max-width: 860px) { .dashboard, .row, .search-row, .result { grid-template-columns: 1fr; } .header { align-items: flex-start; flex-direction: column; } .status { text-align: left; } }
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="header">
-    <div>
-      <h1>contextdb admin</h1>
-      <div class="meta">Dashboard and debugger for local contextdb observability.</div>
-    </div>
-    <div class="status">Health <strong id="health-status">loading</strong><br><span id="generated-at">waiting for metrics</span></div>
-  </div>
-
-  <h2>Metrics</h2>
-  <div class="dashboard">
-    <div>
-      <div class="grid">
-        <div class="card">
-          <div class="label">Mode</div>
-          <div class="value" id="metric-mode" style="font-size:1.2rem">{{.Mode}}</div>
-          <div class="sub">Runtime store profile</div>
-        </div>
-        <div class="card">
-          <div class="label">Ingest Total</div>
-          <div class="value" id="metric-ingest-total">{{.IngestTotal}}</div>
-          <div class="sub"><span id="metric-admission-rate">0%</span> admitted</div>
-        </div>
-        <div class="card">
-          <div class="label">Retrieval Total</div>
-          <div class="value" id="metric-retrieval-total">{{.RetrievalTotal}}</div>
-          <div class="sub"><span id="metric-error-rate">0%</span> error rate</div>
-        </div>
-        <div class="card">
-          <div class="label">P95 Latency</div>
-          <div class="value" id="metric-p95">0.00 ms</div>
-          <div class="sub">Mean <span id="metric-mean">0.00 ms</span></div>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="bars">
-          <div>
-            <div class="bar-label"><span>Admitted</span><span id="bar-admitted-label">0 / 0</span></div>
-            <div class="bar-track"><div id="bar-admitted" class="bar-fill"></div></div>
-          </div>
-          <div>
-            <div class="bar-label"><span>Rejected</span><span id="bar-rejected-label">0 / 0</span></div>
-            <div class="bar-track"><div id="bar-rejected" class="bar-fill warn"></div></div>
-          </div>
-          <div>
-            <div class="bar-label"><span>Retrieval errors</span><span id="bar-errors-label">0 / 0</span></div>
-            <div class="bar-track"><div id="bar-errors" class="bar-fill warn"></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="panel">
-      <h2 style="margin-bottom:0.75rem">Signals</h2>
-      <ul id="metric-signals" class="signals"><li>Loading metrics...</li></ul>
-      <pre id="metrics-json" style="margin-top:1rem; max-height:16rem">Loading /admin/api/metrics...</pre>
-    </div>
-  </div>
-
-  <h2>Belief Debugger</h2>
-  <div class="tool">
-    <div class="search-row">
-      <div>
-        <label for="search-ns">Namespace</label>
-        <input id="search-ns" value="default" autocomplete="off">
-      </div>
-      <div>
-        <label for="search-q">Search</label>
-        <input id="search-q" placeholder="text, source, label, or UUID" autocomplete="off">
-      </div>
-      <div>
-        <label for="search-limit">Limit</label>
-        <input id="search-limit" value="10" inputmode="numeric" autocomplete="off">
-      </div>
-      <button id="search-run" type="button">Search</button>
-    </div>
-    <div id="search-results" class="results" hidden></div>
-    <div class="row">
-      <div>
-        <label for="debug-ns">Namespace</label>
-        <input id="debug-ns" value="default" autocomplete="off">
-      </div>
-      <div>
-        <label for="debug-id">Node ID</label>
-        <input id="debug-id" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off">
-      </div>
-      <button id="debug-run" type="button">Inspect</button>
-    </div>
-    <pre id="debug-output">Enter a namespace and node ID to inspect source, support, contradictions, provenance, and confidence history.</pre>
-  </div>
-
-  <h2>Quick Links</h2>
-  <ul class="links">
-    <li><a href="/v1/ping">Health Check (/v1/ping)</a></li>
-    <li><a href="/v1/stats">API Stats (/v1/stats)</a></li>
-    <li><a href="/metrics">Prometheus Metrics (/metrics)</a></li>
-    <li><a href="/debug/pprof/">Profiling (/debug/pprof/)</a></li>
-    <li><a href="/debug/vars">expvar (/debug/vars)</a></li>
-  </ul>
-
-  <div class="footer">contextdb admin dashboard</div>
-</div>
-<script>
-const output = document.getElementById('debug-output');
-const searchResults = document.getElementById('search-results');
-function pct(value) {
-  return Math.round((value || 0) * 1000) / 10 + '%';
-}
-function setText(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = value;
-}
-function setBar(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.style.width = Math.max(0, Math.min(100, (value || 0) * 100)) + '%';
-}
-async function refreshMetrics() {
-  try {
-    const res = await fetch('/admin/api/metrics');
-    const text = await res.text();
-    if (!res.ok) throw new Error(text || res.statusText);
-    const data = JSON.parse(text);
-    setText('health-status', data.health.status);
-    setText('generated-at', data.generated_at);
-    setText('metric-mode', data.mode);
-    setText('metric-ingest-total', data.ingest.total);
-    setText('metric-retrieval-total', data.retrieval.total);
-    setText('metric-admission-rate', pct(data.ingest.admission_rate));
-    setText('metric-error-rate', pct(data.retrieval.error_rate));
-    setText('metric-p95', (data.latency.p95_ms || 0).toFixed(2) + ' ms');
-    setText('metric-mean', (data.latency.mean_ms || 0).toFixed(2) + ' ms');
-    setText('bar-admitted-label', data.ingest.admitted + ' / ' + data.ingest.total);
-    setText('bar-rejected-label', data.ingest.rejected + ' / ' + data.ingest.total);
-    setText('bar-errors-label', data.retrieval.errors + ' / ' + data.retrieval.total);
-    setBar('bar-admitted', data.ingest.admission_rate);
-    setBar('bar-rejected', data.ingest.rejection_rate);
-    setBar('bar-errors', data.retrieval.error_rate);
-    const signals = document.getElementById('metric-signals');
-    signals.innerHTML = '';
-    for (const signal of data.health.signals || []) {
-      const item = document.createElement('li');
-      item.textContent = signal;
-      signals.appendChild(item);
-    }
-    document.getElementById('metrics-json').textContent = JSON.stringify(data, null, 2);
-  } catch (err) {
-    setText('health-status', 'unknown');
-    document.getElementById('metrics-json').textContent = String(err.message || err);
-  }
-}
-function setDebuggerTarget(ns, id) {
-  document.getElementById('debug-ns').value = ns;
-  document.getElementById('debug-id').value = id;
-}
-refreshMetrics();
-setInterval(refreshMetrics, 5000);
-document.getElementById('search-run').addEventListener('click', async () => {
-  const ns = document.getElementById('search-ns').value.trim();
-  const q = document.getElementById('search-q').value.trim();
-  const limit = document.getElementById('search-limit').value.trim();
-  searchResults.hidden = false;
-  searchResults.textContent = 'Searching...';
-  try {
-    const res = await fetch('/admin/api/search?ns=' + encodeURIComponent(ns) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit));
-    const text = await res.text();
-    if (!res.ok) throw new Error(text || res.statusText);
-    const data = JSON.parse(text);
-    searchResults.innerHTML = '';
-    if (!data.results || data.results.length === 0) {
-      searchResults.textContent = 'No matching nodes.';
-      return;
-    }
-    for (const result of data.results) {
-      const item = document.createElement('div');
-      item.className = 'result';
-      const detail = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = result.text || result.id;
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = result.id + ' | ' + (result.source_id || 'unknown source') + ' | confidence ' + (result.confidence || 0).toFixed(2) + ' | ' + result.match_reason;
-      detail.appendChild(title);
-      detail.appendChild(meta);
-      const button = document.createElement('button');
-      button.className = 'ghost';
-      button.type = 'button';
-      button.textContent = 'Inspect';
-      button.addEventListener('click', () => setDebuggerTarget(ns, result.id));
-      item.appendChild(detail);
-      item.appendChild(button);
-      searchResults.appendChild(item);
-    }
-  } catch (err) {
-    searchResults.textContent = String(err.message || err);
-  }
-});
-document.getElementById('debug-run').addEventListener('click', async () => {
-  const ns = document.getElementById('debug-ns').value.trim();
-  const id = document.getElementById('debug-id').value.trim();
-  output.textContent = 'Loading...';
-  try {
-    const res = await fetch('/admin/api/belief?ns=' + encodeURIComponent(ns) + '&id=' + encodeURIComponent(id));
-    const text = await res.text();
-    if (!res.ok) throw new Error(text || res.statusText);
-    output.textContent = JSON.stringify(JSON.parse(text), null, 2);
-  } catch (err) {
-    output.textContent = String(err.message || err);
-  }
-});
-</script>
-</body>
-</html>`

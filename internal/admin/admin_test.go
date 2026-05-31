@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -87,11 +88,20 @@ func TestAdminDashboardIncludesDebugger(t *testing.T) {
 	New(db).ServeHTTP(w, req)
 
 	is.Equal(w.Code, http.StatusOK)
-	is.True(strings.Contains(w.Body.String(), "Metrics"))
-	is.True(strings.Contains(w.Body.String(), "Belief Debugger"))
-	is.True(strings.Contains(w.Body.String(), "/admin/api/metrics"))
-	is.True(strings.Contains(w.Body.String(), "/admin/api/search"))
-	is.True(strings.Contains(w.Body.String(), "/admin/api/belief"))
+	body := w.Body.String()
+	is.True(strings.Contains(body, `<div id="app"></div>`))
+	is.True(strings.Contains(body, "/admin/assets/"))
+	asset := regexp.MustCompile(`/admin/assets/[^"]+\.js`).FindString(body)
+	is.True(asset != "")
+
+	assetReq := httptest.NewRequest(http.MethodGet, asset, nil)
+	assetW := httptest.NewRecorder()
+	New(db).ServeHTTP(assetW, assetReq)
+	is.Equal(assetW.Code, http.StatusOK)
+	is.True(strings.Contains(assetW.Body.String(), "/admin/api/metrics"))
+	is.True(strings.Contains(assetW.Body.String(), "/admin/api/search"))
+	is.True(strings.Contains(assetW.Body.String(), "/admin/api/belief"))
+	is.True(strings.Contains(assetW.Body.String(), "Belief Debugger"))
 }
 
 func TestAdminMetricsAPI(t *testing.T) {
