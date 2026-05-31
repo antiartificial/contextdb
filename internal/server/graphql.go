@@ -766,6 +766,34 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	reviewHandoffRetryOwnerCountType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewHandoffRetryOwnerCount",
+		Fields: graphql.Fields{
+			"owner": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				count, _ := p.Source.(client.ReviewHandoffRetryOwnerCount)
+				return count.Owner, nil
+			}},
+			"count": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				count, _ := p.Source.(client.ReviewHandoffRetryOwnerCount)
+				return count.Count, nil
+			}},
+		},
+	})
+
+	reviewHandoffRetryEscalationCountType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewHandoffRetryEscalationCount",
+		Fields: graphql.Fields{
+			"escalationLevel": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				count, _ := p.Source.(client.ReviewHandoffRetryEscalationCount)
+				return count.EscalationLevel, nil
+			}},
+			"count": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				count, _ := p.Source.(client.ReviewHandoffRetryEscalationCount)
+				return count.Count, nil
+			}},
+		},
+	})
+
 	reviewHandoffRetryFatigueSummaryType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "ReviewHandoffRetryFatigueSummary",
 		Fields: graphql.Fields{
@@ -792,6 +820,14 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 			"statusFamilies": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffRetryStatusFamilyCountType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
 				return summary.StatusFamilies, nil
+			}},
+			"owners": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffRetryOwnerCountType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.Owners, nil
+			}},
+			"escalationLevels": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffRetryEscalationCountType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.EscalationLevels, nil
 			}},
 			"lastStatusCode": &graphql.Field{Type: graphql.Int, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)

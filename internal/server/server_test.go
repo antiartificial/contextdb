@@ -477,6 +477,12 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	statusFamilies := summary["status_families"].([]any)
 	is.Equal(len(statusFamilies), 1)
 	is.Equal(statusFamilies[0].(map[string]any)["family"], "5xx")
+	owners := summary["owners"].([]any)
+	is.Equal(len(owners), 1)
+	is.Equal(owners[0].(map[string]any)["owner"], "alice")
+	escalationLevels := summary["escalation_levels"].([]any)
+	is.Equal(len(escalationLevels), 1)
+	is.Equal(escalationLevels[0].(map[string]any)["escalation_level"], "review_overdue")
 	reqRetryFatigueMarkdown := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue?format=markdown", nil)
 	wRetryFatigueMarkdown := httptest.NewRecorder()
 	handler.ServeHTTP(wRetryFatigueMarkdown, reqRetryFatigueMarkdown)
@@ -484,6 +490,8 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.True(strings.Contains(wRetryFatigueMarkdown.Header().Get("Content-Type"), "text/markdown"))
 	is.True(strings.Contains(wRetryFatigueMarkdown.Body.String(), "# Review Handoff Retry Fatigue"))
 	is.True(strings.Contains(wRetryFatigueMarkdown.Body.String(), failedWebhookTarget.URL))
+	is.True(strings.Contains(wRetryFatigueMarkdown.Body.String(), "alice=1"))
+	is.True(strings.Contains(wRetryFatigueMarkdown.Body.String(), "review_overdue=1"))
 	failRESTWebhook = false
 	retryBody, _ := json.Marshal(map[string]any{
 		"digest_event_id": candidate["digest_event_id"],
@@ -991,6 +999,8 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				ready
 				waiting
 				statusFamilies { family count }
+				owners { owner count }
+				escalationLevels { escalationLevel count }
 				lastStatusCode
 			}
 		}`,
@@ -1015,6 +1025,10 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(retryFatigueSummary["lastStatusCode"], float64(http.StatusBadGateway))
 	retryFatigueStatusFamilies := retryFatigueSummary["statusFamilies"].([]any)
 	is.Equal(retryFatigueStatusFamilies[0].(map[string]any)["family"], "5xx")
+	retryFatigueOwners := retryFatigueSummary["owners"].([]any)
+	is.Equal(retryFatigueOwners[0].(map[string]any)["owner"], "alice")
+	retryFatigueEscalations := retryFatigueSummary["escalationLevels"].([]any)
+	is.Equal(retryFatigueEscalations[0].(map[string]any)["escalationLevel"], "review_overdue")
 	failGraphQLWebhook = false
 
 	retryWebhookBody, _ := json.Marshal(map[string]any{

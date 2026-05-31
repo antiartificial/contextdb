@@ -826,17 +826,31 @@ type ReviewHandoffRetryStatusFamilyCount struct {
 	Count  int    `json:"count"`
 }
 
+// ReviewHandoffRetryOwnerCount summarizes retry recommendations by review owner.
+type ReviewHandoffRetryOwnerCount struct {
+	Owner string `json:"owner"`
+	Count int    `json:"count"`
+}
+
+// ReviewHandoffRetryEscalationCount summarizes retry recommendations by escalation level.
+type ReviewHandoffRetryEscalationCount struct {
+	EscalationLevel string `json:"escalation_level"`
+	Count           int    `json:"count"`
+}
+
 // ReviewHandoffRetryFatigueSummary groups unresolved retry pressure by target URL.
 type ReviewHandoffRetryFatigueSummary struct {
-	TargetURL      string                                `json:"target_url"`
-	Candidates     int                                   `json:"candidates"`
-	TotalAttempts  int                                   `json:"total_attempts"`
-	Ready          int                                   `json:"ready"`
-	Waiting        int                                   `json:"waiting"`
-	StatusFamilies []ReviewHandoffRetryStatusFamilyCount `json:"status_families"`
-	LastStatusCode int                                   `json:"last_status_code,omitempty"`
-	LastError      string                                `json:"last_error,omitempty"`
-	LastAttemptAt  time.Time                             `json:"last_attempt_at,omitempty"`
+	TargetURL        string                                `json:"target_url"`
+	Candidates       int                                   `json:"candidates"`
+	TotalAttempts    int                                   `json:"total_attempts"`
+	Ready            int                                   `json:"ready"`
+	Waiting          int                                   `json:"waiting"`
+	StatusFamilies   []ReviewHandoffRetryStatusFamilyCount `json:"status_families"`
+	Owners           []ReviewHandoffRetryOwnerCount        `json:"owners,omitempty"`
+	EscalationLevels []ReviewHandoffRetryEscalationCount   `json:"escalation_levels,omitempty"`
+	LastStatusCode   int                                   `json:"last_status_code,omitempty"`
+	LastError        string                                `json:"last_error,omitempty"`
+	LastAttemptAt    time.Time                             `json:"last_attempt_at,omitempty"`
 }
 
 // ReviewHandoffRetryFatigueMarkdown renders endpoint fatigue summaries for handoffs.
@@ -849,15 +863,17 @@ func ReviewHandoffRetryFatigueMarkdown(summaries []ReviewHandoffRetryFatigueSumm
 	}
 	top := summaries[0]
 	fmt.Fprintf(&b, "Top failing endpoint: `%s` with %d unresolved candidate(s) and %d total attempt(s).\n\n", markdownInline(top.TargetURL), top.Candidates, top.TotalAttempts)
-	b.WriteString("| Target URL | Candidates | Attempts | Ready | Waiting | Status Families | Latest Failure |\n")
-	b.WriteString("|:-----------|-----------:|---------:|------:|--------:|:----------------|:---------------|\n")
+	b.WriteString("| Target URL | Candidates | Attempts | Ready | Waiting | Owners | Escalations | Status Families | Latest Failure |\n")
+	b.WriteString("|:-----------|-----------:|---------:|------:|--------:|:-------|:------------|:----------------|:---------------|\n")
 	for _, summary := range summaries {
-		fmt.Fprintf(&b, "| `%s` | %d | %d | %d | %d | %s | %s |\n",
+		fmt.Fprintf(&b, "| `%s` | %d | %d | %d | %d | %s | %s | %s | %s |\n",
 			markdownTable(summary.TargetURL),
 			summary.Candidates,
 			summary.TotalAttempts,
 			summary.Ready,
 			summary.Waiting,
+			markdownTable(formatRetryOwners(summary.Owners)),
+			markdownTable(formatRetryEscalations(summary.EscalationLevels)),
 			markdownTable(formatRetryStatusFamilies(summary.StatusFamilies)),
 			markdownTable(formatRetryLatestFailure(summary)),
 		)
@@ -2248,12 +2264,16 @@ func (h *NamespaceHandle) ReviewHandoffRetryFatigue(ctx context.Context, after t
 	}
 	summaries := map[string]*ReviewHandoffRetryFatigueSummary{}
 	statusFamilies := map[string]map[string]int{}
+	owners := map[string]map[string]int{}
+	escalationLevels := map[string]map[string]int{}
 	for _, recommendation := range recommendations {
 		summary := summaries[recommendation.TargetURL]
 		if summary == nil {
 			summary = &ReviewHandoffRetryFatigueSummary{TargetURL: recommendation.TargetURL}
 			summaries[recommendation.TargetURL] = summary
 			statusFamilies[recommendation.TargetURL] = map[string]int{}
+			owners[recommendation.TargetURL] = map[string]int{}
+			escalationLevels[recommendation.TargetURL] = map[string]int{}
 		}
 		summary.Candidates++
 		summary.TotalAttempts += recommendation.Attempts
@@ -2264,6 +2284,8 @@ func (h *NamespaceHandle) ReviewHandoffRetryFatigue(ctx context.Context, after t
 		}
 		family := reviewHandoffStatusFamily(recommendation.LastStatusCode)
 		statusFamilies[recommendation.TargetURL][family]++
+		owners[recommendation.TargetURL][reviewHandoffFatigueGroupValue(recommendation.Owner, "unassigned")]++
+		escalationLevels[recommendation.TargetURL][reviewHandoffFatigueGroupValue(recommendation.EscalationLevel, "none")]++
 		if recommendation.LastAttemptAt.After(summary.LastAttemptAt) {
 			summary.LastAttemptAt = recommendation.LastAttemptAt
 			summary.LastStatusCode = recommendation.LastStatusCode
@@ -2281,6 +2303,30 @@ func (h *NamespaceHandle) ReviewHandoffRetryFatigue(ctx context.Context, after t
 		sort.SliceStable(summary.StatusFamilies, func(i, j int) bool {
 			return summary.StatusFamilies[i].Family < summary.StatusFamilies[j].Family
 		})
+		for owner, count := range owners[targetURL] {
+			summary.Owners = append(summary.Owners, ReviewHandoffRetryOwnerCount{
+				Owner: owner,
+				Count: count,
+			})
+		}
+		sort.SliceStable(summary.Owners, func(i, j int) bool {
+			if summary.Owners[i].Count != summary.Owners[j].Count {
+				return summary.Owners[i].Count > summary.Owners[j].Count
+			}
+			return summary.Owners[i].Owner < summary.Owners[j].Owner
+		})
+		for escalationLevel, count := range escalationLevels[targetURL] {
+			summary.EscalationLevels = append(summary.EscalationLevels, ReviewHandoffRetryEscalationCount{
+				EscalationLevel: escalationLevel,
+				Count:           count,
+			})
+		}
+		sort.SliceStable(summary.EscalationLevels, func(i, j int) bool {
+			if summary.EscalationLevels[i].Count != summary.EscalationLevels[j].Count {
+				return summary.EscalationLevels[i].Count > summary.EscalationLevels[j].Count
+			}
+			return summary.EscalationLevels[i].EscalationLevel < summary.EscalationLevels[j].EscalationLevel
+		})
 		out = append(out, *summary)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -2293,6 +2339,14 @@ func (h *NamespaceHandle) ReviewHandoffRetryFatigue(ctx context.Context, after t
 		return out[i].LastAttemptAt.After(out[j].LastAttemptAt)
 	})
 	return out, nil
+}
+
+func reviewHandoffFatigueGroupValue(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func reviewHandoffRetryBackoff(attempts int) time.Duration {
@@ -2323,6 +2377,28 @@ func formatRetryStatusFamilies(counts []ReviewHandoffRetryStatusFamilyCount) str
 	parts := make([]string, 0, len(counts))
 	for _, count := range counts {
 		parts = append(parts, fmt.Sprintf("%s=%d", count.Family, count.Count))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatRetryOwners(counts []ReviewHandoffRetryOwnerCount) string {
+	if len(counts) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(counts))
+	for _, count := range counts {
+		parts = append(parts, fmt.Sprintf("%s=%d", count.Owner, count.Count))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatRetryEscalations(counts []ReviewHandoffRetryEscalationCount) string {
+	if len(counts) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(counts))
+	for _, count := range counts {
+		parts = append(parts, fmt.Sprintf("%s=%d", count.EscalationLevel, count.Count))
 	}
 	return strings.Join(parts, ", ")
 }

@@ -349,6 +349,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Backup freshness doctor integration | Implemented | `contextdb doctor --published-backup-url URL --max-published-backup-age 24h` adds a `published_backup_freshness` check to the combined doctor report |
 
+## Completed In v0.58.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Retry fatigue owner grouping | Implemented | Retry fatigue summaries now include owner and escalation-level breakdowns across Go SDK, REST, GraphQL, and Markdown handoff export |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -838,7 +844,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Completed in v0.57.0 with `published_backup_freshness` inside `contextdb doctor` |
-| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
 
 ## Fresh Brainstorm After v0.55.0
 
@@ -847,7 +853,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
 | Ranking eval historical diff | Markdown recaps summarize a single run, but reviewers still need release-to-release score movement | Completed in v0.56.0 with JSON and Markdown diffs for MRR, pass, rank, and top-score movement |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Completed in v0.57.0 with `published_backup_freshness` inside `contextdb doctor` |
-| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
 
 ## Fresh Brainstorm After v0.56.0
 
@@ -855,7 +861,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Completed in v0.57.0 with `published_backup_freshness` inside `contextdb doctor` |
-| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
 | Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
 
 ## Fresh Brainstorm After v0.57.0
@@ -863,6 +869,15 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
-| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
 | Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
 | Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
+
+## Fresh Brainstorm After v0.58.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
+| Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
+| Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Add optional owner filtering to retry fatigue query parameters |

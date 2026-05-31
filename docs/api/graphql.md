@@ -387,13 +387,21 @@ query {
       family
       count
     }
+    owners {
+      owner
+      count
+    }
+    escalationLevels {
+      escalationLevel
+      count
+    }
     lastStatusCode
     lastError
   }
 }
 ```
 
-Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures.
+Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures. Owner and escalation-level counts help route workload-specific handoffs.
 
 Retry one unresolved failed delivery explicitly:
 
