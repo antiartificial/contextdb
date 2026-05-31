@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "generated_for": "v0.100.0",
+  "schemas": [
+    {
+      "id": "retry-fatigue-presets",
+      "title": "Retry Fatigue Presets",
+      "href": "/contextdb/schemas/retry-fatigue-presets.schema.json",
+      "public_url": "https://antiartificial.github.io/contextdb/schemas/retry-fatigue-presets.schema.json",
+      "json_schema_id": "https://antiartificial.github.io/contextdb/schemas/retry-fatigue-presets.schema.json",
+      "feature": "review-handoff-retry-fatigue-preset-schema-publication",
+      "owner": "review-handoff",
+      "introduced_in": "v0.97.0",
+      "cataloged_in": "v0.100.0",
+      "status": "stable",
+      "description": "JSON Schema for retry fatigue preset metadata returned by REST, GraphQL, and SDK helpers."
+    }
+  ]
+}
