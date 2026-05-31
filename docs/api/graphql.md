@@ -373,6 +373,28 @@ query {
 
 Recommendations add read-only backoff guidance to retry candidates. They do not schedule or send retries.
 
+Summarize retry fatigue by endpoint without sending retries:
+
+```graphql
+query {
+  reviewHandoffRetryFatigue(namespace: "my-app") {
+    targetUrl
+    candidates
+    totalAttempts
+    ready
+    waiting
+    statusFamilies {
+      family
+      count
+    }
+    lastStatusCode
+    lastError
+  }
+}
+```
+
+Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures.
+
 Retry one unresolved failed delivery explicitly:
 
 ```graphql

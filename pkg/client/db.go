@@ -820,6 +820,25 @@ type ReviewHandoffRetryRecommendation struct {
 	Reason           string    `json:"reason"`
 }
 
+// ReviewHandoffRetryStatusFamilyCount summarizes retry recommendations by HTTP status family.
+type ReviewHandoffRetryStatusFamilyCount struct {
+	Family string `json:"family"`
+	Count  int    `json:"count"`
+}
+
+// ReviewHandoffRetryFatigueSummary groups unresolved retry pressure by target URL.
+type ReviewHandoffRetryFatigueSummary struct {
+	TargetURL      string                                `json:"target_url"`
+	Candidates     int                                   `json:"candidates"`
+	TotalAttempts  int                                   `json:"total_attempts"`
+	Ready          int                                   `json:"ready"`
+	Waiting        int                                   `json:"waiting"`
+	StatusFamilies []ReviewHandoffRetryStatusFamilyCount `json:"status_families"`
+	LastStatusCode int                                   `json:"last_status_code,omitempty"`
+	LastError      string                                `json:"last_error,omitempty"`
+	LastAttemptAt  time.Time                             `json:"last_attempt_at,omitempty"`
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -2195,6 +2214,61 @@ func (h *NamespaceHandle) ReviewHandoffRetryRecommendations(ctx context.Context,
 	return out, nil
 }
 
+// ReviewHandoffRetryFatigue groups retry recommendations by endpoint without sending retries.
+func (h *NamespaceHandle) ReviewHandoffRetryFatigue(ctx context.Context, after time.Time, now time.Time) ([]ReviewHandoffRetryFatigueSummary, error) {
+	recommendations, err := h.ReviewHandoffRetryRecommendations(ctx, after, now)
+	if err != nil {
+		return nil, err
+	}
+	summaries := map[string]*ReviewHandoffRetryFatigueSummary{}
+	statusFamilies := map[string]map[string]int{}
+	for _, recommendation := range recommendations {
+		summary := summaries[recommendation.TargetURL]
+		if summary == nil {
+			summary = &ReviewHandoffRetryFatigueSummary{TargetURL: recommendation.TargetURL}
+			summaries[recommendation.TargetURL] = summary
+			statusFamilies[recommendation.TargetURL] = map[string]int{}
+		}
+		summary.Candidates++
+		summary.TotalAttempts += recommendation.Attempts
+		if recommendation.Ready {
+			summary.Ready++
+		} else {
+			summary.Waiting++
+		}
+		family := reviewHandoffStatusFamily(recommendation.LastStatusCode)
+		statusFamilies[recommendation.TargetURL][family]++
+		if recommendation.LastAttemptAt.After(summary.LastAttemptAt) {
+			summary.LastAttemptAt = recommendation.LastAttemptAt
+			summary.LastStatusCode = recommendation.LastStatusCode
+			summary.LastError = recommendation.LastError
+		}
+	}
+	out := make([]ReviewHandoffRetryFatigueSummary, 0, len(summaries))
+	for targetURL, summary := range summaries {
+		for family, count := range statusFamilies[targetURL] {
+			summary.StatusFamilies = append(summary.StatusFamilies, ReviewHandoffRetryStatusFamilyCount{
+				Family: family,
+				Count:  count,
+			})
+		}
+		sort.SliceStable(summary.StatusFamilies, func(i, j int) bool {
+			return summary.StatusFamilies[i].Family < summary.StatusFamilies[j].Family
+		})
+		out = append(out, *summary)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Ready != out[j].Ready {
+			return out[i].Ready > out[j].Ready
+		}
+		if out[i].TotalAttempts != out[j].TotalAttempts {
+			return out[i].TotalAttempts > out[j].TotalAttempts
+		}
+		return out[i].LastAttemptAt.After(out[j].LastAttemptAt)
+	})
+	return out, nil
+}
+
 func reviewHandoffRetryBackoff(attempts int) time.Duration {
 	if attempts <= 1 {
 		return time.Minute
@@ -2207,6 +2281,13 @@ func reviewHandoffRetryBackoff(attempts int) time.Duration {
 		}
 	}
 	return delay
+}
+
+func reviewHandoffStatusFamily(statusCode int) string {
+	if statusCode <= 0 {
+		return "network_error"
+	}
+	return fmt.Sprintf("%dxx", statusCode/100)
 }
 
 // Explain returns a narrative report explaining what is known about a node.

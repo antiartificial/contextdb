@@ -752,6 +752,62 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	reviewHandoffRetryStatusFamilyCountType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewHandoffRetryStatusFamilyCount",
+		Fields: graphql.Fields{
+			"family": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				count, _ := p.Source.(client.ReviewHandoffRetryStatusFamilyCount)
+				return count.Family, nil
+			}},
+			"count": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				count, _ := p.Source.(client.ReviewHandoffRetryStatusFamilyCount)
+				return count.Count, nil
+			}},
+		},
+	})
+
+	reviewHandoffRetryFatigueSummaryType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewHandoffRetryFatigueSummary",
+		Fields: graphql.Fields{
+			"targetUrl": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.TargetURL, nil
+			}},
+			"candidates": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.Candidates, nil
+			}},
+			"totalAttempts": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.TotalAttempts, nil
+			}},
+			"ready": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.Ready, nil
+			}},
+			"waiting": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.Waiting, nil
+			}},
+			"statusFamilies": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffRetryStatusFamilyCountType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.StatusFamilies, nil
+			}},
+			"lastStatusCode": &graphql.Field{Type: graphql.Int, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.LastStatusCode, nil
+			}},
+			"lastError": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.LastError, nil
+			}},
+			"lastAttemptAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				summary, _ := p.Source.(client.ReviewHandoffRetryFatigueSummary)
+				return summary.LastAttemptAt, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -1487,6 +1543,15 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewHandoffRetryRecommendations,
 			},
+			"reviewHandoffRetryFatigue": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffRetryFatigueSummaryType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveReviewHandoffRetryFatigue,
+			},
 			"reviewDecisions": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
 				Args: graphql.FieldConfigArgument{
@@ -1913,6 +1978,17 @@ func (s *GraphQLServer) resolveReviewHandoffRetryRecommendations(p graphql.Resol
 	after, _ := p.Args["after"].(time.Time)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ReviewHandoffRetryRecommendations(p.Context, after, time.Time{})
+}
+
+func (s *GraphQLServer) resolveReviewHandoffRetryFatigue(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewHandoffRetryFatigue(p.Context, after, time.Time{})
 }
 
 func (s *GraphQLServer) resolveDeliverReviewHandoffWebhook(p graphql.ResolveParams) (interface{}, error) {

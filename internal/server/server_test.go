@@ -461,6 +461,22 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(recommendation["delay_seconds"], float64(60))
 	is.Equal(recommendation["ready"], false)
 	is.Equal(recommendation["reason"], "waiting_for_backoff")
+	reqRetryFatigue := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue", nil)
+	wRetryFatigue := httptest.NewRecorder()
+	handler.ServeHTTP(wRetryFatigue, reqRetryFatigue)
+	is.Equal(wRetryFatigue.Code, http.StatusOK)
+	var retryFatigueResp map[string]any
+	is.NoErr(json.Unmarshal(wRetryFatigue.Body.Bytes(), &retryFatigueResp))
+	summaries := retryFatigueResp["summaries"].([]any)
+	is.Equal(len(summaries), 1)
+	summary := summaries[0].(map[string]any)
+	is.Equal(summary["target_url"], failedWebhookTarget.URL)
+	is.Equal(summary["candidates"], float64(1))
+	is.Equal(summary["total_attempts"], float64(1))
+	is.Equal(summary["waiting"], float64(1))
+	statusFamilies := summary["status_families"].([]any)
+	is.Equal(len(statusFamilies), 1)
+	is.Equal(statusFamilies[0].(map[string]any)["family"], "5xx")
 	failRESTWebhook = false
 	retryBody, _ := json.Marshal(map[string]any{
 		"digest_event_id": candidate["digest_event_id"],
@@ -959,6 +975,39 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(retryRecommendation["delaySeconds"], float64(60))
 	is.Equal(retryRecommendation["ready"], false)
 	is.Equal(retryRecommendation["reason"], "waiting_for_backoff")
+	retryFatigueBody, _ := json.Marshal(map[string]any{
+		"query": `query {
+			reviewHandoffRetryFatigue(namespace: "graphql-test") {
+				targetUrl
+				candidates
+				totalAttempts
+				ready
+				waiting
+				statusFamilies { family count }
+				lastStatusCode
+			}
+		}`,
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(retryFatigueBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql retry fatigue errors: %v", errs)
+	}
+	retryFatigue := resp["data"].(map[string]any)["reviewHandoffRetryFatigue"].([]any)
+	is.Equal(len(retryFatigue), 1)
+	retryFatigueSummary := retryFatigue[0].(map[string]any)
+	is.Equal(retryFatigueSummary["targetUrl"], graphQLRetryTarget.URL)
+	is.Equal(retryFatigueSummary["candidates"], float64(1))
+	is.Equal(retryFatigueSummary["totalAttempts"], float64(1))
+	is.Equal(retryFatigueSummary["waiting"], float64(1))
+	is.Equal(retryFatigueSummary["lastStatusCode"], float64(http.StatusBadGateway))
+	retryFatigueStatusFamilies := retryFatigueSummary["statusFamilies"].([]any)
+	is.Equal(retryFatigueStatusFamilies[0].(map[string]any)["family"], "5xx")
 	failGraphQLWebhook = false
 
 	retryWebhookBody, _ := json.Marshal(map[string]any{

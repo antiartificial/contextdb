@@ -307,6 +307,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Store repair execution | Implemented | `contextdb repair vector-index --namespace NAME --report` lists vector rebuild candidates and `--execute` reindexes reviewed graph-node vectors |
 
+## Completed In v0.51.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Retry fatigue summary | Implemented | Go SDK, REST, and GraphQL group unresolved review handoff retry pressure by target endpoint with attempts, readiness, status families, and latest failure |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -361,6 +367,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review handoff retry queue | Helps operators identify failed handoff deliveries that still need action | Completed in v0.44.0 with read-only retry candidates |
 | Review handoff retry execution | Lets operators resend a reviewed failed handoff without introducing automatic background retries | Completed in v0.45.0 with explicit digest/target retry execution and receipt recording |
 | Review handoff retry backoff policy | Helps operators pace repeated retries without adding background scheduling | Completed in v0.46.0 with read-only recommendations from receipt history |
+| Review handoff retry fatigue | Helps operators spot repeatedly failing webhook endpoints | Completed in v0.51.0 with endpoint-level retry pressure summaries |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Doctor consistency slice completed in v0.49.0; dry-run-first vector repair execution completed in v0.50.0; KV drift repair remains |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -755,7 +762,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need endpoint-level fatigue signals | Group retry recommendation counts by target URL, status family, readiness, and last error |
+| Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need endpoint-level fatigue signals | Completed in v0.51.0 with grouped retry recommendation counts by target URL, status family, readiness, and last error |
 | Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Add a read-only freshness check for published `generated_at` with `--max-age` |
+| KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+
+## Fresh Brainstorm After v0.51.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Add a read-only freshness check for published `generated_at` with `--max-age` |
+| Retry fatigue markdown export | Endpoint fatigue summaries are useful, but handoffs often need human-readable incident notes | Emit Markdown from retry fatigue with top failing endpoint, readiness counts, and latest errors |
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |

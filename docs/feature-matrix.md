@@ -72,10 +72,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff retry candidates | Implemented | v0.44 | `review`, `operations`, `audit` | Failed handoff receipts are grouped by digest and target URL for retry review without sending retries |
 | Review handoff retry execution | Implemented | v0.45 | `review`, `operations`, `audit` | Failed handoff candidates can be resent explicitly by digest event ID and target URL with a new receipt recorded |
 | Review handoff retry backoff | Implemented | v0.46 | `review`, `operations`, `audit` | Failed handoff candidates include read-only retry pacing recommendations based on attempt history |
+| Review handoff retry fatigue | Implemented | v0.51 | `review`, `operations`, `audit` | Retry recommendations are grouped by target endpoint with candidate, attempt, readiness, and status-family counts |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Retry fatigue summary for recurring failed handoff endpoints.
-3. Backup publish freshness thresholds for published catalog metadata.
+2. Backup publish freshness thresholds for published catalog metadata.
+3. KV consistency sampling and refresh plans.

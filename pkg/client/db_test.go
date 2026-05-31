@@ -564,6 +564,29 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(len(readyRecommendations), 1)
 	is.Equal(readyRecommendations[0].Ready, true)
 	is.Equal(readyRecommendations[0].Reason, "ready_for_operator_retry")
+	_, err = ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhookRequest{
+		ReviewHandoffRequest: client.ReviewHandoffRequest{
+			After:           start,
+			Owner:           "alice",
+			EscalationLevel: "review_overdue",
+		},
+		TargetURL: failingServer.URL,
+		Secret:    "test-secret",
+		Execute:   true,
+		Timeout:   time.Second,
+	})
+	is.NoErr(err)
+	fatigue, err := ns.ReviewHandoffRetryFatigue(ctx, start, retryCandidates[0].LastAttemptAt.Add(3*time.Minute))
+	is.NoErr(err)
+	is.Equal(len(fatigue), 1)
+	is.Equal(fatigue[0].TargetURL, failingServer.URL)
+	is.Equal(fatigue[0].Candidates, 1)
+	is.Equal(fatigue[0].TotalAttempts, 2)
+	is.Equal(fatigue[0].Ready, 1)
+	is.Equal(fatigue[0].Waiting, 0)
+	is.Equal(fatigue[0].StatusFamilies, []client.ReviewHandoffRetryStatusFamilyCount{{Family: "5xx", Count: 1}})
+	is.Equal(fatigue[0].LastStatusCode, http.StatusBadGateway)
+	is.True(fatigue[0].LastError != "")
 	failDelivery = false
 	retry, err := ns.ReviewHandoffWebhookRetry(ctx, client.ReviewHandoffRetryRequest{
 		After:         start,

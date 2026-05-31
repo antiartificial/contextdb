@@ -27,6 +27,7 @@ contextdb exposes a REST API on port **7701**.
 | `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/receipts` | List review handoff webhook delivery receipts |
 | `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry-candidates` | List unresolved failed handoff webhook deliveries |
 | `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry-recommendations` | List retry pacing recommendations for failed handoff webhook deliveries |
+| `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry-fatigue` | Summarize unresolved retry pressure by target endpoint |
 | `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry` | Retry one unresolved failed handoff webhook delivery |
 | `GET` | `/v1/namespaces/{ns}/review/decisions` | Review workflow decision history |
 | `POST` | `/v1/namespaces/{ns}/review/decisions` | Record review assignment, snooze, or resolution |
@@ -210,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.50.0",
+  "version": "0.51.0",
   "api_version": "v1",
-  "docs_version": "0.50.0",
+  "docs_version": "0.51.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -509,6 +510,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.46.0",
       "description": "Review handoff retry backoff recommendations provide read-only pacing guidance from delivery receipt history."
+    },
+    {
+      "name": "review-handoff-retry-fatigue",
+      "status": "stable",
+      "since": "v0.51.0",
+      "description": "Review handoff retry fatigue groups unresolved retry pressure by target endpoint."
     }
   ],
   "migrations": [
@@ -516,7 +523,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.50.0"
+  "release_notes_path": "/contextdb/releases/v0.51.0"
 }
 ```
 
@@ -885,6 +892,14 @@ curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-r
 ```
 
 Recommendations include the retry candidate fields plus `recommended_after`, `delay_seconds`, `ready`, and `reason`. The first failed attempt waits 60 seconds, later attempts use capped exponential backoff, and successful later receipts remove the recommendation.
+
+Summarize repeated retry pressure by endpoint without sending retries:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue"
+```
+
+The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, status-family counts, and the latest failure detail for each endpoint.
 
 Retry one unresolved failed delivery explicitly:
 
