@@ -51,8 +51,11 @@ contextdb snapshot lifecycle index publish \
   --publish-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL" \
   --execute \
   --token "$NORN_TOKEN" \
+  --receipt-out "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json" \
   --report
 ```
+
+`--receipt-out` is only valid with `--execute`. The receipt records the source lifecycle index path, publish endpoint, HTTP method, response status/body, publish payload hash, and the catalog metadata payload that was written. Store it beside the verified lifecycle index or with the incident record for the repair.
 
 ## Confirm The Repair
 
@@ -72,4 +75,4 @@ contextdb snapshot lifecycle index publish freshness \
   --report
 ```
 
-The repair is complete when drift is clear, freshness is within the expected window, and the published dashboard points at the intended backup catalog.
+The repair is complete when drift is clear, freshness is within the expected window, the receipt exists, and the published dashboard points at the intended backup catalog.

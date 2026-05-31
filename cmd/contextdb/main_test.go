@@ -881,6 +881,79 @@ func TestBuildSnapshotLifecycleIndexPublishReportExecutesHTTPPublish(t *testing.
 	is.Equal(report.Response, `{"published":true}`)
 }
 
+func TestBuildSnapshotLifecycleIndexPublishReportWritesReceipt(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	_, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"published":true,"revision":"abc123"}`))
+	}))
+	defer srv.Close()
+	receiptPath := filepath.Join(dir, "published-backup-repair.receipt.json")
+
+	report, err := buildSnapshotLifecycleIndexPublishReport(context.Background(), srv.Client(), out, snapshotLifecycleIndexPublishOptions{
+		PublishURL: srv.URL,
+		Method:     http.MethodPost,
+		DryRun:     false,
+		ReceiptOut: receiptPath,
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.Published)
+	is.Equal(report.ReceiptFile, receiptPath)
+	data, err := os.ReadFile(receiptPath)
+	is.NoErr(err)
+	var receipt snapshotLifecycleIndexPublishReceipt
+	is.NoErr(json.Unmarshal(data, &receipt))
+	is.Equal(receipt.Kind, "contextdb.lifecycle.index.publish.receipt")
+	is.Equal(receipt.SchemaVersion, 1)
+	is.True(receipt.GeneratedAt != "")
+	is.Equal(receipt.IndexFile, out)
+	is.Equal(receipt.PublishURL, srv.URL)
+	is.Equal(receipt.Status, "202 Accepted")
+	is.Equal(receipt.Response, `{"published":true,"revision":"abc123"}`)
+	is.True(receipt.PayloadSHA256 != "")
+	is.Equal(receipt.Payload.Kind, "contextdb.lifecycle.index")
+	is.Equal(receipt.Payload.TotalBundles, 1)
+}
+
+func TestBuildSnapshotLifecycleIndexPublishReportRejectsReceiptDryRun(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	_, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	receiptPath := filepath.Join(dir, "published-backup-repair.receipt.json")
+
+	report, err := buildSnapshotLifecycleIndexPublishReport(context.Background(), nil, out, snapshotLifecycleIndexPublishOptions{
+		DryRun:     true,
+		ReceiptOut: receiptPath,
+	})
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.Equal(report.ReceiptFile, receiptPath)
+	is.True(strings.Contains(report.ValidationErrors[0], "--receipt-out requires --execute"))
+	_, statErr := os.Stat(receiptPath)
+	is.True(os.IsNotExist(statErr))
+}
+
 func TestBuildSnapshotLifecycleIndexPublishReportRequiresPublishURLWhenExecuting(t *testing.T) {
 	is := is.New(t)
 	dir := t.TempDir()

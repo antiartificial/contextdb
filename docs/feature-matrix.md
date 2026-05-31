@@ -40,6 +40,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb doctor --published-backup-index` | Implemented, opt-in readiness check | v0.62 | `operations`, `backup`, `durability` | CLI reuses published backup catalog drift checks inside the combined doctor report |
 | `published_backup_drift` repair hint | Implemented | v0.66 | `operations`, `backup`, `durability` | Drift reports include a dry-run publish command hint when local catalog metadata should replace published metadata |
 | Published backup repair guard | Implemented | v0.70 | `operations`, `backup`, `durability` | Deployment docs provide safety checks before executing published backup catalog replacement |
+| Published backup repair receipt | Implemented | v0.74 | `operations`, `backup`, `audit` | `snapshot lifecycle index publish --execute --receipt-out` writes durable evidence for catalog replacement |
 | `contextdb repair vector-index` | Implemented, dry-run first | v0.50 | `operations`, `durability` | CLI reports vector rebuild candidates and reindexes reviewed graph-node vectors only with `--execute` |
 | `contextdb repair kv-cache` | Implemented, dry-run first | v0.59 | `operations`, `durability` | CLI plans reviewed KV hot-key refreshes and writes explicit values only with `--execute` |
 | `contextdb repair kv-cache --derive recent-nodes` | Implemented, dry-run first | v0.63 | `operations`, `durability` | CLI derives reviewed recent-node session context values from graph data before optional KV writes |
@@ -100,5 +101,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Published backup repair receipts for executed catalog replacement evidence.
-3. KV derivation freshness repair hints for stale derived cache values.
+2. KV derivation freshness repair hints for stale derived cache values.
+3. Ranking baseline artifact manifests for CI retention evidence.

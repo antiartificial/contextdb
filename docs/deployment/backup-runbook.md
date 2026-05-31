@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.73.0",
+  "contextdb_version": "0.74.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -356,7 +356,7 @@ contextdb snapshot lifecycle index publish \
   --report
 ```
 
-The default is a dry run. The JSON report includes bundle timestamps, retention decisions, artifact counts, and indexed byte/hash coverage, but not NDJSON backup contents. Use `--execute --token "$NORN_TOKEN"` only when the receiving endpoint is ready for writes.
+The default is a dry run. The JSON report includes bundle timestamps, retention decisions, artifact counts, and indexed byte/hash coverage, but not NDJSON backup contents. Use `--execute --token "$NORN_TOKEN"` only when the receiving endpoint is ready for writes. Add `--receipt-out "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json"` during an executed repair when you need durable evidence of the catalog replacement.
 
 Compare the local backup catalog metadata with the published ops payload:
 

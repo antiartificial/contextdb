@@ -649,6 +649,7 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the publish endpoint")
 	dryRunFlag := fs.Bool("dry-run", true, "validate and print the publish plan without sending it")
 	execute := fs.Bool("execute", false, "send the backup index metadata to --publish-url")
+	receiptOut := fs.String("receipt-out", "", "write a JSON publish receipt after successful --execute")
 	reportOut := fs.Bool("report", false, "print a JSON backup index publish report")
 	timeout := fs.Duration("timeout", 5*time.Second, "publish request timeout")
 	_ = fs.Parse(args)
@@ -661,6 +662,7 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 		Method:     *method,
 		Token:      *token,
 		DryRun:     dryRun,
+		ReceiptOut: *receiptOut,
 	})
 	if err != nil {
 		if *reportOut && (report.IndexFile != "" || len(report.ValidationErrors) > 0) {
@@ -1040,6 +1042,7 @@ type snapshotLifecycleIndexPublishOptions struct {
 	Method     string
 	Token      string
 	DryRun     bool
+	ReceiptOut string
 }
 
 type snapshotLifecycleIndexPublishDriftOptions struct {
@@ -1130,11 +1133,25 @@ type snapshotLifecycleIndexPublishReport struct {
 	Published        bool                                 `json:"published"`
 	IndexFile        string                               `json:"index_file"`
 	PublishURL       string                               `json:"publish_url,omitempty"`
+	ReceiptFile      string                               `json:"receipt_file,omitempty"`
 	Method           string                               `json:"method,omitempty"`
 	Status           string                               `json:"status,omitempty"`
 	Response         string                               `json:"response,omitempty"`
 	Payload          snapshotLifecycleIndexPublishPayload `json:"payload"`
 	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishReceipt struct {
+	Kind          string                               `json:"kind"`
+	SchemaVersion int                                  `json:"schema_version"`
+	GeneratedAt   string                               `json:"generated_at"`
+	IndexFile     string                               `json:"index_file"`
+	PublishURL    string                               `json:"publish_url"`
+	Method        string                               `json:"method"`
+	Status        string                               `json:"status"`
+	Response      string                               `json:"response,omitempty"`
+	PayloadSHA256 string                               `json:"payload_sha256"`
+	Payload       snapshotLifecycleIndexPublishPayload `json:"payload"`
 }
 
 type snapshotLifecycleIndexPublishDriftReport struct {
@@ -1897,10 +1914,11 @@ func diffSnapshotLifecycleIndexes(oldPath, newPath string) (snapshotLifecycleInd
 func buildSnapshotLifecycleIndexPublishReport(ctx context.Context, client *http.Client, path string, opts snapshotLifecycleIndexPublishOptions) (snapshotLifecycleIndexPublishReport, error) {
 	path = strings.TrimSpace(path)
 	report := snapshotLifecycleIndexPublishReport{
-		DryRun:     opts.DryRun,
-		IndexFile:  path,
-		PublishURL: strings.TrimSpace(opts.PublishURL),
-		Method:     strings.ToUpper(strings.TrimSpace(opts.Method)),
+		DryRun:      opts.DryRun,
+		IndexFile:   path,
+		PublishURL:  strings.TrimSpace(opts.PublishURL),
+		ReceiptFile: strings.TrimSpace(opts.ReceiptOut),
+		Method:      strings.ToUpper(strings.TrimSpace(opts.Method)),
 	}
 	if report.Method == "" {
 		report.Method = http.MethodPost
@@ -1919,6 +1937,10 @@ func buildSnapshotLifecycleIndexPublishReport(ctx context.Context, client *http.
 		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
 	}
 	report.Payload = buildSnapshotLifecycleIndexPublishPayload(index)
+	if opts.DryRun && report.ReceiptFile != "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--receipt-out requires --execute")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
 	if opts.DryRun {
 		report.OK = true
 		return report, nil
@@ -1936,7 +1958,41 @@ func buildSnapshotLifecycleIndexPublishReport(ctx context.Context, client *http.
 	}
 	report.OK = true
 	report.Published = true
+	if report.ReceiptFile != "" {
+		receipt, err := buildSnapshotLifecycleIndexPublishReceipt(report)
+		if err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, err.Error())
+			report.OK = false
+			return report, err
+		}
+		if err := writeJSONFile(report.ReceiptFile, receipt); err != nil {
+			err = fmt.Errorf("write publish receipt: %w", err)
+			report.ValidationErrors = append(report.ValidationErrors, err.Error())
+			report.OK = false
+			return report, err
+		}
+	}
 	return report, nil
+}
+
+func buildSnapshotLifecycleIndexPublishReceipt(report snapshotLifecycleIndexPublishReport) (snapshotLifecycleIndexPublishReceipt, error) {
+	data, err := json.Marshal(report.Payload)
+	if err != nil {
+		return snapshotLifecycleIndexPublishReceipt{}, fmt.Errorf("encode publish receipt payload hash: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return snapshotLifecycleIndexPublishReceipt{
+		Kind:          "contextdb.lifecycle.index.publish.receipt",
+		SchemaVersion: 1,
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+		IndexFile:     report.IndexFile,
+		PublishURL:    report.PublishURL,
+		Method:        report.Method,
+		Status:        report.Status,
+		Response:      report.Response,
+		PayloadSHA256: hex.EncodeToString(sum[:]),
+		Payload:       report.Payload,
+	}, nil
 }
 
 func buildSnapshotLifecycleIndexPublishPayload(index snapshotLifecycleIndex) snapshotLifecycleIndexPublishPayload {
