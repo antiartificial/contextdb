@@ -62,6 +62,36 @@ contextdb eval ranking baseline manifest verify \
 
 The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash. Use `--markdown` for a stdout recap or `--markdown-out` to save the artifact summary beside the JSON report. Use `--annotations` or `--annotations-out` when CI should surface each failed artifact as an annotation line.
 
+## GitHub Actions Annotation Recipe
+
+Use this shape when a release job should keep machine-readable evidence, a human recap, and inline failure callouts from the same verification run:
+
+```yaml
+- name: Verify ranking baseline manifest
+  run: |
+    set +e
+    contextdb eval ranking baseline manifest verify \
+      --manifest ranking-baseline-manifest.json \
+      --report \
+      --markdown-out ranking-baseline-manifest-verification.md \
+      --annotations-out ranking-baseline-manifest-annotations.txt
+    status=$?
+    cat ranking-baseline-manifest-annotations.txt
+    exit "$status"
+
+- name: Upload ranking baseline verification artifacts
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: ranking-baseline-verification
+    path: |
+      ranking-baseline-manifest.json
+      ranking-baseline-manifest-verification.md
+      ranking-baseline-manifest-annotations.txt
+```
+
+`--annotations-out` is empty when verification passes. On failure, each line is formatted as a CI error annotation and includes the artifact path plus the version, kind, and validation message.
+
 ## Review Retention
 
 Inspect retained and pruneable baseline versions before deleting anything:

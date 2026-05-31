@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.86.0 | Passed | Passed | Ranking baseline annotation workflow docs added | Corpus coverage present | Docs build coverage | Adds a GitHub Actions recipe for manifest verification annotations and artifacts |
 | v0.85.0 | Passed | Passed | Ranking baseline failure annotation coverage added | Corpus coverage present | CLI annotation formatter tests added | Adds CI annotation output for ranking baseline manifest failures |
 | v0.84.0 | Passed | Passed | Ranking baseline manifest Markdown coverage added | Corpus coverage present | CLI manifest summary tests added | Adds Markdown summaries for ranking baseline manifest verification |
 | v0.83.0 | Passed | Passed | Corpus coverage present | KV derived refresh receipt coverage added | CLI KV refresh receipt tests added | Adds receipts for executed derived KV refreshes |
