@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.52.0"
+	Version = "0.53.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.52.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.53.0",
 	}
 }
 
@@ -104,6 +104,7 @@ func Features() []Feature {
 		{Name: "review-handoff-retry-execution", Status: "stable", Since: "v0.45.0", Description: "Review handoff retry execution resends unresolved failed handoff deliveries with explicit operator control."},
 		{Name: "review-handoff-retry-backoff", Status: "stable", Since: "v0.46.0", Description: "Review handoff retry backoff recommendations provide read-only pacing guidance from delivery receipt history."},
 		{Name: "review-handoff-retry-fatigue", Status: "stable", Since: "v0.51.0", Description: "Review handoff retry fatigue groups unresolved retry pressure by target endpoint."},
+		{Name: "review-handoff-retry-fatigue-markdown", Status: "stable", Since: "v0.53.0", Description: "Review handoff retry fatigue can be exported as Markdown incident handoff notes."},
 	}
 }
 

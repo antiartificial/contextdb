@@ -357,6 +357,7 @@ receipts, err := ns.ReviewHandoffDeliveryReceipts(ctx, time.Now().Add(-24*time.H
 retryCandidates, err := ns.ReviewHandoffRetryCandidates(ctx, time.Now().Add(-24*time.Hour))
 retryRecommendations, err := ns.ReviewHandoffRetryRecommendations(ctx, time.Now().Add(-24*time.Hour), time.Time{})
 retryFatigue, err := ns.ReviewHandoffRetryFatigue(ctx, time.Now().Add(-24*time.Hour), time.Time{})
+retryFatigueMarkdown := client.ReviewHandoffRetryFatigueMarkdown(retryFatigue)
 var retry client.ReviewHandoffWebhookDelivery
 if len(retryCandidates) > 0 {
     retry, err = ns.ReviewHandoffWebhookRetry(ctx, client.ReviewHandoffRetryRequest{
@@ -376,10 +377,11 @@ _ = receipts
 _ = retryCandidates
 _ = retryRecommendations
 _ = retryFatigue
+_ = retryFatigueMarkdown
 _ = retry
 ```
 
-`ReviewHandoffWebhookPlan` is dry-run only. `ReviewHandoffWebhookDeliver` requires `Execute: true`, sends synchronous `POST` requests, captures status/body/error, and records append-only receipts with payload and response hashes. `ReviewHandoffRetryCandidates` groups unresolved failed receipts for operator review without sending retries. `ReviewHandoffRetryRecommendations` adds read-only backoff guidance without scheduling sends. `ReviewHandoffRetryFatigue` groups unresolved retry pressure by target endpoint. `ReviewHandoffWebhookRetry` resends one unresolved failed delivery by digest event ID and target URL, still requires `Execute: true`, and records the retry receipt.
+`ReviewHandoffWebhookPlan` is dry-run only. `ReviewHandoffWebhookDeliver` requires `Execute: true`, sends synchronous `POST` requests, captures status/body/error, and records append-only receipts with payload and response hashes. `ReviewHandoffRetryCandidates` groups unresolved failed receipts for operator review without sending retries. `ReviewHandoffRetryRecommendations` adds read-only backoff guidance without scheduling sends. `ReviewHandoffRetryFatigue` groups unresolved retry pressure by target endpoint, and `ReviewHandoffRetryFatigueMarkdown` renders the summary for incident handoffs. `ReviewHandoffWebhookRetry` resends one unresolved failed delivery by digest event ID and target URL, still requires `Execute: true`, and records the retry receipt.
 
 Review decisions persist workflow state without making queue generation stateful:
 

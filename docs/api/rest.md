@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.52.0",
+  "version": "0.53.0",
   "api_version": "v1",
-  "docs_version": "0.52.0",
+  "docs_version": "0.53.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -522,6 +522,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.51.0",
       "description": "Review handoff retry fatigue groups unresolved retry pressure by target endpoint."
+    },
+    {
+      "name": "review-handoff-retry-fatigue-markdown",
+      "status": "stable",
+      "since": "v0.53.0",
+      "description": "Review handoff retry fatigue can be exported as Markdown incident handoff notes."
     }
   ],
   "migrations": [
@@ -529,7 +535,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.52.0"
+  "release_notes_path": "/contextdb/releases/v0.53.0"
 }
 ```
 
@@ -906,6 +912,12 @@ curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-f
 ```
 
 The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, status-family counts, and the latest failure detail for each endpoint.
+
+Export the same fatigue view as Markdown for incident handoffs:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue?format=markdown"
+```
 
 Retry one unresolved failed delivery explicitly:
 

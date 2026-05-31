@@ -1049,6 +1049,11 @@ func (s *RESTServer) handleReviewHandoffWebhookRetryFatigue(w http.ResponseWrite
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("format")), "markdown") {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte(client.ReviewHandoffRetryFatigueMarkdown(summaries)))
+		return
+	}
 	writeJSON(w, http.StatusOK, reviewHandoffRetryFatigueResponse{Summaries: summaries})
 }
 

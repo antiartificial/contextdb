@@ -74,10 +74,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff retry execution | Implemented | v0.45 | `review`, `operations`, `audit` | Failed handoff candidates can be resent explicitly by digest event ID and target URL with a new receipt recorded |
 | Review handoff retry backoff | Implemented | v0.46 | `review`, `operations`, `audit` | Failed handoff candidates include read-only retry pacing recommendations based on attempt history |
 | Review handoff retry fatigue | Implemented | v0.51 | `review`, `operations`, `audit` | Retry recommendations are grouped by target endpoint with candidate, attempt, readiness, and status-family counts |
+| Review handoff retry fatigue Markdown | Implemented | v0.53 | `review`, `operations`, `handoff` | REST `retry-fatigue?format=markdown` and Go helper render endpoint fatigue summaries for incident notes |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
 2. KV consistency sampling and refresh plans.
-3. Retry fatigue markdown export for incident handoffs.
+3. Ranking eval markdown recap for release review notes.

@@ -587,6 +587,11 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(fatigue[0].StatusFamilies, []client.ReviewHandoffRetryStatusFamilyCount{{Family: "5xx", Count: 1}})
 	is.Equal(fatigue[0].LastStatusCode, http.StatusBadGateway)
 	is.True(fatigue[0].LastError != "")
+	markdown := client.ReviewHandoffRetryFatigueMarkdown(fatigue)
+	is.True(strings.Contains(markdown, "# Review Handoff Retry Fatigue"))
+	is.True(strings.Contains(markdown, failingServer.URL))
+	is.True(strings.Contains(markdown, "5xx=1"))
+	is.True(strings.Contains(markdown, "status 502"))
 	failDelivery = false
 	retry, err := ns.ReviewHandoffWebhookRetry(ctx, client.ReviewHandoffRetryRequest{
 		After:         start,

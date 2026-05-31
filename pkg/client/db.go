@@ -839,6 +839,32 @@ type ReviewHandoffRetryFatigueSummary struct {
 	LastAttemptAt  time.Time                             `json:"last_attempt_at,omitempty"`
 }
 
+// ReviewHandoffRetryFatigueMarkdown renders endpoint fatigue summaries for handoffs.
+func ReviewHandoffRetryFatigueMarkdown(summaries []ReviewHandoffRetryFatigueSummary) string {
+	var b strings.Builder
+	b.WriteString("# Review Handoff Retry Fatigue\n\n")
+	if len(summaries) == 0 {
+		b.WriteString("No unresolved retry fatigue.\n")
+		return b.String()
+	}
+	top := summaries[0]
+	fmt.Fprintf(&b, "Top failing endpoint: `%s` with %d unresolved candidate(s) and %d total attempt(s).\n\n", markdownInline(top.TargetURL), top.Candidates, top.TotalAttempts)
+	b.WriteString("| Target URL | Candidates | Attempts | Ready | Waiting | Status Families | Latest Failure |\n")
+	b.WriteString("|:-----------|-----------:|---------:|------:|--------:|:----------------|:---------------|\n")
+	for _, summary := range summaries {
+		fmt.Fprintf(&b, "| `%s` | %d | %d | %d | %d | %s | %s |\n",
+			markdownTable(summary.TargetURL),
+			summary.Candidates,
+			summary.TotalAttempts,
+			summary.Ready,
+			summary.Waiting,
+			markdownTable(formatRetryStatusFamilies(summary.StatusFamilies)),
+			markdownTable(formatRetryLatestFailure(summary)),
+		)
+	}
+	return b.String()
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -2288,6 +2314,41 @@ func reviewHandoffStatusFamily(statusCode int) string {
 		return "network_error"
 	}
 	return fmt.Sprintf("%dxx", statusCode/100)
+}
+
+func formatRetryStatusFamilies(counts []ReviewHandoffRetryStatusFamilyCount) string {
+	if len(counts) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(counts))
+	for _, count := range counts {
+		parts = append(parts, fmt.Sprintf("%s=%d", count.Family, count.Count))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatRetryLatestFailure(summary ReviewHandoffRetryFatigueSummary) string {
+	parts := []string{}
+	if summary.LastStatusCode > 0 {
+		parts = append(parts, fmt.Sprintf("status %d", summary.LastStatusCode))
+	}
+	if strings.TrimSpace(summary.LastError) != "" {
+		parts = append(parts, summary.LastError)
+	}
+	if !summary.LastAttemptAt.IsZero() {
+		parts = append(parts, summary.LastAttemptAt.UTC().Format(time.RFC3339))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func markdownInline(s string) string {
+	return strings.ReplaceAll(strings.TrimSpace(s), "`", "'")
+}
+
+func markdownTable(s string) string {
+	s = strings.ReplaceAll(strings.TrimSpace(s), "\n", " ")
+	s = strings.ReplaceAll(s, "|", "\\|")
+	return strings.ReplaceAll(s, "`", "'")
 }
 
 // Explain returns a narrative report explaining what is known about a node.

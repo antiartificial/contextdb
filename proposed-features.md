@@ -319,6 +319,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Backup publish freshness monitor | Implemented | `contextdb snapshot lifecycle index publish freshness --published-url URL --max-age 24h --report` checks published backup catalog `generated_at` age |
 
+## Completed In v0.53.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Retry fatigue markdown export | Implemented | Go SDK `ReviewHandoffRetryFatigueMarkdown` and REST `retry-fatigue?format=markdown` render endpoint fatigue handoff notes |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -375,6 +381,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review handoff retry execution | Lets operators resend a reviewed failed handoff without introducing automatic background retries | Completed in v0.45.0 with explicit digest/target retry execution and receipt recording |
 | Review handoff retry backoff policy | Helps operators pace repeated retries without adding background scheduling | Completed in v0.46.0 with read-only recommendations from receipt history |
 | Review handoff retry fatigue | Helps operators spot repeatedly failing webhook endpoints | Completed in v0.51.0 with endpoint-level retry pressure summaries |
+| Review handoff retry fatigue Markdown | Helps incident handoffs include retry context without JSON tooling | Completed in v0.53.0 with Go SDK and REST Markdown export |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Doctor consistency slice completed in v0.49.0; dry-run-first vector repair execution completed in v0.50.0; KV drift repair remains |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -787,7 +794,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Retry fatigue markdown export | Endpoint fatigue summaries are useful, but handoffs often need human-readable incident notes | Emit Markdown from retry fatigue with top failing endpoint, readiness counts, and latest errors |
+| Retry fatigue markdown export | Endpoint fatigue summaries are useful, but handoffs often need human-readable incident notes | Completed in v0.53.0 with Markdown from retry fatigue, readiness counts, and latest errors |
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
+
+## Fresh Brainstorm After v0.53.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |

@@ -477,6 +477,13 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	statusFamilies := summary["status_families"].([]any)
 	is.Equal(len(statusFamilies), 1)
 	is.Equal(statusFamilies[0].(map[string]any)["family"], "5xx")
+	reqRetryFatigueMarkdown := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue?format=markdown", nil)
+	wRetryFatigueMarkdown := httptest.NewRecorder()
+	handler.ServeHTTP(wRetryFatigueMarkdown, reqRetryFatigueMarkdown)
+	is.Equal(wRetryFatigueMarkdown.Code, http.StatusOK)
+	is.True(strings.Contains(wRetryFatigueMarkdown.Header().Get("Content-Type"), "text/markdown"))
+	is.True(strings.Contains(wRetryFatigueMarkdown.Body.String(), "# Review Handoff Retry Fatigue"))
+	is.True(strings.Contains(wRetryFatigueMarkdown.Body.String(), failedWebhookTarget.URL))
 	failRESTWebhook = false
 	retryBody, _ := json.Marshal(map[string]any{
 		"digest_event_id": candidate["digest_event_id"],
