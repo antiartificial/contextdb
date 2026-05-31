@@ -211,6 +211,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Backup index summary diff | Implemented | `contextdb snapshot lifecycle index diff --old PATH --new PATH --report` compares backup catalogs for bundle membership, retention decision, and artifact size or SHA-256 deltas |
 
+## Completed In v0.35.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Norn manifest publish | Implemented | `contextdb norn publish --dry-run --report` validates a publish plan by default, with `--execute --publish-url` for explicit authenticated registration writes |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -252,6 +258,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup lifecycle manifest index | Gives operators one portable catalog of lifecycle bundles | Completed in v0.32.0 with `contextdb snapshot lifecycle index --dir --out --report` |
 | Backup index verification | Proves a saved lifecycle catalog still matches files on disk | Completed in v0.33.0 with `contextdb snapshot lifecycle index verify --in --report` |
 | Backup index summary diff | Shows whether two saved lifecycle catalogs still agree across runs or hosts | Completed in v0.34.0 with `contextdb snapshot lifecycle index diff --old --new --report` |
+| Norn manifest publish | Lets operators validate and then publish the generated service entry | Completed in v0.35.0 with dry-run-first `contextdb norn publish` |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -328,7 +335,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Norn manifest publish | Manifest generation exists, but registration may still be manual | Add a dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Manifest generation exists, but registration may still be manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Norn live drift check | Validation catches local shape errors, not live manifest drift | Completed in v0.16.0 with `contextdb norn drift` |
 | Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Completed in v0.15.0 with review queue filters for type, source ID, status, and owner |
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
@@ -348,7 +355,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
@@ -360,7 +367,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Snapshot restore report | Backup/restore now exists, but imports should summarize what changed | Completed in v0.18.0 with dry-run and import reports |
 | Scheduled backup marker | Snapshot export pairs naturally with doctor backup readiness | Completed in v0.19.0 with `contextdb snapshot export --backup-marker` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 
@@ -370,7 +377,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Scheduled backup marker | Snapshot reports can prove an export/validation completed | Completed in v0.19.0 with export-side backup markers |
 | Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Completed in v0.20.0 with new, changed, and unchanged node counts |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 
@@ -380,7 +387,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Snapshot diff preview | Restore reports count records, but operators also need changed-vs-existing detail | Completed in v0.20.0 with new, changed, and unchanged node counts |
 | Automated backup runbook | Export markers and doctor readiness now exist | Completed in v0.21.0 with launchd, systemd, Norn, restore preview, marker, and doctor docs |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 
@@ -389,7 +396,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Automated backup runbook | Export, restore preview, diff counts, backup markers, and doctor checks now compose into a real backup workflow | Completed in v0.21.0 with launchd, systemd, Norn, restore preview, marker, and doctor docs |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -399,7 +406,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup artifact manifest | Scheduled backups now have a runbook, but copied files need machine-readable metadata | Completed in v0.22.0 with `contextdb snapshot export --manifest` JSON sidecars |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -409,7 +416,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup manifest verify | Export can write sidecars, but operators need a quick pre-restore validation command | Completed in v0.23.0 with `contextdb snapshot verify --manifest --in` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -419,7 +426,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Restore rehearsal command | Verify and dry-run are separate; operators need one preflight workflow | Completed in v0.24.0 with `contextdb snapshot rehearse --manifest --in --namespace` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -429,7 +436,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Restore promotion checklist | Rehearsal proves readiness, but promotion still needs a repeatable operator path | Completed in v0.25.0 with rehearsal timestamp, target namespace, and recommended import command fields |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -439,7 +446,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Restore promotion audit event | Rehearsal now recommends the import command, but actual promotions are not logged as artifacts | Completed in v0.26.0 with optional promotion receipts on snapshot import |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -449,7 +456,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Promotion receipt verification | Promotion receipts exist, but operators need to compare them with the rehearsal/import artifacts | Completed in v0.27.0 with `contextdb snapshot receipt verify --promotion-report --manifest` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -459,7 +466,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup lifecycle bundle | Export, verify, rehearse, promote, and receipt verify now exist as separate commands | Completed in v0.28.0 with a guarded runbook script and lifecycle summary |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -469,7 +476,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Lifecycle summary verifier | Lifecycle summaries now exist, but operators need a quick consistency check across every referenced artifact | Completed in v0.29.0 with `contextdb snapshot lifecycle verify --summary --report` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -479,7 +486,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup lifecycle retention report | Lifecycle verification can prove a bundle is good; operators also need to know what can be pruned | Completed in v0.30.0 with `contextdb snapshot lifecycle retention --dir --keep --report` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -489,7 +496,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup retention delete plan | Retention reports are dry-run; operators may eventually want a generated deletion script | Completed in v0.31.0 with `contextdb snapshot lifecycle retention --emit-delete-script` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -499,7 +506,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup lifecycle manifest index | Retention reports scan a directory each time; operators may want one compact index of known bundles | Completed in v0.32.0 with `contextdb snapshot lifecycle index --dir --out --report` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -509,7 +516,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup index verification | Manifest indexes now exist, but operators need to prove the catalog still matches files on disk | Completed in v0.33.0 with `contextdb snapshot lifecycle index verify --in --report` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -519,7 +526,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup index summary diff | Index verification proves one catalog; operators may need to compare two backup catalogs across hosts | Completed in v0.34.0 with `contextdb snapshot lifecycle index diff --old --new --report` |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
@@ -529,7 +536,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Backup index publish to Norn | Index diffs can prove backup state; the hosted mini could expose the current backup catalog to ops tooling | Add dry-run-first publication of latest index metadata to Norn once an authenticated write endpoint exists |
-| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Completed in v0.35.0 with dry-run-first `contextdb norn publish --report` |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.35.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Backup index publish to Norn | Norn publish can now write service entries; backup catalog metadata could use the same dry-run-first shape | Publish current lifecycle index metadata to a Norn-compatible ops endpoint without uploading backup contents |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |

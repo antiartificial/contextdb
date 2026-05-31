@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.34.0"
+	Version = "0.35.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.34.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.35.0",
 	}
 }
 
@@ -86,6 +86,7 @@ func Features() []Feature {
 		{Name: "lifecycle-manifest-index", Status: "stable", Since: "v0.32.0", Description: "Snapshot lifecycle index writes a compact JSON catalog of backup bundles, retention decisions, artifact sizes, and hashes."},
 		{Name: "lifecycle-index-verify", Status: "stable", Since: "v0.33.0", Description: "Snapshot lifecycle index verification re-checks indexed artifact existence, sizes, and hashes."},
 		{Name: "lifecycle-index-diff", Status: "stable", Since: "v0.34.0", Description: "Snapshot lifecycle index diff compares backup catalogs across runs or hosts for bundle and artifact changes."},
+		{Name: "norn-manifest-publish", Status: "stable", Since: "v0.35.0", Description: "Norn manifest publish validates a dry-run plan by default and can explicitly publish the service entry to a configured Norn endpoint."},
 	}
 }
 

@@ -928,6 +928,94 @@ func TestFetchNornManifestEntryFindsServiceDocumentEntry(t *testing.T) {
 	is.Equal(actual.Ports.REST, expected.Ports.REST)
 }
 
+func TestBuildNornPublishReportDryRun(t *testing.T) {
+	is := is.New(t)
+
+	entry, err := buildNornManifestEntry(nornManifestOptions{
+		App:         "contextdb",
+		Name:        "contextdb",
+		Endpoint:    "https://contextdb.example.test",
+		GRPCAddr:    ":7700",
+		RESTAddr:    ":7701",
+		ObserveAddr: ":7702",
+		Tags:        []string{"contextdb", "rest", "graphql"},
+	})
+	is.NoErr(err)
+
+	report, err := buildNornPublishReport(context.Background(), nil, entry, nornPublishOptions{
+		DryRun: true,
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.DryRun)
+	is.True(!report.Published)
+	is.Equal(report.Entry.Endpoint, "https://contextdb.example.test")
+}
+
+func TestBuildNornPublishReportExecutesHTTPPublish(t *testing.T) {
+	is := is.New(t)
+
+	entry, err := buildNornManifestEntry(nornManifestOptions{
+		App:         "contextdb",
+		Name:        "contextdb-mini",
+		Endpoint:    "https://contextdb.example.test",
+		GRPCAddr:    ":7700",
+		RESTAddr:    ":7701",
+		ObserveAddr: ":7702",
+		Tags:        []string{"contextdb", "rest", "graphql"},
+	})
+	is.NoErr(err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Method, http.MethodPut)
+		is.Equal(r.Header.Get("Authorization"), "Bearer test-token")
+		is.Equal(r.Header.Get("Content-Type"), "application/json")
+		var posted nornManifestEntry
+		is.NoErr(json.NewDecoder(r.Body).Decode(&posted))
+		is.Equal(posted.App, "contextdb")
+		is.Equal(posted.Name, "contextdb-mini")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	report, err := buildNornPublishReport(context.Background(), srv.Client(), entry, nornPublishOptions{
+		PublishURL: srv.URL,
+		Method:     http.MethodPut,
+		Token:      "test-token",
+		DryRun:     false,
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.Published)
+	is.Equal(report.Status, "202 Accepted")
+	is.Equal(report.Response, `{"ok":true}`)
+}
+
+func TestBuildNornPublishReportRequiresPublishURLWhenExecuting(t *testing.T) {
+	is := is.New(t)
+
+	entry, err := buildNornManifestEntry(nornManifestOptions{
+		App:         "contextdb",
+		Name:        "contextdb",
+		Endpoint:    "https://contextdb.example.test",
+		GRPCAddr:    ":7700",
+		RESTAddr:    ":7701",
+		ObserveAddr: ":7702",
+		Tags:        []string{"contextdb", "rest", "graphql"},
+	})
+	is.NoErr(err)
+
+	report, err := buildNornPublishReport(context.Background(), nil, entry, nornPublishOptions{
+		DryRun: false,
+	})
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(report.ValidationErrors[0], "--publish-url"))
+}
+
 func TestValidateNornManifestEntryRejectsWrongApp(t *testing.T) {
 	is := is.New(t)
 

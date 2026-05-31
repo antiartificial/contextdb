@@ -1657,6 +1657,18 @@ type nornDriftReport struct {
 	Diffs    []nornManifestDiff `json:"diffs,omitempty"`
 }
 
+type nornPublishReport struct {
+	OK               bool              `json:"ok"`
+	DryRun           bool              `json:"dry_run"`
+	Published        bool              `json:"published"`
+	PublishURL       string            `json:"publish_url,omitempty"`
+	Method           string            `json:"method,omitempty"`
+	Status           string            `json:"status,omitempty"`
+	Response         string            `json:"response,omitempty"`
+	Entry            nornManifestEntry `json:"entry"`
+	ValidationErrors []string          `json:"validation_errors,omitempty"`
+}
+
 type nornManifestDiff struct {
 	Field    string `json:"field"`
 	Expected any    `json:"expected,omitempty"`
@@ -1674,6 +1686,10 @@ func runNorn(args []string) {
 	}
 	if args[0] == "drift" {
 		runNornDrift(args[1:])
+		return
+	}
+	if args[0] == "publish" {
+		runNornPublish(args[1:])
 		return
 	}
 	fmt.Fprintf(os.Stderr, "contextdb norn: unknown subcommand %q\n", args[0])
@@ -1779,6 +1795,68 @@ func runNornDrift(args []string) {
 	}
 }
 
+func runNornPublish(args []string) {
+	fs := flag.NewFlagSet("contextdb norn publish", flag.ExitOnError)
+	publishURL := fs.String("publish-url", os.Getenv("NORN_PUBLISH_URL"), "Norn manifest publish endpoint")
+	method := fs.String("method", getenv("NORN_PUBLISH_METHOD", http.MethodPost), "HTTP method for publishing")
+	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the publish endpoint")
+	app := fs.String("app", "contextdb", "Norn app id")
+	name := fs.String("name", "contextdb", "Norn service name")
+	endpoint := fs.String("endpoint", defaultNornEndpoint(), "public REST endpoint advertised through Norn")
+	grpcAddr := fs.String("grpc-addr", getenv("CONTEXTDB_GRPC_ADDR", ":7700"), "gRPC listen address")
+	restAddr := fs.String("rest-addr", getenv("CONTEXTDB_REST_ADDR", ":7701"), "REST listen address")
+	observeAddr := fs.String("observe-addr", getenv("CONTEXTDB_OBS_ADDR", ":7702"), "observe listen address")
+	tags := fs.String("tags", "contextdb,rest,graphql", "comma-separated service tags")
+	dryRunFlag := fs.Bool("dry-run", true, "validate and print the publish plan without sending it")
+	execute := fs.Bool("execute", false, "send the manifest to --publish-url")
+	reportOut := fs.Bool("report", false, "print a JSON publish report")
+	timeout := fs.Duration("timeout", 5*time.Second, "publish request timeout")
+	_ = fs.Parse(args)
+
+	entry, err := buildNornManifestEntry(nornManifestOptions{
+		App:         *app,
+		Name:        *name,
+		Endpoint:    *endpoint,
+		GRPCAddr:    *grpcAddr,
+		RESTAddr:    *restAddr,
+		ObserveAddr: *observeAddr,
+		Tags:        splitComma(*tags),
+	})
+	if err != nil {
+		report := nornPublishReport{DryRun: !*execute && *dryRunFlag, PublishURL: strings.TrimSpace(*publishURL), Method: strings.ToUpper(strings.TrimSpace(*method))}
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		if *reportOut {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb norn publish: %v\n", err)
+		os.Exit(2)
+	}
+
+	dryRun := *dryRunFlag && !*execute
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	report, err := buildNornPublishReport(ctx, http.DefaultClient, entry, nornPublishOptions{
+		PublishURL: *publishURL,
+		Method:     *method,
+		Token:      *token,
+		DryRun:     dryRun,
+	})
+	if err != nil {
+		if *reportOut {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb norn publish: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if report.DryRun {
+		fmt.Fprintln(os.Stdout, "dry-run ok")
+	} else {
+		fmt.Fprintln(os.Stdout, "published")
+	}
+}
+
 type nornManifestOptions struct {
 	App         string
 	Name        string
@@ -1787,6 +1865,13 @@ type nornManifestOptions struct {
 	RESTAddr    string
 	ObserveAddr string
 	Tags        []string
+}
+
+type nornPublishOptions struct {
+	PublishURL string
+	Method     string
+	Token      string
+	DryRun     bool
 }
 
 func buildNornManifestEntry(opts nornManifestOptions) (nornManifestEntry, error) {
@@ -1813,6 +1898,73 @@ func buildNornManifestEntry(opts nornManifestOptions) (nornManifestEntry, error)
 		return nornManifestEntry{}, err
 	}
 	return entry, nil
+}
+
+func buildNornPublishReport(ctx context.Context, client *http.Client, entry nornManifestEntry, opts nornPublishOptions) (nornPublishReport, error) {
+	report := nornPublishReport{
+		DryRun:     opts.DryRun,
+		PublishURL: strings.TrimSpace(opts.PublishURL),
+		Method:     strings.ToUpper(strings.TrimSpace(opts.Method)),
+		Entry:      entry,
+	}
+	if report.Method == "" {
+		report.Method = http.MethodPost
+	}
+	if err := validateNornManifestEntry(entry); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	if opts.DryRun {
+		report.OK = true
+		return report, nil
+	}
+	if report.PublishURL == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--publish-url or NORN_PUBLISH_URL is required when --execute is set")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	status, response, err := publishNornManifestEntry(ctx, client, report.PublishURL, report.Method, strings.TrimSpace(opts.Token), entry)
+	report.Status = status
+	report.Response = response
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	report.OK = true
+	report.Published = true
+	return report, nil
+}
+
+func publishNornManifestEntry(ctx context.Context, client *http.Client, publishURL, method, token string, entry nornManifestEntry) (string, string, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	body, err := json.Marshal(entry)
+	if err != nil {
+		return "", "", fmt.Errorf("encode publish payload: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, publishURL, bytes.NewReader(body))
+	if err != nil {
+		return "", "", fmt.Errorf("build publish request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("publish manifest: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.Status, "", fmt.Errorf("read publish response: %w", err)
+	}
+	response := strings.TrimSpace(string(data))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return resp.Status, response, fmt.Errorf("publish manifest: unexpected status %s", resp.Status)
+	}
+	return resp.Status, response, nil
 }
 
 func fetchNornManifestEntry(ctx context.Context, manifestURL, app, name string) (nornManifestEntry, error) {

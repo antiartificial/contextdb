@@ -27,7 +27,7 @@ features:
 ---
 
 ::: tip Current release
-contextdb is currently `v0.34.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+contextdb is currently `v0.35.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 :::
 
 <div class="stat-row">
@@ -211,7 +211,7 @@ All weights are normalised at query time. You supply `alpha` (decay rate) and th
 | [Scaled deployment](deployment/scaled) | Qdrant + Redis + Postgres for high throughput |
 | [Benchmarks](benchmarks) | MTEB, adversarial, LongMemEval, fitness suite |
 | [Admin UI](deployment/scaled) | Built-in dashboard on observe port |
-| [Mini/Norn deployment](deployment/norn) | Internal live deployment discovery and health checks via Norn |
+| [Mini/Norn deployment](deployment/norn) | Internal live deployment discovery, drift checks, dry-run publish plans, and health checks via Norn |
 
 ## Epistemics layer
 
