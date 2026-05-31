@@ -590,6 +590,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Retry fatigue preset schema publication | Implemented | `docs/public/schemas/retry-fatigue-presets.schema.json` publishes the preset contract for docs consumers, and `TestPublicRetryFatiguePresetSchemaMatchesFixture` prevents drift from the embedded fixture |
 
+## Completed In v0.98.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Doctor backup receipt closure artifact bundle | Implemented | `docs/deployment/published-backup-repair-guard.md` defines stable artifact filenames for freshness, drift, dry-run, execute, receipt, receipt-check, doctor receipt, and final doctor reports; the docs regression test guards those names |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1126,10 +1132,10 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.97.0
+## Fresh Brainstorm After v0.98.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Doctor backup receipt closure artifact bundle | The closure lane names evidence, but incident handoff may need one stable bundle command | Add a docs-first or CLI bundle that gathers dry-run, receipt, receipt-check, and final doctor reports |
 | KV derived refresh receipt doctor lane | The standalone verifier exists, but combined health reports could surface receipt drift beside freshness | Add a doctor option that runs `repair kv-cache receipt verify` for incident closeout |
 | Retry fatigue preset schema version index | The first public schema exists, but future schema artifacts need discoverability | Add a schemas index page or JSON catalog listing published schema IDs and feature owners |
+| Doctor backup receipt closure bundle CLI | Stable artifact filenames are documented, but operators may want generated manifests and file checks | Add a command or script recipe that writes a closure bundle manifest with hashes |

@@ -93,6 +93,56 @@ Use this lane when a published backup catalog incident needs one copyable checkl
 
 Attach the dry-run report, execute report, receipt, receipt verification report, and final doctor report to the incident record. The repair should not be closed from the receipt alone; close it only after the final doctor run proves the published catalog is fresh and matches the local lifecycle index.
 
+## Closure Artifact Bundle
+
+Use one directory per repair when the incident handoff needs stable evidence names:
+
+```bash
+export CONTEXTDB_REPAIR_BUNDLE="$CONTEXTDB_BACKUP_DIR/published-backup-repair-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$CONTEXTDB_REPAIR_BUNDLE"
+
+contextdb doctor \
+  --published-backup-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" \
+  --max-published-backup-age 24h \
+  --report > "$CONTEXTDB_REPAIR_BUNDLE/01-doctor-freshness-before.json"
+
+contextdb doctor \
+  --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --published-backup-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" \
+  --report > "$CONTEXTDB_REPAIR_BUNDLE/02-doctor-drift-before.json"
+
+contextdb snapshot lifecycle index publish \
+  --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --publish-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL" \
+  --report > "$CONTEXTDB_REPAIR_BUNDLE/03-publish-dry-run.json"
+
+contextdb snapshot lifecycle index publish \
+  --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --publish-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL" \
+  --execute \
+  --token "$NORN_TOKEN" \
+  --receipt-out "$CONTEXTDB_REPAIR_BUNDLE/04-publish-receipt.json" \
+  --report > "$CONTEXTDB_REPAIR_BUNDLE/04-publish-execute.json"
+
+contextdb snapshot lifecycle index publish receipt verify \
+  --receipt "$CONTEXTDB_REPAIR_BUNDLE/04-publish-receipt.json" \
+  --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --report > "$CONTEXTDB_REPAIR_BUNDLE/05-receipt-verify.json"
+
+contextdb doctor \
+  --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --published-backup-receipt "$CONTEXTDB_REPAIR_BUNDLE/04-publish-receipt.json" \
+  --report > "$CONTEXTDB_REPAIR_BUNDLE/06-doctor-receipt-verify.json"
+
+contextdb doctor \
+  --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --published-backup-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" \
+  --max-published-backup-age 24h \
+  --report > "$CONTEXTDB_REPAIR_BUNDLE/07-doctor-final.json"
+```
+
+Keep the bundle directory with the incident record. The stable filenames make it clear which evidence came before the write, which file is the receipt, which checks verified the receipt, and which doctor report closed the repair.
+
 ## Confirm The Repair
 
 After execution, rerun drift and freshness checks:

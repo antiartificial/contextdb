@@ -41,6 +41,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb doctor --published-backup-index` | Implemented, opt-in readiness check | v0.62 | `operations`, `backup`, `durability` | CLI reuses published backup catalog drift checks inside the combined doctor report |
 | `contextdb doctor --published-backup-receipt` | Implemented, opt-in readiness check | v0.82 | `operations`, `backup`, `audit` | CLI verifies published backup repair receipts against the local lifecycle index inside the combined doctor report |
 | Doctor backup receipt runbook lane | Implemented | v0.95 | `operations`, `backup`, `audit` | Published backup repair docs now include a freshness, drift, receipt, doctor, and final closeout lane |
+| Doctor backup receipt closure artifact bundle | Implemented | v0.98 | `operations`, `backup`, `audit` | Published backup repair docs define stable artifact filenames for dry-run, execute, receipt, receipt-check, and final doctor reports |
 | `published_backup_drift` repair hint | Implemented | v0.66 | `operations`, `backup`, `durability` | Drift reports include a dry-run publish command hint when local catalog metadata should replace published metadata |
 | Published backup repair guard | Implemented | v0.70 | `operations`, `backup`, `durability` | Deployment docs provide safety checks before executing published backup catalog replacement |
 | Published backup repair receipt | Implemented | v0.74 | `operations`, `backup`, `audit` | `snapshot lifecycle index publish --execute --receipt-out` writes durable evidence for catalog replacement |
@@ -122,6 +123,6 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 ## Next Candidates
 
-1. Doctor backup receipt closure artifact bundle for incident handoff.
-2. KV derived refresh receipt doctor lane for combined health checks.
-3. Retry fatigue preset schema version index for future schema additions.
+1. KV derived refresh receipt doctor lane for combined health checks.
+2. Retry fatigue preset schema version index for future schema additions.
+3. Doctor backup receipt closure bundle CLI for generating artifact manifests.

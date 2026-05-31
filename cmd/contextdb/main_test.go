@@ -2538,6 +2538,15 @@ func TestPublishedBackupRepairGuardDocumentsDoctorReceiptClosureLane(t *testing.
 		"contextdb snapshot lifecycle index publish receipt verify",
 		"--published-backup-receipt",
 		"published_backup_receipt_verify",
+		"## Closure Artifact Bundle",
+		"01-doctor-freshness-before.json",
+		"02-doctor-drift-before.json",
+		"03-publish-dry-run.json",
+		"04-publish-execute.json",
+		"04-publish-receipt.json",
+		"05-receipt-verify.json",
+		"06-doctor-receipt-verify.json",
+		"07-doctor-final.json",
 		"final doctor run proves the published catalog is fresh and matches the local lifecycle index",
 	}
 	for _, want := range required {
