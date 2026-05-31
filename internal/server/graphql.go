@@ -594,6 +594,56 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	reviewHandoffDeliveryReceiptType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewHandoffDeliveryReceipt",
+		Fields: graphql.Fields{
+			"receiptId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.ReceiptID.String(), nil
+			}},
+			"digestEventId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.DigestEventID.String(), nil
+			}},
+			"targetUrl": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.TargetURL, nil
+			}},
+			"deliveredAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.DeliveredAt, nil
+			}},
+			"owner": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.Owner, nil
+			}},
+			"escalationLevel": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.EscalationLevel, nil
+			}},
+			"success": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.Success, nil
+			}},
+			"statusCode": &graphql.Field{Type: graphql.Int, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.StatusCode, nil
+			}},
+			"payloadSha256": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.PayloadSHA256, nil
+			}},
+			"responseSha256": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.ResponseSHA256, nil
+			}},
+			"error": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				receipt, _ := p.Source.(client.ReviewHandoffDeliveryReceipt)
+				return receipt.Error, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -1302,6 +1352,15 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewHandoffWebhookPlan,
 			},
+			"reviewHandoffDeliveryReceipts": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffDeliveryReceiptType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveReviewHandoffDeliveryReceipts,
+			},
 			"reviewDecisions": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
 				Args: graphql.FieldConfigArgument{
@@ -1680,6 +1739,17 @@ func (s *GraphQLServer) resolveReviewHandoffWebhookPlan(p graphql.ResolveParams)
 		Secret:      secret,
 		MaxAttempts: maxAttempts,
 	})
+}
+
+func (s *GraphQLServer) resolveReviewHandoffDeliveryReceipts(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewHandoffDeliveryReceipts(p.Context, after)
 }
 
 func (s *GraphQLServer) resolveDeliverReviewHandoffWebhook(p graphql.ResolveParams) (interface{}, error) {

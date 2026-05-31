@@ -353,14 +353,16 @@ executed, err := ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhook
     Execute: true,
     Timeout: 5 * time.Second,
 })
+receipts, err := ns.ReviewHandoffDeliveryReceipts(ctx, time.Now().Add(-24*time.Hour))
 _ = saved
 _ = digests
 _ = handoffs
 _ = deliveries
 _ = executed
+_ = receipts
 ```
 
-`ReviewHandoffWebhookPlan` is dry-run only. `ReviewHandoffWebhookDeliver` requires `Execute: true`, sends synchronous `POST` requests, captures status/body/error, and does not schedule background retries.
+`ReviewHandoffWebhookPlan` is dry-run only. `ReviewHandoffWebhookDeliver` requires `Execute: true`, sends synchronous `POST` requests, captures status/body/error, and records append-only receipts with payload and response hashes.
 
 Review decisions persist workflow state without making queue generation stateful:
 

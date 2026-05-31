@@ -56,6 +56,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoffs", s.handleReviewHandoffs)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/plan", s.handleReviewHandoffWebhookPlan)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/deliver", s.handleReviewHandoffWebhookDeliver)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoff-webhooks/receipts", s.handleReviewHandoffWebhookReceipts)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalation-digests", s.handleReviewEscalationDigests)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/escalation-digests", s.handleRecordReviewEscalationDigest)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
@@ -276,6 +277,10 @@ type reviewHandoffWebhookPlanRequest struct {
 
 type reviewHandoffWebhookPlanResponse struct {
 	Deliveries []client.ReviewHandoffWebhookDelivery `json:"deliveries"`
+}
+
+type reviewHandoffDeliveryReceiptsResponse struct {
+	Receipts []client.ReviewHandoffDeliveryReceipt `json:"receipts"`
 }
 
 type reviewDecisionsResponse struct {
@@ -889,6 +894,30 @@ func (s *RESTServer) handleReviewHandoffWebhookDeliver(w http.ResponseWriter, r 
 		return
 	}
 	writeJSON(w, http.StatusOK, reviewHandoffWebhookPlanResponse{Deliveries: deliveries})
+}
+
+func (s *RESTServer) handleReviewHandoffWebhookReceipts(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	var after time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
+			return
+		}
+		after = t
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	receipts, err := h.ReviewHandoffDeliveryReceipts(r.Context(), after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewHandoffDeliveryReceiptsResponse{Receipts: receipts})
 }
 
 func (s *RESTServer) handleRecordReviewEscalationDigest(w http.ResponseWriter, r *http.Request) {

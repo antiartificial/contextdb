@@ -324,6 +324,22 @@ mutation {
 
 `execute: true` is required. Delivery is synchronous and captures the response without scheduling background retries.
 
+List durable delivery receipts with:
+
+```graphql
+query {
+  reviewHandoffDeliveryReceipts(namespace: "my-app") {
+    digestEventId
+    targetUrl
+    success
+    statusCode
+    payloadSha256
+    responseSha256
+    error
+  }
+}
+```
+
 Record and inspect review workflow state with:
 
 ```graphql

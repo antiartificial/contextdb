@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.42.0"
+	Version = "0.43.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.42.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.43.0",
 	}
 }
 
@@ -94,6 +94,7 @@ func Features() []Feature {
 		{Name: "review-handoff-feed", Status: "stable", Since: "v0.40.0", Description: "Review handoff feeds expose saved escalation digest snapshots filtered by owner and escalation level."},
 		{Name: "review-handoff-webhook-plan", Status: "stable", Since: "v0.41.0", Description: "Review handoff webhook plans produce signed dry-run delivery payloads for saved escalation handoffs."},
 		{Name: "review-handoff-webhook-execution", Status: "stable", Since: "v0.42.0", Description: "Review handoff webhook execution sends opt-in handoff deliveries with timeout and response capture."},
+		{Name: "review-handoff-delivery-receipts", Status: "stable", Since: "v0.43.0", Description: "Review handoff delivery receipts record append-only webhook delivery audit events."},
 	}
 }
 

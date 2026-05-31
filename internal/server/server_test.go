@@ -396,6 +396,20 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(executedDelivery["executed"], true)
 	is.Equal(executedDelivery["status_code"], float64(http.StatusAccepted))
 	is.Equal(executedDelivery["response_body"], "accepted")
+	reqReceipts := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/receipts", nil)
+	wReceipts := httptest.NewRecorder()
+	handler.ServeHTTP(wReceipts, reqReceipts)
+	is.Equal(wReceipts.Code, http.StatusOK)
+	var receiptsResp map[string]any
+	is.NoErr(json.Unmarshal(wReceipts.Body.Bytes(), &receiptsResp))
+	receipts := receiptsResp["receipts"].([]any)
+	is.Equal(len(receipts), 1)
+	receipt := receipts[0].(map[string]any)
+	is.Equal(receipt["target_url"], webhookTarget.URL)
+	is.Equal(receipt["success"], true)
+	is.Equal(receipt["status_code"], float64(http.StatusAccepted))
+	is.True(receipt["payload_sha256"].(string) != "")
+	is.True(receipt["response_sha256"].(string) != "")
 
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
@@ -853,6 +867,14 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				signature
 				maxAttempts
 			}
+			reviewHandoffDeliveryReceipts(namespace: "graphql-test") {
+				targetUrl
+				success
+				statusCode
+				payloadSha256
+				responseSha256
+				error
+			}
 			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
 				id
 				type
@@ -950,6 +972,14 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(graphQLDelivery["totalEscalated"], float64(1))
 	is.True(strings.HasPrefix(graphQLDelivery["signature"].(string), "sha256="))
 	is.Equal(graphQLDelivery["maxAttempts"], float64(3))
+	graphQLReceipts := data["reviewHandoffDeliveryReceipts"].([]any)
+	is.Equal(len(graphQLReceipts), 1)
+	graphQLReceipt := graphQLReceipts[0].(map[string]any)
+	is.Equal(graphQLReceipt["targetUrl"], graphQLWebhookTarget.URL)
+	is.Equal(graphQLReceipt["success"], true)
+	is.Equal(graphQLReceipt["statusCode"], float64(http.StatusAccepted))
+	is.True(graphQLReceipt["payloadSha256"].(string) != "")
+	is.True(graphQLReceipt["responseSha256"].(string) != "")
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)

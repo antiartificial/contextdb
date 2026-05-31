@@ -768,6 +768,22 @@ type ReviewHandoffWebhookDelivery struct {
 	Error           string                  `json:"error,omitempty"`
 }
 
+// ReviewHandoffDeliveryReceipt is an append-only audit record for executed webhook delivery.
+type ReviewHandoffDeliveryReceipt struct {
+	ReceiptID       uuid.UUID `json:"receipt_id,omitempty"`
+	DigestEventID   uuid.UUID `json:"digest_event_id"`
+	Namespace       string    `json:"namespace,omitempty"`
+	TargetURL       string    `json:"target_url"`
+	DeliveredAt     time.Time `json:"delivered_at"`
+	Owner           string    `json:"owner,omitempty"`
+	EscalationLevel string    `json:"escalation_level,omitempty"`
+	Success         bool      `json:"success"`
+	StatusCode      int       `json:"status_code,omitempty"`
+	PayloadSHA256   string    `json:"payload_sha256"`
+	ResponseSHA256  string    `json:"response_sha256,omitempty"`
+	Error           string    `json:"error,omitempty"`
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -1877,6 +1893,9 @@ func (h *NamespaceHandle) reviewHandoffWebhookDeliveries(ctx context.Context, re
 		}
 		if execute {
 			delivery = executeReviewHandoffWebhook(ctx, req, delivery)
+			if err := h.recordReviewHandoffDeliveryReceipt(ctx, delivery); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, delivery)
 	}
@@ -1921,6 +1940,73 @@ func executeReviewHandoffWebhook(ctx context.Context, req ReviewHandoffWebhookRe
 		delivery.Error = fmt.Sprintf("webhook returned status %d", resp.StatusCode)
 	}
 	return delivery
+}
+
+func (h *NamespaceHandle) recordReviewHandoffDeliveryReceipt(ctx context.Context, delivery ReviewHandoffWebhookDelivery) error {
+	responseSHA := ""
+	if delivery.ResponseBody != "" {
+		sum := sha256.Sum256([]byte(delivery.ResponseBody))
+		responseSHA = hex.EncodeToString(sum[:])
+	}
+	receipt := ReviewHandoffDeliveryReceipt{
+		ReceiptID:       uuid.New(),
+		DigestEventID:   delivery.EventID,
+		Namespace:       h.cfg.ID,
+		TargetURL:       delivery.TargetURL,
+		DeliveredAt:     time.Now().UTC(),
+		Owner:           delivery.Owner,
+		EscalationLevel: delivery.EscalationLevel,
+		Success:         delivery.Executed && delivery.Error == "" && delivery.StatusCode >= 200 && delivery.StatusCode < 300,
+		StatusCode:      delivery.StatusCode,
+		PayloadSHA256:   delivery.PayloadSHA256,
+		ResponseSHA256:  responseSHA,
+		Error:           delivery.Error,
+	}
+	payload, err := json.Marshal(receipt)
+	if err != nil {
+		return fmt.Errorf("review handoff receipt: marshal: %w", err)
+	}
+	event := store.Event{
+		ID:        receipt.ReceiptID,
+		Namespace: h.cfg.ID,
+		Type:      store.EventReviewHandoffReceipt,
+		Payload:   payload,
+		TxTime:    receipt.DeliveredAt,
+	}
+	if err := h.db.log.Append(ctx, event); err != nil {
+		return fmt.Errorf("review handoff receipt: append event: %w", err)
+	}
+	return nil
+}
+
+// ReviewHandoffDeliveryReceipts returns delivery receipt audit records after the given time.
+func (h *NamespaceHandle) ReviewHandoffDeliveryReceipts(ctx context.Context, after time.Time) ([]ReviewHandoffDeliveryReceipt, error) {
+	events, err := h.db.log.SinceAll(ctx, h.cfg.ID, after)
+	if err != nil {
+		return nil, fmt.Errorf("review handoff receipts: %w", err)
+	}
+	out := make([]ReviewHandoffDeliveryReceipt, 0, len(events))
+	for _, event := range events {
+		if event.Type != store.EventReviewHandoffReceipt {
+			continue
+		}
+		var receipt ReviewHandoffDeliveryReceipt
+		if err := json.Unmarshal(event.Payload, &receipt); err != nil {
+			return nil, fmt.Errorf("review handoff receipts: decode %s: %w", event.ID, err)
+		}
+		receipt.ReceiptID = event.ID
+		if receipt.Namespace == "" {
+			receipt.Namespace = event.Namespace
+		}
+		if receipt.DeliveredAt.IsZero() {
+			receipt.DeliveredAt = event.TxTime
+		}
+		out = append(out, receipt)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].DeliveredAt.After(out[j].DeliveredAt)
+	})
+	return out, nil
 }
 
 // Explain returns a narrative report explaining what is known about a node.

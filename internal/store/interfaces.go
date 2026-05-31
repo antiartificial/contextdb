@@ -166,6 +166,7 @@ const (
 	EventFeedback               EventType = "feedback"
 	EventReviewDecision         EventType = "review_decision"
 	EventReviewEscalationDigest EventType = "review_escalation_digest"
+	EventReviewHandoffReceipt   EventType = "review_handoff_delivery_receipt"
 )
 
 // Event is a single append-only log record.

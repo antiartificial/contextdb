@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.43.0 | Passed | Passed | Corpus coverage present | Review handoff delivery receipt coverage added | Go SDK, REST, and GraphQL receipt tests added | Adds append-only webhook delivery receipts with payload and response hashes |
 | v0.42.0 | Passed | Passed | Corpus coverage present | Review handoff webhook execution coverage added | Go SDK, REST, and GraphQL execution tests added | Adds explicit synchronous webhook delivery with timeout and response capture |
 | v0.41.0 | Passed | Passed | Corpus coverage present | Review handoff webhook plan coverage added | Go SDK, REST, and GraphQL webhook plan tests added | Adds signed dry-run webhook delivery plans for saved review handoffs |
 | v0.40.0 | Passed | Passed | Corpus coverage present | Review handoff feed coverage added | Go SDK, REST, and GraphQL handoff feed tests added | Adds polling-friendly handoff feeds filtered by owner and escalation level |
