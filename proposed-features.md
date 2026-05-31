@@ -753,7 +753,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| CI-backed release health | The health page is useful, but hand-written status can drift | Generate release-health data from test commands, GitHub Actions, or release artifacts |
+| CI-backed release health | Implemented | Completed in v0.108.0 with CI-generated JSON and Markdown release-health artifacts |
 | Ranking eval snapshots | Corpus tests protect expected ordering; snapshots would explain score movement | Emit JSON and markdown reports with top-k, MRR, and score breakdowns for each corpus query |
 | Candidate-pool telemetry | Wider candidate pools improve quality but should be observable | Add retrieval counters for vector candidates fetched, fused candidates scored, and final top-k size |
 | Review workflow persistence | Derived review tasks now have durable triage state | Add reviewer filters, escalation rules, and review aging metrics |
@@ -766,7 +766,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Review filters and aging metrics | Review decisions now persist, so operators need views by owner, status, age, and snooze horizon | Queue filters completed in v0.15.0; age buckets remain a useful escalation slice |
 | Review escalation rules | Snoozed or assigned tasks can silently age out without escalation | Emit high-priority review tasks when assigned items exceed an age threshold |
 | Trust anomaly review tasks | Review workflow can now receive durable triage decisions | Completed in v0.13.0; next step is anomaly filters and escalation rules |
-| CI-backed release health | Release health is visible but still hand-maintained | Generate release-health rows from verified command artifacts |
+| CI-backed release health | Implemented | Completed in v0.108.0 with CI-generated release-health rows |
 | Ranking eval snapshots | Ranking tests protect expected results but do not expose score drift | Emit JSON reports for top-k, reciprocal rank, and score breakdowns per corpus query |
 
 ## Fresh Brainstorm After v0.13.0
@@ -775,9 +775,9 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Completed in v0.15.0 with review queue filters for type, source ID, status, and owner |
 | Trust anomaly escalation rules | High-severity source drops should not wait in a generic queue forever | Completed in v0.37.0 with source anomaly escalation metadata |
-| Source quarantine workflow | Repeated refutations often imply the source should be temporarily excluded | Add source label suggestions or a dry-run quarantine action tied to review decisions |
+| Source quarantine workflow | Implemented | Completed in v0.108.0 with dry-run-first Go SDK quarantine plans and explicit execute labels |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
-| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+| CI-backed release health | Implemented | Completed in v0.108.0 with GitHub Actions release-health artifacts |
 
 ## Fresh Brainstorm After v0.14.0
 
@@ -787,7 +787,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Norn live drift check | Validation catches local shape errors, not live manifest drift | Completed in v0.16.0 with `contextdb norn drift` |
 | Source anomaly filters | Source anomaly tasks now exist, but operators need focused views | Completed in v0.15.0 with review queue filters for type, source ID, status, and owner |
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
-| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+| CI-backed release health | Implemented | Completed in v0.108.0 with GitHub Actions release-health artifacts |
 
 ## Fresh Brainstorm After v0.15.0
 
@@ -797,7 +797,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Norn live drift check | Manifest generation exists, but hosted services can drift from local expectations | Completed in v0.16.0 with `contextdb norn drift` |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
-| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+| CI-backed release health | Implemented | Completed in v0.108.0 with GitHub Actions release-health artifacts |
 
 ## Fresh Brainstorm After v0.16.0
 
@@ -807,7 +807,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Backup/restore command | Operational readiness now has doctor checks and Norn helpers | Completed in v0.17.0 with snapshot export/import and dry-run validation |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Completed in v0.37.0 with Go, REST, and GraphQL escalation metadata |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
-| CI-backed release health | Release health still relies on hand-written status rows | Generate release health from verified command outputs or GitHub Actions artifacts |
+| CI-backed release health | Implemented | Completed in v0.108.0 with GitHub Actions release-health artifacts |
 
 ## Fresh Brainstorm After v0.17.0
 
@@ -1190,9 +1190,9 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Schema catalog drift annotations | The catalog is tested, but CI consumers may want direct failure annotations | Emit a compact annotation line when a public schema catalog entry points to a missing or mismatched artifact |
-| Closure bundle manifest verify | Manifests are written, but later audits should recheck saved hashes | Add `closure-bundle verify --manifest PATH` to compare saved byte counts and SHA-256 values against the bundle directory |
-| KV receipt fixture catalog entry | Fixtures are public, but tooling needs discoverability without scraping docs | Add a fixtures catalog JSON that lists valid and mismatched KV receipt artifacts with expected verifier outcomes |
+| Schema catalog drift annotations | Implemented | Completed in v0.108.0 with `contextdb docs schema-catalog verify --annotations` |
+| Closure bundle manifest verify | Implemented | Completed in v0.108.0 with `closure-bundle verify --manifest PATH` |
+| KV receipt fixture catalog entry | Implemented | Completed in v0.108.0 with `/fixtures/index.json` |
 
 ## Fresh Brainstorm After v0.103.0
 

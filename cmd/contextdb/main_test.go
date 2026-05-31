@@ -2681,6 +2681,94 @@ func TestBuildPublishedBackupRepairClosureBundleManifestReportsMissingArtifacts(
 	is.True(strings.Contains(strings.Join(manifest.ValidationErrors, "\n"), "missing 02-doctor-drift-before.json"))
 }
 
+func TestVerifyPublishedBackupRepairClosureBundleManifest(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	for _, artifact := range publishedBackupRepairClosureBundleArtifacts() {
+		is.NoErr(os.WriteFile(filepath.Join(dir, artifact.name), []byte(artifact.name+"\n"), 0o644))
+	}
+	manifest, err := buildPublishedBackupRepairClosureBundleManifest(dir, time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "closure-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+
+	report, err := verifyPublishedBackupRepairClosureBundleManifest(manifestPath, "")
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.ManifestFile, manifestPath)
+	is.Equal(report.BundleDir, dir)
+	is.Equal(len(report.Artifacts), 8)
+	is.Equal(report.Artifacts[0].ExpectedSHA256, manifest.Artifacts[0].ChecksumSHA256)
+	is.Equal(report.Artifacts[0].ActualSHA256, manifest.Artifacts[0].ChecksumSHA256)
+}
+
+func TestVerifyPublishedBackupRepairClosureBundleManifestDetectsChecksumDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	for _, artifact := range publishedBackupRepairClosureBundleArtifacts() {
+		is.NoErr(os.WriteFile(filepath.Join(dir, artifact.name), []byte(artifact.name+"\n"), 0o644))
+	}
+	manifest, err := buildPublishedBackupRepairClosureBundleManifest(dir, time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "closure-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	is.NoErr(os.WriteFile(filepath.Join(dir, "03-publish-dry-run.json"), []byte("changed\n"), 0o644))
+
+	report, err := verifyPublishedBackupRepairClosureBundleManifest(manifestPath, "")
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "03-publish-dry-run.json: bytes"))
+	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "checksum_sha256"))
+}
+
+func TestVerifyPublicSchemaCatalog(t *testing.T) {
+	is := is.New(t)
+
+	report, err := verifyPublicSchemaCatalog(
+		filepath.Join("..", "..", "docs", "public", "schemas", "index.json"),
+		filepath.Join("..", "..", "docs", "public"),
+	)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(len(report.Schemas), 1)
+	is.Equal(report.Schemas[0].ID, "retry-fatigue-presets")
+	is.True(report.Schemas[0].Exists)
+	is.Equal(report.Schemas[0].ActualSchemaID, report.Schemas[0].ExpectedSchemaID)
+}
+
+func TestVerifyPublicSchemaCatalogAnnotationsMissingArtifact(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	indexPath := filepath.Join(dir, "index.json")
+	is.NoErr(os.WriteFile(indexPath, []byte(`{
+  "schema_version": 1,
+  "schemas": [
+    {
+      "id": "missing-schema",
+      "href": "/contextdb/schemas/missing.schema.json",
+      "json_schema_id": "https://example.test/missing.schema.json",
+      "feature": "docs-schema-catalog",
+      "owner": "docs",
+      "introduced_in": "v0.0.0",
+      "cataloged_in": "v0.0.0",
+      "status": "stable"
+    }
+  ]
+}`), 0o644))
+
+	report, err := verifyPublicSchemaCatalog(indexPath, dir)
+	annotations := buildPublicSchemaCatalogFailureAnnotations(report)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(annotations, "::error file="))
+	is.True(strings.Contains(annotations, "title=Schema catalog verification"))
+	is.True(strings.Contains(annotations, "schema artifact missing"))
+}
+
 func TestValidateNornManifestEntryRejectsWrongApp(t *testing.T) {
 	is := is.New(t)
 

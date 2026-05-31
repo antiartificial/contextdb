@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "kv-refresh-valid-receipt",
+      "href": "/contextdb/fixtures/kv-refresh/valid-receipt.json",
+      "feature": "derived-kv-refresh-receipt-verification",
+      "owner": "operations",
+      "kind": "contextdb.kv.refresh.receipt",
+      "expected_verifier_status": "passed"
+    },
+    {
+      "id": "kv-refresh-valid-value",
+      "href": "/contextdb/fixtures/kv-refresh/valid-value.json",
+      "feature": "derived-kv-refresh-receipt-verification",
+      "owner": "operations",
+      "kind": "contextdb.kv.derived.recent_nodes",
+      "expected_verifier_status": "input"
+    },
+    {
+      "id": "kv-refresh-mismatched-value",
+      "href": "/contextdb/fixtures/kv-refresh/mismatched-value.json",
+      "feature": "derived-kv-refresh-receipt-verification",
+      "owner": "operations",
+      "kind": "contextdb.kv.derived.recent_nodes",
+      "expected_verifier_status": "failed"
+    }
+  ]
+}

@@ -116,6 +116,8 @@ The verifier checks the receipt kind and schema, confirms the embedded report wa
 Docs publish tiny verifier fixtures for integrations and CI jobs:
 
 ```bash
+curl https://antiartificial.github.io/contextdb/fixtures/index.json
+
 contextdb repair kv-cache receipt verify \
   --receipt docs/public/fixtures/kv-refresh/valid-receipt.json \
   --value-file docs/public/fixtures/kv-refresh/valid-value.json \
@@ -127,7 +129,7 @@ contextdb repair kv-cache receipt verify \
   --report
 ```
 
-The first command should pass. The second should fail with `value_sha256 does not match --value-file`, which gives downstream test suites a stable negative case without generating their own receipts.
+The fixture catalog lists the passing receipt, the matching reviewed value, and the mismatched value negative case. The first verifier command should pass. The second should fail with `value_sha256 does not match --value-file`, which gives downstream test suites a stable negative case without generating their own receipts.
 
 For incident closeout, add the same receipt to the combined doctor report:
 

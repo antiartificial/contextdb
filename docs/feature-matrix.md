@@ -46,6 +46,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Doctor backup receipt runbook lane | Implemented | v0.95 | `operations`, `backup`, `audit` | Published backup repair docs now include a freshness, drift, receipt, doctor, and final closeout lane |
 | Doctor backup receipt closure artifact bundle | Implemented | v0.98 | `operations`, `backup`, `audit` | Published backup repair docs define stable artifact filenames for dry-run, execute, receipt, receipt-check, and final doctor reports |
 | Published backup closure bundle manifest | Implemented | v0.101 | `operations`, `backup`, `audit` | `snapshot lifecycle index publish closure-bundle --dir --out` writes a manifest with expected artifact paths, byte counts, and SHA-256 hashes |
+| Published backup closure bundle verify | Implemented | v0.108 | `operations`, `backup`, `audit` | `snapshot lifecycle index publish closure-bundle verify --manifest` re-checks saved bundle byte counts and SHA-256 hashes |
 | `published_backup_drift` repair hint | Implemented | v0.66 | `operations`, `backup`, `durability` | Drift reports include a dry-run publish command hint when local catalog metadata should replace published metadata |
 | Published backup repair guard | Implemented | v0.70 | `operations`, `backup`, `durability` | Deployment docs provide safety checks before executing published backup catalog replacement |
 | Published backup repair receipt | Implemented | v0.74 | `operations`, `backup`, `audit` | `snapshot lifecycle index publish --execute --receipt-out` writes durable evidence for catalog replacement |
@@ -59,6 +60,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | KV derived refresh receipt verifier | Implemented | v0.96 | `operations`, `durability`, `audit` | `repair kv-cache receipt verify --receipt --value-file` validates receipt structure, embedded report evidence, doctor command, and optional reviewed value hash |
 | KV derived refresh receipt doctor lane | Implemented | v0.99 | `operations`, `durability`, `audit` | `contextdb doctor --kv-refresh-receipt --kv-refresh-value-file` validates derived KV refresh receipts inside the combined health report |
 | KV refresh receipt fixture bundle | Implemented | v0.102 | `operations`, `durability`, `audit` | Public docs fixtures include a valid derived KV refresh receipt/value pair and a mismatched value for CI verification |
+| Public fixture catalog | Implemented | v0.108 | `operations`, `durability`, `docs` | `/fixtures/index.json` catalogs public KV receipt fixtures and their expected verifier outcome |
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
 | Snapshot backup marker | Implemented | v0.19 | `operations`, `backup`, `durability` | `contextdb snapshot export --backup-marker` writes a doctor-compatible marker only after export succeeds |
@@ -81,6 +83,8 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Lifecycle index publish drift | Implemented | v0.47 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index publish drift --in --published-url --report` compares local and published backup catalog metadata |
 | Lifecycle index publish freshness | Implemented | v0.52 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index publish freshness --published-url --max-age --report` checks published catalog age |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
+| CI-backed release health | Implemented | v0.108 | `operations`, `release`, `ci` | CI publishes JSON and Markdown release-health rows from test, build, durability, Postgres, and Docker job results |
+| Hard durability CI lanes | Implemented | v0.108 | `operations`, `durability`, `ci` | CI runs race-sensitive packages, a concurrent soak test, and Docker-backed Postgres integration smoke coverage |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Ranking eval snapshots | Implemented | v0.48 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --out --report` emits top-k, MRR, expected rank, and score breakdowns for the representative corpus |
 | Ranking eval Markdown recap | Implemented | v0.55 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --markdown` and `--markdown-out` emit pass/fail totals, MRR, failures, top results, and score breakdowns |
@@ -101,6 +105,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
 | Norn manifest publish | Implemented | v0.35 | `operations`, `deployment` | `contextdb norn publish --dry-run --report` validates a publish plan by default, with `--execute --publish-url` for explicit HTTP registration |
 | Review escalation rules | Implemented | v0.37 | `review`, `operations` | Review queues can add escalation metadata for aged assigned or snoozed tasks and high-priority source anomaly items |
+| Source quarantine workflow | Implemented | v0.108 | `review`, `operations`, `trust` | `NamespaceHandle.SourceQuarantine` dry-runs or executes label plans for repeatedly refuted, low-trust, or credibility-drifted sources |
 | Review escalation digest | Implemented | v0.38 | `review`, `operations` | Review escalation digests group escalated tasks by owner, source, item type, and escalation level |
 | Review escalation digest export | Implemented | v0.39 | `review`, `operations` | Review escalation digest snapshots can be recorded and listed for durable handoffs |
 | Review handoff feed | Implemented | v0.40 | `review`, `operations` | Saved escalation digest snapshots can be polled by owner and escalation level |
@@ -122,6 +127,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Retry fatigue preset schema fixture | Implemented | v0.94 | `review`, `operations`, `test` | A shared JSON schema fixture guards SDK and REST preset payload fields, order, and required examples |
 | Retry fatigue preset schema publication | Implemented | v0.97 | `review`, `operations`, `docs` | The preset JSON schema is published at `/schemas/retry-fatigue-presets.schema.json` and checked against the embedded fixture |
 | Published schema catalog | Implemented | v0.100 | `review`, `operations`, `docs` | `/schemas/index.json` lists stable docs schemas with URLs, owners, feature names, status, and release provenance |
+| Schema catalog drift annotations | Implemented | v0.108 | `review`, `operations`, `ci` | `contextdb docs schema-catalog verify --annotations` validates cataloged schema artifacts and emits CI annotation lines for drift |
 | Admin/debug UI | Implemented | v0.88 | `inspectability`, `operations` | Observe port serves `/admin/` with runtime stats and a belief debugger backed by `/admin/api/belief` |
 | Admin debugger search | Implemented | v0.89 | `inspectability`, `operations` | `/admin/api/search` finds recent valid graph nodes by text, source, label, or ID and the UI can open them in the debugger |
 | Admin metrics dashboard | Implemented | v0.91 | `inspectability`, `operations`, `metrics` | `/admin/` surfaces health signals, ingest/retrieval rates, latency, and raw `/admin/api/metrics` JSON |

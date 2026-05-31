@@ -81,6 +81,10 @@ func main() {
 		runConnectors(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "docs" {
+		runDocs(os.Args[2:])
+		return
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: parseLogLevel(getenv("CONTEXTDB_LOG_LEVEL", "info")),
@@ -236,6 +240,69 @@ func runConnectorsServe(args []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
+}
+
+func runDocs(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb docs: expected schema-catalog")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "schema-catalog":
+		runDocsSchemaCatalog(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb docs: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runDocsSchemaCatalog(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb docs schema-catalog: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runDocsSchemaCatalogVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb docs schema-catalog: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runDocsSchemaCatalogVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb docs schema-catalog verify", flag.ExitOnError)
+	indexPath := fs.String("index", "docs/public/schemas/index.json", "public schema catalog index")
+	publicRoot := fs.String("public-root", "docs/public", "docs public artifact root")
+	reportOut := fs.Bool("report", false, "print a JSON schema catalog verification report")
+	annotationsOut := fs.Bool("annotations", false, "print CI annotation lines for schema catalog drift")
+	annotationsOutPath := fs.String("annotations-out", "", "CI annotation lines for schema catalog drift to write")
+	_ = fs.Parse(args)
+
+	report, err := verifyPublicSchemaCatalog(*indexPath, *publicRoot)
+	if strings.TrimSpace(*annotationsOutPath) != "" {
+		if writeErr := writeTextFile(*annotationsOutPath, buildPublicSchemaCatalogFailureAnnotations(report)); writeErr != nil && err == nil {
+			err = writeErr
+		}
+	}
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if *annotationsOut {
+		annotations := buildPublicSchemaCatalogFailureAnnotations(report)
+		if strings.TrimSpace(annotations) == "" {
+			fmt.Fprintln(os.Stdout)
+		} else {
+			fmt.Print(annotations)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb docs schema-catalog verify: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut && !*annotationsOut {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
 }
 
 func runEvalRanking(args []string) {
@@ -968,6 +1035,10 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 }
 
 func runSnapshotLifecycleIndexPublishClosureBundle(args []string) {
+	if len(args) > 0 && args[0] == "verify" {
+		runSnapshotLifecycleIndexPublishClosureBundleVerify(args[1:])
+		return
+	}
 	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish closure-bundle", flag.ExitOnError)
 	dir := fs.String("dir", "", "published backup repair closure bundle directory")
 	outPath := fs.String("out", "", "write the JSON closure bundle manifest, defaults to closure-manifest.json in --dir")
@@ -994,6 +1065,26 @@ func runSnapshotLifecycleIndexPublishClosureBundle(args []string) {
 	}
 	if !*reportOut {
 		fmt.Fprintln(os.Stdout, manifestOut)
+	}
+}
+
+func runSnapshotLifecycleIndexPublishClosureBundleVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish closure-bundle verify", flag.ExitOnError)
+	manifestPath := fs.String("manifest", "", "JSON closure bundle manifest to verify")
+	dir := fs.String("dir", "", "override bundle directory when verifying a moved bundle")
+	reportOut := fs.Bool("report", false, "print a JSON closure bundle verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifyPublishedBackupRepairClosureBundleManifest(*manifestPath, *dir)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish closure-bundle verify: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
 
@@ -1572,6 +1663,72 @@ type publishedBackupRepairClosureBundleArtifact struct {
 	Exists         bool   `json:"exists"`
 	Bytes          int64  `json:"bytes,omitempty"`
 	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleVerifyReport struct {
+	Kind             string                                             `json:"kind"`
+	SchemaVersion    int                                                `json:"schema_version"`
+	ContextDBVersion string                                             `json:"contextdb_version"`
+	VerifiedAt       string                                             `json:"verified_at"`
+	ManifestFile     string                                             `json:"manifest_file"`
+	BundleDir        string                                             `json:"bundle_dir"`
+	OK               bool                                               `json:"ok"`
+	Artifacts        []publishedBackupRepairClosureBundleVerifyArtifact `json:"artifacts"`
+	ValidationErrors []string                                           `json:"validation_errors,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleVerifyArtifact struct {
+	Step             int      `json:"step"`
+	Name             string   `json:"name"`
+	Purpose          string   `json:"purpose"`
+	Path             string   `json:"path"`
+	Exists           bool     `json:"exists"`
+	ExpectedBytes    int64    `json:"expected_bytes,omitempty"`
+	ActualBytes      int64    `json:"actual_bytes,omitempty"`
+	ExpectedSHA256   string   `json:"expected_sha256,omitempty"`
+	ActualSHA256     string   `json:"actual_sha256,omitempty"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
+}
+
+type publicSchemaCatalog struct {
+	SchemaVersion int                        `json:"schema_version"`
+	Schemas       []publicSchemaCatalogEntry `json:"schemas"`
+}
+
+type publicSchemaCatalogEntry struct {
+	ID           string `json:"id"`
+	Title        string `json:"title,omitempty"`
+	Href         string `json:"href"`
+	PublicURL    string `json:"public_url,omitempty"`
+	JSONSchemaID string `json:"json_schema_id"`
+	Feature      string `json:"feature"`
+	Owner        string `json:"owner"`
+	IntroducedIn string `json:"introduced_in"`
+	CatalogedIn  string `json:"cataloged_in"`
+	Status       string `json:"status"`
+}
+
+type publicSchemaCatalogVerifyReport struct {
+	Kind             string                          `json:"kind"`
+	SchemaVersion    int                             `json:"schema_version"`
+	ContextDBVersion string                          `json:"contextdb_version"`
+	CheckedAt        string                          `json:"checked_at"`
+	IndexFile        string                          `json:"index_file"`
+	PublicRoot       string                          `json:"public_root"`
+	OK               bool                            `json:"ok"`
+	Schemas          []publicSchemaCatalogVerifyItem `json:"schemas"`
+	ValidationErrors []string                        `json:"validation_errors,omitempty"`
+}
+
+type publicSchemaCatalogVerifyItem struct {
+	ID               string   `json:"id"`
+	Href             string   `json:"href"`
+	Path             string   `json:"path"`
+	Exists           bool     `json:"exists"`
+	Bytes            int64    `json:"bytes,omitempty"`
+	ExpectedSchemaID string   `json:"expected_schema_id,omitempty"`
+	ActualSchemaID   string   `json:"actual_schema_id,omitempty"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
 }
 
 type snapshotLifecycleIndexPublishPayload struct {
@@ -2794,6 +2951,89 @@ func buildPublishedBackupRepairClosureBundleManifest(dir string, generatedAt tim
 	return manifest, nil
 }
 
+func verifyPublishedBackupRepairClosureBundleManifest(manifestPath, bundleDirOverride string) (publishedBackupRepairClosureBundleVerifyReport, error) {
+	manifestPath = strings.TrimSpace(manifestPath)
+	report := publishedBackupRepairClosureBundleVerifyReport{
+		Kind:             "contextdb.published_backup_repair.closure_bundle_verify",
+		SchemaVersion:    1,
+		ContextDBVersion: buildinfo.Version,
+		VerifiedAt:       time.Now().UTC().Format(time.RFC3339),
+		ManifestFile:     manifestPath,
+	}
+	if manifestPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--manifest is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	var manifest publishedBackupRepairClosureBundleManifest
+	if err := readJSONFile(manifestPath, &manifest); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read closure bundle manifest: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if manifest.Kind != "contextdb.published_backup_repair.closure_bundle_manifest" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("kind = %q, want contextdb.published_backup_repair.closure_bundle_manifest", manifest.Kind))
+	}
+	if manifest.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("schema_version = %d, want 1", manifest.SchemaVersion))
+	}
+	bundleDir := strings.TrimSpace(bundleDirOverride)
+	if bundleDir == "" {
+		bundleDir = strings.TrimSpace(manifest.BundleDir)
+	}
+	if bundleDir == "" {
+		bundleDir = filepath.Dir(manifestPath)
+	}
+	report.BundleDir = bundleDir
+	if len(manifest.Artifacts) == 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "manifest has no artifacts")
+	}
+	for _, artifact := range manifest.Artifacts {
+		item := publishedBackupRepairClosureBundleVerifyArtifact{
+			Step:           artifact.Step,
+			Name:           artifact.Name,
+			Purpose:        artifact.Purpose,
+			Path:           artifact.Path,
+			ExpectedBytes:  artifact.Bytes,
+			ExpectedSHA256: artifact.ChecksumSHA256,
+		}
+		if strings.TrimSpace(bundleDirOverride) != "" || strings.TrimSpace(item.Path) == "" {
+			item.Path = filepath.Join(bundleDir, artifact.Name)
+		}
+		data, err := os.ReadFile(item.Path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				item.ValidationErrors = append(item.ValidationErrors, "artifact missing")
+			} else {
+				item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("read artifact: %v", err))
+			}
+			report.Artifacts = append(report.Artifacts, item)
+			continue
+		}
+		item.Exists = true
+		item.ActualBytes = int64(len(data))
+		sum := sha256.Sum256(data)
+		item.ActualSHA256 = hex.EncodeToString(sum[:])
+		if item.ExpectedBytes != item.ActualBytes {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("bytes = %d, want %d", item.ActualBytes, item.ExpectedBytes))
+		}
+		if strings.TrimSpace(item.ExpectedSHA256) == "" {
+			item.ValidationErrors = append(item.ValidationErrors, "missing expected checksum_sha256")
+		} else if !strings.EqualFold(item.ExpectedSHA256, item.ActualSHA256) {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("checksum_sha256 = %s, want %s", item.ActualSHA256, item.ExpectedSHA256))
+		}
+		report.Artifacts = append(report.Artifacts, item)
+	}
+	for _, item := range report.Artifacts {
+		for _, validationErr := range item.ValidationErrors {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("%s: %s", item.Name, validationErr))
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
 type publishedBackupRepairClosureBundleExpectedArtifact struct {
 	step    int
 	name    string
@@ -2811,6 +3051,127 @@ func publishedBackupRepairClosureBundleArtifacts() []publishedBackupRepairClosur
 		{step: 6, name: "06-doctor-receipt-verify.json", purpose: "doctor report with published_backup_receipt_verify"},
 		{step: 7, name: "07-doctor-final.json", purpose: "final doctor freshness and drift report after repair"},
 	}
+}
+
+func verifyPublicSchemaCatalog(indexPath, publicRoot string) (publicSchemaCatalogVerifyReport, error) {
+	indexPath = strings.TrimSpace(indexPath)
+	publicRoot = strings.TrimSpace(publicRoot)
+	report := publicSchemaCatalogVerifyReport{
+		Kind:             "contextdb.docs.schema_catalog_verify",
+		SchemaVersion:    1,
+		ContextDBVersion: buildinfo.Version,
+		CheckedAt:        time.Now().UTC().Format(time.RFC3339),
+		IndexFile:        indexPath,
+		PublicRoot:       publicRoot,
+	}
+	if indexPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--index is required")
+	}
+	if publicRoot == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--public-root is required")
+	}
+	if len(report.ValidationErrors) > 0 {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	var catalog publicSchemaCatalog
+	if err := readJSONFile(indexPath, &catalog); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read schema catalog: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if catalog.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("schema_version = %d, want 1", catalog.SchemaVersion))
+	}
+	if len(catalog.Schemas) == 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "schema catalog has no schemas")
+	}
+	seen := map[string]bool{}
+	for _, entry := range catalog.Schemas {
+		item := publicSchemaCatalogVerifyItem{
+			ID:               entry.ID,
+			Href:             entry.Href,
+			Path:             publicSchemaCatalogEntryPath(publicRoot, entry.Href),
+			ExpectedSchemaID: entry.JSONSchemaID,
+		}
+		if strings.TrimSpace(entry.ID) == "" {
+			item.ValidationErrors = append(item.ValidationErrors, "id is required")
+		} else if seen[entry.ID] {
+			item.ValidationErrors = append(item.ValidationErrors, "duplicate id")
+		}
+		seen[entry.ID] = true
+		if strings.TrimSpace(entry.Href) == "" {
+			item.ValidationErrors = append(item.ValidationErrors, "href is required")
+		}
+		if strings.TrimSpace(entry.JSONSchemaID) == "" {
+			item.ValidationErrors = append(item.ValidationErrors, "json_schema_id is required")
+		}
+		data, err := os.ReadFile(item.Path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				item.ValidationErrors = append(item.ValidationErrors, "schema artifact missing")
+			} else {
+				item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("read schema artifact: %v", err))
+			}
+			report.Schemas = append(report.Schemas, item)
+			continue
+		}
+		item.Exists = true
+		item.Bytes = int64(len(data))
+		var schemaDoc struct {
+			ID string `json:"$id"`
+		}
+		if err := json.Unmarshal(data, &schemaDoc); err != nil {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("decode schema artifact: %v", err))
+		}
+		item.ActualSchemaID = schemaDoc.ID
+		if item.ExpectedSchemaID != "" && schemaDoc.ID != item.ExpectedSchemaID {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("$id = %q, want %q", schemaDoc.ID, item.ExpectedSchemaID))
+		}
+		report.Schemas = append(report.Schemas, item)
+	}
+	for _, item := range report.Schemas {
+		for _, validationErr := range item.ValidationErrors {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("%s: %s", item.ID, validationErr))
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func publicSchemaCatalogEntryPath(publicRoot, href string) string {
+	href = strings.TrimSpace(href)
+	href = strings.TrimPrefix(href, "https://antiartificial.github.io/contextdb")
+	href = strings.TrimPrefix(href, "/contextdb")
+	href = strings.TrimPrefix(href, "/")
+	return filepath.Join(publicRoot, filepath.FromSlash(href))
+}
+
+func buildPublicSchemaCatalogFailureAnnotations(report publicSchemaCatalogVerifyReport) string {
+	if report.OK && len(report.ValidationErrors) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	itemFailures := 0
+	for _, item := range report.Schemas {
+		for _, validationErr := range item.ValidationErrors {
+			itemFailures++
+			fmt.Fprintf(&b, "::error file=%s,title=%s::%s\n",
+				ciAnnotationEscape(item.Path),
+				ciAnnotationEscape("Schema catalog verification"),
+				ciAnnotationEscape(fmt.Sprintf("%s: %s", item.ID, validationErr)))
+		}
+	}
+	if itemFailures == 0 {
+		for _, validationErr := range report.ValidationErrors {
+			fmt.Fprintf(&b, "::error file=%s,title=%s::%s\n",
+				ciAnnotationEscape(report.IndexFile),
+				ciAnnotationEscape("Schema catalog verification"),
+				ciAnnotationEscape(validationErr))
+		}
+	}
+	return b.String()
 }
 
 func fetchSnapshotLifecycleIndexPublishedPayload(ctx context.Context, client *http.Client, publishedURL, method, token string) (snapshotLifecycleIndexPublishPayload, string, error) {

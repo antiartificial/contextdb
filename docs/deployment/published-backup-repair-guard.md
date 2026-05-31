@@ -148,6 +148,16 @@ contextdb snapshot lifecycle index publish closure-bundle \
 
 The final command writes `closure-manifest.json` with one entry for each expected artifact, including byte counts and SHA-256 hashes. It exits non-zero if any expected artifact is missing, so it can be used as the final incident handoff check.
 
+Later audits can re-check the saved manifest without regenerating it:
+
+```bash
+contextdb snapshot lifecycle index publish closure-bundle verify \
+  --manifest "$CONTEXTDB_REPAIR_BUNDLE/closure-manifest.json" \
+  --report
+```
+
+The verifier re-reads every artifact path from the manifest and compares byte counts plus SHA-256 hashes, which catches accidental edits or incomplete handoffs.
+
 Keep the bundle directory with the incident record. The stable filenames make it clear which evidence came before the write, which file is the receipt, which checks verified the receipt, and which doctor report closed the repair.
 
 ## Confirm The Repair

@@ -215,9 +215,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.107.0",
+  "version": "0.108.0",
   "api_version": "v1",
-  "docs_version": "0.107.0",
+  "docs_version": "0.108.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -822,6 +822,36 @@ curl http://localhost:7701/v1/version
       "description": "Docs publish passing and failing derived KV refresh receipt fixtures for integration and CI consumers."
     },
     {
+      "name": "schema-catalog-drift-annotations",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "CLI can verify the public schema catalog and emit CI annotation lines for missing or mismatched schema artifacts."
+    },
+    {
+      "name": "published-backup-closure-bundle-verify",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "Saved published backup closure manifests can be re-verified for artifact byte counts and SHA-256 hashes."
+    },
+    {
+      "name": "source-quarantine-workflow",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "The Go SDK can dry-run and execute source quarantine label plans for repeatedly refuted or low-trust sources."
+    },
+    {
+      "name": "ci-release-health-artifacts",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "CI emits machine-readable release health rows from test, build, durability, Postgres, and Docker job results."
+    },
+    {
+      "name": "durability-ci-lanes",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "CI includes race-sensitive packages, concurrent soak coverage, and Docker-backed Postgres integration smoke tests."
+    },
+    {
       "name": "admin-observe-dashboard",
       "status": "stable",
       "since": "v0.88.0",
@@ -886,6 +916,36 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.107.0",
       "description": "Acquisition connector execution records append-only receipts, idempotency keys, retry classification, and retry guidance for transient failures."
+    },
+    {
+      "name": "schema-catalog-drift-annotations",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "CLI can verify the public schema catalog and emit CI annotation lines for missing or mismatched schema artifacts."
+    },
+    {
+      "name": "published-backup-closure-bundle-verify",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "Saved published backup closure manifests can be re-verified for artifact byte counts and SHA-256 hashes."
+    },
+    {
+      "name": "source-quarantine-workflow",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "The Go SDK can dry-run and execute source quarantine label plans for repeatedly refuted or low-trust sources."
+    },
+    {
+      "name": "ci-release-health-artifacts",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "CI emits machine-readable release health rows from test, build, durability, Postgres, and Docker job results."
+    },
+    {
+      "name": "durability-ci-lanes",
+      "status": "stable",
+      "since": "v0.108.0",
+      "description": "CI includes race-sensitive packages, concurrent soak coverage, and Docker-backed Postgres integration smoke tests."
     }
   ],
   "migrations": [
@@ -893,7 +953,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.107.0"
+  "release_notes_path": "/contextdb/releases/v0.108.0"
 }
 ```
 

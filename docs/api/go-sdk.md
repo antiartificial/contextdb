@@ -318,6 +318,26 @@ for _, item := range items {
 
 Source trust anomaly tasks are emitted as `ReviewItem{Type: "source_trust_anomaly"}` when configured source credibility thresholds are crossed. Review queue filters can narrow by item type, source, workflow status, and owner; items with no recorded decision match `Status: "open"`. When `EscalationAfter` is set, returned items can include `Escalated`, `EscalationLevel`, `EscalationReason`, and `EscalationAgeHours` for overdue assigned or due snoozed tasks and high-priority source anomaly items.
 
+When repeated refutations should trigger a source review, use the dry-run-first quarantine workflow. The plan recommends labels such as `flagged` and `quarantined`; labels are applied only when `Execute` is true.
+
+```go
+plan, err := ns.SourceQuarantine(ctx, client.SourceQuarantineRequest{
+    After:                     time.Now().Add(-7 * 24 * time.Hour),
+    SourceRefutationThreshold: 2,
+    SourceTrustThreshold:      0.35,
+})
+for _, candidate := range plan.Candidates {
+    fmt.Printf("%s %s %v\n", candidate.SourceID, candidate.Reason, candidate.SuggestedLabels)
+}
+
+executed, err := ns.SourceQuarantine(ctx, client.SourceQuarantineRequest{
+    After:   time.Now().Add(-7 * 24 * time.Hour),
+    SourceID: "docs-crawler",
+    Execute: true,
+})
+_ = executed
+```
+
 Use the digest when you need grouped escalation counts instead of every item:
 
 ```go

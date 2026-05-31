@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -766,6 +768,76 @@ func TestNamespace_ReviewQueueIncludesSourceTrustAnomalies(t *testing.T) {
 	is.True(escalated[0].Escalated)
 	is.Equal(escalated[0].EscalationLevel, "source_anomaly_high")
 	is.True(strings.Contains(escalated[0].EscalationReason, "source anomaly priority"))
+}
+
+func TestNamespace_SourceQuarantineDryRunAndExecute(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+
+	ns := db.Namespace("test:source-quarantine", namespace.ModeBeliefSystem)
+	start := time.Now().Add(-time.Second)
+	for i := 0; i < 2; i++ {
+		written, err := ns.Write(ctx, client.WriteRequest{
+			Content:    fmt.Sprintf("Quarantine candidate claim %d", i),
+			SourceID:   "crawler",
+			Labels:     []string{"Claim"},
+			Confidence: 0.8,
+			Vector:     vec8(i),
+		})
+		is.NoErr(err)
+		is.True(written.Admitted)
+		_, err = ns.RefuteClaim(ctx, written.NodeID, "audit refuted crawler output")
+		is.NoErr(err)
+	}
+
+	dryRun, err := ns.SourceQuarantine(ctx, client.SourceQuarantineRequest{
+		After:                     start,
+		SourceRefutationThreshold: 2,
+	})
+	is.NoErr(err)
+	is.True(dryRun.DryRun)
+	is.True(!dryRun.Executed)
+	is.Equal(len(dryRun.Candidates), 1)
+	is.Equal(dryRun.Candidates[0].SourceID, "crawler")
+	is.True(strings.Contains(dryRun.Candidates[0].Reason, "recent refutations"))
+	is.True(slices.Contains(dryRun.Candidates[0].SuggestedLabels, "flagged"))
+	is.True(!dryRun.Candidates[0].Applied)
+
+	stillAdmitted, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Dry-run should not label the source",
+		SourceID:   "crawler",
+		Labels:     []string{"Claim"},
+		Confidence: 0.8,
+		Vector:     vec8(3),
+	})
+	is.NoErr(err)
+	is.True(stillAdmitted.Admitted)
+
+	executed, err := ns.SourceQuarantine(ctx, client.SourceQuarantineRequest{
+		After:                     start,
+		SourceRefutationThreshold: 2,
+		Execute:                   true,
+	})
+	is.NoErr(err)
+	is.True(!executed.DryRun)
+	is.True(executed.Executed)
+	is.Equal(len(executed.Candidates), 1)
+	is.True(executed.Candidates[0].Applied)
+	is.True(slices.Contains(executed.Candidates[0].AppliedLabels, "flagged"))
+	is.True(slices.Contains(executed.Candidates[0].AppliedLabels, "quarantined"))
+
+	rejected, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "Executed quarantine should floor credibility",
+		SourceID:   "crawler",
+		Labels:     []string{"Claim"},
+		Confidence: 0.8,
+		Vector:     vec8(4),
+	})
+	is.NoErr(err)
+	is.True(!rejected.Admitted)
 }
 
 func TestNamespace_ReviewQueueIncludesContradictions(t *testing.T) {

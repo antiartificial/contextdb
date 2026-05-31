@@ -650,6 +650,42 @@ type ReviewQueueRequest struct {
 	Limit                           int
 }
 
+// SourceQuarantineRequest builds or applies a dry-run-first source quarantine plan.
+type SourceQuarantineRequest struct {
+	After                     time.Time
+	Now                       time.Time
+	SourceTrustThreshold      float64
+	SourceTrustDropThreshold  float64
+	SourceRefutationThreshold int
+	SourceID                  string
+	Limit                     int
+	Execute                   bool
+	Labels                    []string
+}
+
+// SourceQuarantinePlan describes sources recommended for quarantine or exclusion.
+type SourceQuarantinePlan struct {
+	Namespace   string                      `json:"namespace"`
+	GeneratedAt time.Time                   `json:"generated_at"`
+	DryRun      bool                        `json:"dry_run"`
+	Executed    bool                        `json:"executed"`
+	Candidates  []SourceQuarantineCandidate `json:"candidates"`
+}
+
+// SourceQuarantineCandidate is one source with repeated refutations or trust drift.
+type SourceQuarantineCandidate struct {
+	SourceID          string      `json:"source_id"`
+	Action            string      `json:"action"`
+	Reason            string      `json:"reason"`
+	Priority          float64     `json:"priority"`
+	LatestCredibility float64     `json:"latest_credibility,omitempty"`
+	NodeIDs           []uuid.UUID `json:"node_ids,omitempty"`
+	ExistingLabels    []string    `json:"existing_labels,omitempty"`
+	SuggestedLabels   []string    `json:"suggested_labels"`
+	AppliedLabels     []string    `json:"applied_labels,omitempty"`
+	Applied           bool        `json:"applied,omitempty"`
+}
+
 // ReviewDecisionRequest records durable workflow state for a derived review task.
 type ReviewDecisionRequest struct {
 	ReviewID  string
@@ -1913,6 +1949,84 @@ func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueReques
 		items = items[:req.Limit]
 	}
 	return items, nil
+}
+
+// SourceQuarantine builds a source quarantine plan and applies labels only when Execute is true.
+func (h *NamespaceHandle) SourceQuarantine(ctx context.Context, req SourceQuarantineRequest) (SourceQuarantinePlan, error) {
+	now := req.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	labels := dedupeStrings(req.Labels)
+	if len(labels) == 0 {
+		labels = []string{"flagged", "quarantined"}
+	}
+	refutationThreshold := req.SourceRefutationThreshold
+	if refutationThreshold == 0 {
+		refutationThreshold = 2
+	}
+	trustThreshold := req.SourceTrustThreshold
+	if trustThreshold == 0 {
+		trustThreshold = 0.35
+	}
+	dropThreshold := req.SourceTrustDropThreshold
+	if dropThreshold == 0 {
+		dropThreshold = 0.2
+	}
+	items, err := h.ReviewQueue(ctx, ReviewQueueRequest{
+		After:                     req.After,
+		Now:                       now,
+		SourceTrustThreshold:      trustThreshold,
+		SourceTrustDropThreshold:  dropThreshold,
+		SourceRefutationThreshold: refutationThreshold,
+		Types:                     []string{"source_trust_anomaly"},
+		SourceID:                  req.SourceID,
+		Limit:                     req.Limit,
+	})
+	if err != nil {
+		return SourceQuarantinePlan{}, err
+	}
+	plan := SourceQuarantinePlan{
+		Namespace:   h.cfg.ID,
+		GeneratedAt: now,
+		DryRun:      !req.Execute,
+		Executed:    req.Execute,
+		Candidates:  make([]SourceQuarantineCandidate, 0, len(items)),
+	}
+	for _, item := range items {
+		sourceID := strings.TrimSpace(item.SourceID)
+		if sourceID == "" {
+			continue
+		}
+		src, err := h.db.graph.GetSourceByExternalID(ctx, h.cfg.ID, sourceID)
+		if err != nil {
+			return SourceQuarantinePlan{}, err
+		}
+		if src == nil {
+			defaultSource := core.DefaultSource(h.cfg.ID, sourceID)
+			src = &defaultSource
+		}
+		candidate := SourceQuarantineCandidate{
+			SourceID:          sourceID,
+			Action:            item.Action,
+			Reason:            item.Reason,
+			Priority:          item.Priority,
+			LatestCredibility: item.Confidence,
+			NodeIDs:           item.NodeIDs,
+			ExistingLabels:    append([]string{}, src.Labels...),
+			SuggestedLabels:   append([]string{}, labels...),
+		}
+		if req.Execute {
+			src.Labels = dedupeStrings(append(src.Labels, labels...))
+			if err := h.db.graph.UpsertSource(ctx, *src); err != nil {
+				return SourceQuarantinePlan{}, err
+			}
+			candidate.Applied = true
+			candidate.AppliedLabels = append([]string{}, src.Labels...)
+		}
+		plan.Candidates = append(plan.Candidates, candidate)
+	}
+	return plan, nil
 }
 
 // ReviewEscalationDigest groups escalated review queue items by owner, source, type, and level.

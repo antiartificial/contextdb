@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.107.0"
+	Version = "0.108.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.107.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.108.0",
 	}
 }
 
@@ -150,6 +150,11 @@ func Features() []Feature {
 		{Name: "published-schema-catalog", Status: "stable", Since: "v0.100.0", Description: "Docs publish a schema catalog listing stable JSON contracts for dashboards and automation consumers."},
 		{Name: "published-backup-closure-bundle-manifest", Status: "stable", Since: "v0.101.0", Description: "CLI can generate a hashed closure manifest for published backup repair evidence bundles."},
 		{Name: "kv-refresh-receipt-fixtures", Status: "stable", Since: "v0.102.0", Description: "Docs publish passing and failing derived KV refresh receipt fixtures for integration and CI consumers."},
+		{Name: "schema-catalog-drift-annotations", Status: "stable", Since: "v0.108.0", Description: "CLI can verify the public schema catalog and emit CI annotation lines for missing or mismatched schema artifacts."},
+		{Name: "published-backup-closure-bundle-verify", Status: "stable", Since: "v0.108.0", Description: "Saved published backup closure manifests can be re-verified for artifact byte counts and SHA-256 hashes."},
+		{Name: "source-quarantine-workflow", Status: "stable", Since: "v0.108.0", Description: "The Go SDK can dry-run and execute source quarantine label plans for repeatedly refuted or low-trust sources."},
+		{Name: "ci-release-health-artifacts", Status: "stable", Since: "v0.108.0", Description: "CI emits machine-readable release health rows from test, build, durability, Postgres, and Docker job results."},
+		{Name: "durability-ci-lanes", Status: "stable", Since: "v0.108.0", Description: "CI includes race-sensitive packages, concurrent soak coverage, and Docker-backed Postgres integration smoke tests."},
 		{Name: "admin-observe-dashboard", Status: "stable", Since: "v0.88.0", Description: "The observe port serves the built-in admin dashboard at /admin/."},
 		{Name: "admin-belief-debugger", Status: "stable", Since: "v0.88.0", Description: "The admin dashboard includes a belief debugger API and UI for source, support, contradiction, provenance, and confidence evidence."},
 		{Name: "admin-debugger-search", Status: "stable", Since: "v0.89.0", Description: "The admin debugger can search recent valid nodes by text, label, source, or ID before opening an audit."},

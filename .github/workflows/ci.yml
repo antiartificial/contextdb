@@ -41,6 +41,13 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Verify public schema catalog
+        run: |
+          go run ./cmd/contextdb docs schema-catalog verify \
+            --annotations-out schema-catalog-annotations.txt \
+            --report
+          cat schema-catalog-annotations.txt
+
       - name: Test with coverage (optional)
         run: |
           go test ./... 2>/dev/null || go test ./...
@@ -81,10 +88,59 @@ jobs:
           name: contextdb-linux-amd64
           path: bin/contextdb
 
+  durability:
+    name: durability
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: Race-sensitive packages
+        run: go test -race -count=1 ./internal/federation ./internal/retrieval ./pkg/client
+
+      - name: Concurrent soak lane
+        run: go test -count=1 ./pkg/client -run TestNamespace_ConcurrentWriteRetrieveSoak
+
+  postgres-integration:
+    name: postgres integration
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: contextdb
+          POSTGRES_PASSWORD: contextdb
+          POSTGRES_DB: contextdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U contextdb -d contextdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: Docker-backed Postgres integration
+        env:
+          CONTEXTDB_TEST_POSTGRES_DSN: postgres://contextdb:contextdb@localhost:5432/contextdb?sslmode=disable
+        run: go test -tags integration -count=1 ./pkg/client -run TestPostgresStandardModeWriteRetrieveSmoke
+
   docker:
     name: docker
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, durability, postgres-integration]
     permissions:
       contents: read
       packages: write
@@ -120,3 +176,54 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release-health:
+    name: release health
+    runs-on: ubuntu-latest
+    needs: [test, build, durability, postgres-integration, docker]
+    if: always()
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Generate release health artifact
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          DURABILITY_RESULT: ${{ needs.durability.result }}
+          POSTGRES_RESULT: ${{ needs.postgres-integration.result }}
+          DOCKER_RESULT: ${{ needs.docker.result }}
+        run: |
+          mkdir -p release-health
+          overall="passed"
+          if [ "$TEST_RESULT" != "success" ] || [ "$BUILD_RESULT" != "success" ] || [ "$DURABILITY_RESULT" != "success" ] || [ "$POSTGRES_RESULT" != "success" ] || [ "$DOCKER_RESULT" != "success" ]; then
+            overall="failed"
+          fi
+          cat > release-health/release-health.json <<JSON
+          {
+            "schema_version": 1,
+            "kind": "contextdb.release_health.ci_row",
+            "status": "$overall",
+            "ref": "$GITHUB_REF_NAME",
+            "sha": "$GITHUB_SHA",
+            "run_id": "$GITHUB_RUN_ID",
+            "run_attempt": "$GITHUB_RUN_ATTEMPT",
+            "run_url": "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID",
+            "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "gates": {
+              "test": "$TEST_RESULT",
+              "build": "$BUILD_RESULT",
+              "durability": "$DURABILITY_RESULT",
+              "postgres_integration": "$POSTGRES_RESULT",
+              "docker": "$DOCKER_RESULT"
+            }
+          }
+          JSON
+          cat > release-health/release-health-row.md <<MD
+          | \`$GITHUB_REF_NAME\` | $overall | test: $TEST_RESULT | build: $BUILD_RESULT | durability: $DURABILITY_RESULT | postgres: $POSTGRES_RESULT | docker: $DOCKER_RESULT | [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) |
+          MD
+
+      - name: Upload release health artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-health
+          path: release-health/

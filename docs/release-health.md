@@ -18,12 +18,18 @@ Run these checks before tagging a release:
 | Ranking corpus | `TestRepresentativeCorpusRankingGolden` in `./internal/retrieval` | Required before ranking changes |
 | Badger restart durability | `TestDB_BadgerRestartDurability` in `./pkg/client` | Required before storage or embedded-mode changes |
 | API contract surface | gRPC, REST, and GraphQL server tests | Required before public API changes |
-| Race and soak lane | `go test -race ./...` plus long-running concurrency probes | Recommended before concurrency-heavy releases |
+| Race and soak lane | `go test -race -count=1 ./internal/federation ./internal/retrieval ./pkg/client` and `TestNamespace_ConcurrentWriteRetrieveSoak` | Required in CI |
+| Postgres integration | Docker-backed `pgvector/pgvector:pg16` with `go test -tags integration ./pkg/client` | Required in CI |
+| Release health artifact | `.github/workflows/ci.yml` `release-health` job | Required before publishing release recap rows |
+
+The CI workflow now writes `release-health/release-health.json` and `release-health/release-health-row.md` from the actual `test`, `build`, `durability`, `postgres integration`, and `docker` job results. Use the generated Markdown row as the source for release recap updates so the table follows verified CI evidence rather than hand-maintained status text.
 
 ## Release Summary
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.108.0 | Passed | Passed | Corpus coverage present | Race/soak and Docker-backed Postgres CI lanes added | Schema catalog, closure bundle, fixture catalog, and source quarantine tests added | Adds CI-backed release health, reliability verifiers, and dry-run-first source quarantine |
+| v0.107.0 | Passed | Passed | Corpus coverage present | Acquisition retry receipt coverage added | Connector retry execution and receipt tests added | Adds retry receipts and idempotency keys for acquisition connector execution |
 | v0.106.0 | Passed | Passed | Corpus coverage present | Provider connector normalization coverage added | CLI connector server and provider adapter tests added | Adds OpenAI, xAI, and Anthropic acquisition connector adapters |
 | v0.105.0 | Passed | Passed | Corpus coverage present | Source-constrained acquisition execution coverage added | Go SDK, REST, TypeScript, and Python connector surfaces added | Adds dry-run-first search/crawler acquisition connector workflows |
 | v0.104.0 | Passed | Passed | Corpus coverage present | Epistemics debugger coverage added | Admin belief API additive-envelope tests added | Adds source-trust timeline, contradiction path, and graph/source context visualizations |
