@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.50.0 | Passed | Passed | Corpus coverage present | Vector repair coverage added | CLI vector repair report tests added | Adds dry-run-first vector index repair execution for reviewed rebuild candidates |
 | v0.49.0 | Passed | Passed | Corpus coverage present | Store consistency coverage added | CLI doctor store consistency tests added | Adds opt-in local doctor checks for fingerprint lookups and vector rebuild candidates |
 | v0.48.0 | Passed | Passed | Ranking eval snapshot coverage added | Restart coverage present | CLI ranking eval snapshot test added | Adds JSON score-drift reports for the representative corpus |
 | v0.47.0 | Passed | Passed | Corpus coverage present | Lifecycle index publish drift coverage added | CLI lifecycle index publish drift tests added | Adds dry-run comparison between local and published backup catalog metadata |

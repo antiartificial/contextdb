@@ -68,6 +68,18 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 
 The check samples valid graph nodes, verifies content fingerprint lookup for fingerprinted nodes, and uses vector search to confirm vector-bearing graph nodes are visible in the vector index. Missing vector hits are reported as rebuild candidates. The check is read-only and opt-in.
 
+Use `contextdb repair vector-index` after reviewing candidates and choosing a maintenance window. The command is dry-run by default and only mutates the vector index with `--execute`:
+
+```bash
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb repair vector-index --namespace my-app --sample 100 --report
+
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb repair vector-index --namespace my-app --sample 100 --execute --report
+```
+
+The repair report lists sampled vector nodes, candidate IDs, and reindexed IDs. It rebuilds vector entries from the graph node vector, model ID, and text metadata without changing graph nodes.
+
 ## Snapshot Backup And Restore
 
 Use `contextdb snapshot export` to write an NDJSON namespace backup:

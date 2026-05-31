@@ -1044,6 +1044,64 @@ func TestBuildStoreConsistencyCheckFindsVectorRebuildCandidate(t *testing.T) {
 	is.True(strings.Contains(check.Detail, "vector rebuild candidate"))
 }
 
+func TestBuildVectorIndexRepairReportDryRun(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	node := core.Node{
+		ID:         uuid.New(),
+		Namespace:  "prod",
+		Properties: map[string]any{"text": "dry run repair candidate"},
+		Vector:     []float32{1, 0, 0, 0},
+		Confidence: 0.9,
+		ValidFrom:  time.Now().Add(-time.Minute),
+		TxTime:     time.Now().Add(-time.Minute),
+	}
+	is.NoErr(graph.UpsertNode(ctx, node))
+
+	report, err := buildVectorIndexRepairReport(ctx, graph, vecs, "prod", 10, false)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.DryRun)
+	is.Equal(report.SampledNodes, 1)
+	is.Equal(report.VectorNodes, 1)
+	is.Equal(report.CandidateIDs, []string{node.ID.String()})
+	is.Equal(len(report.ReindexedIDs), 0)
+
+	check := buildStoreConsistencyCheck(ctx, graph, vecs, memstore.NewKVStore(), "prod", 10)
+	is.True(!check.OK)
+}
+
+func TestBuildVectorIndexRepairReportExecute(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	node := core.Node{
+		ID:         uuid.New(),
+		Namespace:  "prod",
+		Properties: map[string]any{"text": "execute repair candidate"},
+		Vector:     []float32{1, 0, 0, 0},
+		Confidence: 0.9,
+		ValidFrom:  time.Now().Add(-time.Minute),
+		TxTime:     time.Now().Add(-time.Minute),
+	}
+	is.NoErr(graph.UpsertNode(ctx, node))
+
+	report, err := buildVectorIndexRepairReport(ctx, graph, vecs, "prod", 10, true)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(!report.DryRun)
+	is.Equal(report.CandidateIDs, []string{node.ID.String()})
+	is.Equal(report.ReindexedIDs, []string{node.ID.String()})
+
+	check := buildStoreConsistencyCheck(ctx, graph, vecs, memstore.NewKVStore(), "prod", 10)
+	is.True(check.OK)
+}
+
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
 	t.Helper()
 	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])

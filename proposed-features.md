@@ -301,6 +301,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Store repair/index rebuild | First slice implemented | `contextdb doctor --store-consistency --store-namespace NAME` samples valid graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
 
+## Completed In v0.50.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Store repair execution | Implemented | `contextdb repair vector-index --namespace NAME --report` lists vector rebuild candidates and `--execute` reindexes reviewed graph-node vectors |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -355,7 +361,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review handoff retry queue | Helps operators identify failed handoff deliveries that still need action | Completed in v0.44.0 with read-only retry candidates |
 | Review handoff retry execution | Lets operators resend a reviewed failed handoff without introducing automatic background retries | Completed in v0.45.0 with explicit digest/target retry execution and receipt recording |
 | Review handoff retry backoff policy | Helps operators pace repeated retries without adding background scheduling | Completed in v0.46.0 with read-only recommendations from receipt history |
-| Store repair/index rebuild | Helps recover from vector index or KV drift | First doctor consistency slice completed in v0.49.0; explicit repair execution remains |
+| Store repair/index rebuild | Helps recover from vector index or KV drift | Doctor consistency slice completed in v0.49.0; dry-run-first vector repair execution completed in v0.50.0; KV drift repair remains |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
 ## Test Investments
@@ -734,13 +740,22 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Review handoff retry backoff policy | Explicit retry exists, but repeated failures still need operator-safe pacing guidance | Completed in v0.46.0 with dry-run backoff recommendations from receipt history |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Completed in v0.47.0 with a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Completed in v0.48.0 with JSON score-drift reports for the representative corpus |
-| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Completed in v0.49.0 with a doctor check that samples graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Vector candidate detection completed in v0.49.0; dry-run-first vector repair execution completed in v0.50.0 |
 
 ## Fresh Brainstorm After v0.49.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Store repair execution | Doctor can now identify vector rebuild candidates, but operators still need an explicit repair action | Add dry-run-first vector reindexing for reviewed candidates |
+| Store repair execution | Doctor can now identify vector rebuild candidates, but operators still need an explicit repair action | Completed in v0.50.0 with dry-run-first vector reindexing for reviewed candidates |
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need to see repeated failures by endpoint | Group retry recommendation counts by target URL and status family |
 | Backup publish freshness monitor | Drift comparison exists on demand, but operators still need freshness thresholds | Add a non-mutating check that compares published generated_at with a max age |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+
+## Fresh Brainstorm After v0.50.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need endpoint-level fatigue signals | Group retry recommendation counts by target URL, status family, readiness, and last error |
+| Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Add a read-only freshness check for published `generated_at` with `--max-age` |
+| KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |

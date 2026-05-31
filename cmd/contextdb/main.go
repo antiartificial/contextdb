@@ -70,6 +70,10 @@ func main() {
 		runEval(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "repair" {
+		runRepair(os.Args[2:])
+		return
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: parseLogLevel(getenv("CONTEXTDB_LOG_LEVEL", "info")),
@@ -163,6 +167,44 @@ func runEvalRanking(args []string) {
 	}
 	if *reportOut || strings.TrimSpace(*outPath) == "" {
 		writeIndentedJSON(report)
+	}
+}
+
+func runRepair(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb repair: expected vector-index")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "vector-index":
+		runRepairVectorIndex(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb repair: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runRepairVectorIndex(args []string) {
+	fs := flag.NewFlagSet("contextdb repair vector-index", flag.ExitOnError)
+	namespace := fs.String("namespace", "default", "namespace to scan for vector index repair candidates")
+	sampleLimit := fs.Int("sample", 100, "maximum valid graph nodes to scan")
+	execute := fs.Bool("execute", false, "write rebuilt vector index entries for candidates")
+	reportOut := fs.Bool("report", false, "print the JSON repair report")
+	_ = fs.Parse(args)
+
+	db := openSnapshotDB()
+	defer db.Close()
+	graph, vecs, _, _ := db.Stores()
+	report, err := buildVectorIndexRepairReport(context.Background(), graph, vecs, *namespace, *sampleLimit, *execute)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb repair vector-index: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
 
@@ -990,6 +1032,21 @@ type rankingEvalSnapshotResult struct {
 	UtilityScore    float64             `json:"utility_score"`
 	ScoreBreakdown  core.ScoreBreakdown `json:"score_breakdown"`
 	RetrievalSource string              `json:"retrieval_source,omitempty"`
+}
+
+type vectorIndexRepairReport struct {
+	SchemaVersion    int      `json:"schema_version"`
+	ContextDBVersion string   `json:"contextdb_version"`
+	GeneratedAt      string   `json:"generated_at"`
+	Namespace        string   `json:"namespace"`
+	SampleLimit      int      `json:"sample_limit"`
+	SampledNodes     int      `json:"sampled_nodes"`
+	VectorNodes      int      `json:"vector_nodes"`
+	CandidateIDs     []string `json:"candidate_ids"`
+	ReindexedIDs     []string `json:"reindexed_ids,omitempty"`
+	DryRun           bool     `json:"dry_run"`
+	OK               bool     `json:"ok"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
 }
 
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
@@ -1884,6 +1941,81 @@ func buildStoreConsistencyCheck(ctx context.Context, graph store.GraphStore, vec
 		return doctor.CheckResult{Name: "store_consistency", OK: false, Detail: detail + ": " + strings.Join(issues, "; ")}
 	}
 	return doctor.CheckResult{Name: "store_consistency", OK: true, Detail: detail}
+}
+
+func buildVectorIndexRepairReport(ctx context.Context, graph store.GraphStore, vecs store.VectorIndex, namespace string, sampleLimit int, execute bool) (vectorIndexRepairReport, error) {
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		namespace = "default"
+	}
+	if sampleLimit <= 0 {
+		sampleLimit = 100
+	}
+	report := vectorIndexRepairReport{
+		SchemaVersion:    1,
+		ContextDBVersion: buildinfo.Version,
+		GeneratedAt:      time.Now().UTC().Format(time.RFC3339),
+		Namespace:        namespace,
+		SampleLimit:      sampleLimit,
+		DryRun:           !execute,
+		OK:               true,
+	}
+
+	nodes, err := graph.ValidAt(ctx, namespace, time.Now(), nil)
+	if err != nil {
+		report.OK = false
+		report.ValidationErrors = append(report.ValidationErrors, "graph scan: "+err.Error())
+		return report, err
+	}
+	if len(nodes) > sampleLimit {
+		nodes = nodes[:sampleLimit]
+	}
+	report.SampledNodes = len(nodes)
+
+	for _, node := range nodes {
+		if len(node.Vector) == 0 {
+			continue
+		}
+		report.VectorNodes++
+		results, err := vecs.Search(ctx, store.VectorQuery{
+			Namespace: namespace,
+			Vector:    node.Vector,
+			TopK:      10,
+			AsOf:      time.Now(),
+		})
+		if err != nil {
+			report.OK = false
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("vector search failed for %s: %v", node.ID, err))
+			continue
+		}
+		if scoredResultsContainNode(results, node.ID) {
+			continue
+		}
+		report.CandidateIDs = append(report.CandidateIDs, node.ID.String())
+		if !execute {
+			continue
+		}
+		if reg, ok := vecs.(interface{ RegisterNode(core.Node) }); ok {
+			reg.RegisterNode(node)
+		}
+		nID := node.ID
+		text, _ := node.Properties["text"].(string)
+		if err := vecs.Index(ctx, core.VectorEntry{
+			ID:        uuid.New(),
+			Namespace: namespace,
+			NodeID:    &nID,
+			Vector:    node.Vector,
+			Text:      text,
+			ModelID:   node.ModelID,
+			CreatedAt: time.Now(),
+		}); err != nil {
+			report.OK = false
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("reindex failed for %s: %v", node.ID, err))
+			continue
+		}
+		report.ReindexedIDs = append(report.ReindexedIDs, node.ID.String())
+	}
+	return report, nil
 }
 
 func scoredResultsContainNode(results []core.ScoredNode, id uuid.UUID) bool {
