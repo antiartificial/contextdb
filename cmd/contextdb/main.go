@@ -3809,6 +3809,24 @@ func buildPublishedBackupDriftCheck(ctx context.Context, client *http.Client, pa
 	return doctor.CheckResult{Name: "published_backup_drift", OK: true, Detail: strings.TrimSpace(detail)}
 }
 
+func buildPublishedBackupReceiptVerifyCheck(receiptPath, indexPath string) doctor.CheckResult {
+	report, err := verifySnapshotLifecycleIndexPublishReceipt(receiptPath, indexPath)
+	detail := fmt.Sprintf("receipt=%s index=%s receipt_status=%s payload_sha256=%s",
+		report.ReceiptFile,
+		report.IndexFile,
+		report.ReceiptStatus,
+		report.ReceiptPayloadSHA256)
+	if err != nil {
+		if len(report.ValidationErrors) > 0 {
+			detail += ": " + strings.Join(report.ValidationErrors, "; ")
+		} else {
+			detail += ": " + err.Error()
+		}
+		return doctor.CheckResult{Name: "published_backup_receipt_verify", OK: false, Detail: strings.TrimSpace(detail)}
+	}
+	return doctor.CheckResult{Name: "published_backup_receipt_verify", OK: true, Detail: strings.TrimSpace(detail)}
+}
+
 func buildVectorIndexRepairReport(ctx context.Context, graph store.GraphStore, vecs store.VectorIndex, namespace string, sampleLimit int, execute bool) (vectorIndexRepairReport, error) {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
@@ -4802,6 +4820,7 @@ func runDoctor(args []string) {
 	maxBackupAge := fs.Duration("max-backup-age", 24*time.Hour, "maximum acceptable age for --backup-marker")
 	publishedBackupURL := fs.String("published-backup-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL"), "published backup index metadata URL to check for freshness")
 	publishedBackupIndex := fs.String("published-backup-index", "", "local lifecycle index path to compare against published backup metadata")
+	publishedBackupReceipt := fs.String("published-backup-receipt", "", "published backup repair receipt path to verify against --published-backup-index")
 	publishedBackupMethod := fs.String("published-backup-method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_METHOD", http.MethodGet), "HTTP method for fetching published backup metadata")
 	publishedBackupToken := fs.String("published-backup-token", os.Getenv("NORN_TOKEN"), "optional bearer token for the published backup metadata endpoint")
 	maxPublishedBackupAge := fs.Duration("max-published-backup-age", 24*time.Hour, "maximum acceptable age for --published-backup-url")
@@ -4847,6 +4866,10 @@ func runDoctor(args []string) {
 			Method:       *publishedBackupMethod,
 			Token:        *publishedBackupToken,
 		}))
+		recomputeDoctorReportOK(&report)
+	}
+	if strings.TrimSpace(*publishedBackupReceipt) != "" {
+		report.Checks = append(report.Checks, buildPublishedBackupReceiptVerifyCheck(*publishedBackupReceipt, *publishedBackupIndex))
 		recomputeDoctorReportOK(&report)
 	}
 	if *storeConsistency || len(kvKeys) > 0 || len(kvDerivedKeys) > 0 {

@@ -68,6 +68,15 @@ contextdb snapshot lifecycle index publish receipt verify \
 
 The verifier compares the stored receipt payload hash, receipt payload, schema/kind, and index filename with the publish payload derived from the current local lifecycle index.
 
+You can fold the same verification into the combined health report:
+
+```bash
+contextdb doctor \
+  --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --published-backup-receipt "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json" \
+  --report
+```
+
 ## Confirm The Repair
 
 After execution, rerun drift and freshness checks:

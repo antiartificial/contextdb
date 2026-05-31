@@ -96,6 +96,16 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 
 The `kv_derived_freshness` check reads the cached JSON metadata, validates the `kind` and `generated_at` fields, and reports stale, missing, or malformed derived values without rewriting the cache. When the check fails, the detail includes a dry-run `recommended_repair_command` shaped like `contextdb repair kv-cache --key ... --derive recent-nodes --derive-namespace ... --report`.
 
+To include published backup repair receipt evidence in the same health report, pair the receipt with the local lifecycle index:
+
+```bash
+contextdb doctor \
+  --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --published-backup-receipt "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json"
+```
+
+The `published_backup_receipt_verify` check compares the receipt payload hash and catalog metadata with the local lifecycle index without contacting the published endpoint.
+
 Use `contextdb repair kv-cache` after reviewing missing hot keys and choosing the exact cache value to restore. The command is dry-run by default and only writes with `--execute`:
 
 ```bash
