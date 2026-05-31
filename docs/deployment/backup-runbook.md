@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.35.0",
+  "contextdb_version": "0.36.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -346,6 +346,17 @@ contextdb snapshot lifecycle index diff \
 ```
 
 Index diff reports added and removed bundles, retention decision changes, and artifact size or SHA-256 deltas. Any delta exits non-zero so automation can stop before cleanup or promotion.
+
+Publish backup catalog metadata to an ops endpoint when you want Norn-adjacent visibility without uploading backup contents:
+
+```bash
+contextdb snapshot lifecycle index publish \
+  --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --publish-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL" \
+  --report
+```
+
+The default is a dry run. The JSON report includes bundle timestamps, retention decisions, artifact counts, and indexed byte/hash coverage, but not NDJSON backup contents. Use `--execute --token "$NORN_TOKEN"` only when the receiving endpoint is ready for writes.
 
 A local cleanup pass can then remove old namespace backups after a successful export, lifecycle verification, off-host copy, and retention review:
 

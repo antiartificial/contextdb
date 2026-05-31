@@ -812,6 +812,94 @@ func TestDiffSnapshotLifecycleIndexesDetectsArtifactHashChange(t *testing.T) {
 	is.Equal(report.ChangedBundles[0].ArtifactChanges[0].Change, "changed")
 }
 
+func TestBuildSnapshotLifecycleIndexPublishReportDryRun(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	_, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	report, err := buildSnapshotLifecycleIndexPublishReport(context.Background(), nil, out, snapshotLifecycleIndexPublishOptions{
+		DryRun: true,
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.DryRun)
+	is.True(!report.Published)
+	is.Equal(report.Payload.Kind, "contextdb.lifecycle.index")
+	is.Equal(report.Payload.TotalBundles, 1)
+	is.Equal(report.Payload.Bundles[0].Summary, "prod-20260530T233000.lifecycle.json")
+	is.True(report.Payload.Bundles[0].ArtifactCount > 0)
+}
+
+func TestBuildSnapshotLifecycleIndexPublishReportExecutesHTTPPublish(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	_, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Method, http.MethodPost)
+		is.Equal(r.Header.Get("Authorization"), "Bearer index-token")
+		var payload snapshotLifecycleIndexPublishPayload
+		is.NoErr(json.NewDecoder(r.Body).Decode(&payload))
+		is.Equal(payload.Kind, "contextdb.lifecycle.index")
+		is.Equal(payload.TotalBundles, 1)
+		is.Equal(payload.Bundles[0].Namespace, "prod")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"published":true}`))
+	}))
+	defer srv.Close()
+
+	report, err := buildSnapshotLifecycleIndexPublishReport(context.Background(), srv.Client(), out, snapshotLifecycleIndexPublishOptions{
+		PublishURL: srv.URL,
+		Method:     http.MethodPost,
+		Token:      "index-token",
+		DryRun:     false,
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.Published)
+	is.Equal(report.Status, "201 Created")
+	is.Equal(report.Response, `{"published":true}`)
+}
+
+func TestBuildSnapshotLifecycleIndexPublishReportRequiresPublishURLWhenExecuting(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	_, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	report, err := buildSnapshotLifecycleIndexPublishReport(context.Background(), nil, out, snapshotLifecycleIndexPublishOptions{
+		DryRun: false,
+	})
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(report.ValidationErrors[0], "--publish-url"))
+}
+
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
 	t.Helper()
 	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])

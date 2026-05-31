@@ -370,6 +370,10 @@ func runSnapshotLifecycleIndex(args []string) {
 		runSnapshotLifecycleIndexDiff(args[1:])
 		return
 	}
+	if len(args) > 0 && args[0] == "publish" {
+		runSnapshotLifecycleIndexPublish(args[1:])
+		return
+	}
 	if len(args) > 0 && args[0] == "verify" {
 		runSnapshotLifecycleIndexVerify(args[1:])
 		return
@@ -396,6 +400,43 @@ func runSnapshotLifecycleIndex(args []string) {
 		writeIndentedJSON(index)
 	} else {
 		fmt.Fprintln(os.Stdout, index.IndexFile)
+	}
+}
+
+func runSnapshotLifecycleIndexPublish(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish", flag.ExitOnError)
+	inPath := fs.String("in", "", "JSON lifecycle index to publish")
+	publishURL := fs.String("publish-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL"), "backup index metadata publish endpoint")
+	method := fs.String("method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_METHOD", http.MethodPost), "HTTP method for publishing")
+	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the publish endpoint")
+	dryRunFlag := fs.Bool("dry-run", true, "validate and print the publish plan without sending it")
+	execute := fs.Bool("execute", false, "send the backup index metadata to --publish-url")
+	reportOut := fs.Bool("report", false, "print a JSON backup index publish report")
+	timeout := fs.Duration("timeout", 5*time.Second, "publish request timeout")
+	_ = fs.Parse(args)
+
+	dryRun := *dryRunFlag && !*execute
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	report, err := buildSnapshotLifecycleIndexPublishReport(ctx, http.DefaultClient, *inPath, snapshotLifecycleIndexPublishOptions{
+		PublishURL: *publishURL,
+		Method:     *method,
+		Token:      *token,
+		DryRun:     dryRun,
+	})
+	if err != nil {
+		if *reportOut && (report.IndexFile != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if report.DryRun {
+		fmt.Fprintln(os.Stdout, "dry-run ok")
+	} else {
+		fmt.Fprintln(os.Stdout, "published")
 	}
 }
 
@@ -688,6 +729,13 @@ type snapshotLifecycleIndexOptions struct {
 	CreatedAt time.Time
 }
 
+type snapshotLifecycleIndexPublishOptions struct {
+	PublishURL string
+	Method     string
+	Token      string
+	DryRun     bool
+}
+
 type snapshotLifecycleIndex struct {
 	SchemaVersion    int                                `json:"schema_version"`
 	IndexFile        string                             `json:"index_file"`
@@ -754,6 +802,45 @@ type snapshotLifecycleIndexArtifactDiff struct {
 	NewBytes  int64  `json:"new_bytes,omitempty"`
 	OldSHA256 string `json:"old_sha256,omitempty"`
 	NewSHA256 string `json:"new_sha256,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishReport struct {
+	OK               bool                                 `json:"ok"`
+	DryRun           bool                                 `json:"dry_run"`
+	Published        bool                                 `json:"published"`
+	IndexFile        string                               `json:"index_file"`
+	PublishURL       string                               `json:"publish_url,omitempty"`
+	Method           string                               `json:"method,omitempty"`
+	Status           string                               `json:"status,omitempty"`
+	Response         string                               `json:"response,omitempty"`
+	Payload          snapshotLifecycleIndexPublishPayload `json:"payload"`
+	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishPayload struct {
+	Kind             string                                       `json:"kind"`
+	SchemaVersion    int                                          `json:"schema_version"`
+	IndexFile        string                                       `json:"index_file"`
+	GeneratedAt      string                                       `json:"generated_at"`
+	ContextDBVersion string                                       `json:"contextdb_version"`
+	Dir              string                                       `json:"dir"`
+	Namespace        string                                       `json:"namespace,omitempty"`
+	Keep             int                                          `json:"keep"`
+	TotalBundles     int                                          `json:"total_bundles"`
+	KeepBundles      int                                          `json:"keep_bundles"`
+	PruneableBundles int                                          `json:"pruneable_bundles"`
+	Bundles          []snapshotLifecycleIndexPublishBundleSummary `json:"bundles"`
+}
+
+type snapshotLifecycleIndexPublishBundleSummary struct {
+	Namespace      string `json:"namespace"`
+	CreatedAt      string `json:"created_at"`
+	Summary        string `json:"summary"`
+	Promoted       bool   `json:"promoted"`
+	Decision       string `json:"decision"`
+	ArtifactCount  int    `json:"artifact_count"`
+	ExistingBytes  int64  `json:"existing_bytes,omitempty"`
+	IndexedSHA256s int    `json:"indexed_sha256s,omitempty"`
 }
 
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
@@ -1245,6 +1332,87 @@ func diffSnapshotLifecycleIndexes(oldPath, newPath string) (snapshotLifecycleInd
 		return report, fmt.Errorf("lifecycle index diff found changes: %s", strings.Join(parts, "; "))
 	}
 	return report, nil
+}
+
+func buildSnapshotLifecycleIndexPublishReport(ctx context.Context, client *http.Client, path string, opts snapshotLifecycleIndexPublishOptions) (snapshotLifecycleIndexPublishReport, error) {
+	path = strings.TrimSpace(path)
+	report := snapshotLifecycleIndexPublishReport{
+		DryRun:     opts.DryRun,
+		IndexFile:  path,
+		PublishURL: strings.TrimSpace(opts.PublishURL),
+		Method:     strings.ToUpper(strings.TrimSpace(opts.Method)),
+	}
+	if report.Method == "" {
+		report.Method = http.MethodPost
+	}
+	if path == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--in is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	index, err := readSnapshotLifecycleIndex(path)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if index.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported index schema_version %d", index.SchemaVersion))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.Payload = buildSnapshotLifecycleIndexPublishPayload(index)
+	if opts.DryRun {
+		report.OK = true
+		return report, nil
+	}
+	if report.PublishURL == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--publish-url or CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL is required when --execute is set")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	status, response, err := publishJSON(ctx, client, report.PublishURL, report.Method, strings.TrimSpace(opts.Token), report.Payload)
+	report.Status = status
+	report.Response = response
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	report.OK = true
+	report.Published = true
+	return report, nil
+}
+
+func buildSnapshotLifecycleIndexPublishPayload(index snapshotLifecycleIndex) snapshotLifecycleIndexPublishPayload {
+	payload := snapshotLifecycleIndexPublishPayload{
+		Kind:             "contextdb.lifecycle.index",
+		SchemaVersion:    index.SchemaVersion,
+		IndexFile:        filepath.Base(strings.TrimSpace(index.IndexFile)),
+		GeneratedAt:      index.GeneratedAt,
+		ContextDBVersion: index.ContextDBVersion,
+		Dir:              filepath.Base(strings.TrimSpace(index.Dir)),
+		Namespace:        index.Namespace,
+		Keep:             index.Keep,
+		TotalBundles:     index.TotalBundles,
+		KeepBundles:      index.KeepBundles,
+		PruneableBundles: index.PruneableBundles,
+	}
+	for _, bundle := range index.Bundles {
+		summary := snapshotLifecycleIndexPublishBundleSummary{
+			Namespace:     bundle.Namespace,
+			CreatedAt:     bundle.CreatedAt,
+			Summary:       filepath.Base(strings.TrimSpace(bundle.Summary)),
+			Promoted:      bundle.Promoted,
+			Decision:      bundle.Decision,
+			ArtifactCount: len(bundle.Artifacts),
+		}
+		for _, artifact := range bundle.Artifacts {
+			if artifact.Exists {
+				summary.ExistingBytes += artifact.Bytes
+			}
+			if strings.TrimSpace(artifact.ChecksumSHA256) != "" {
+				summary.IndexedSHA256s++
+			}
+		}
+		payload.Bundles = append(payload.Bundles, summary)
+	}
+	return payload
 }
 
 func readSnapshotLifecycleIndex(path string) (snapshotLifecycleIndex, error) {
@@ -1935,10 +2103,14 @@ func buildNornPublishReport(ctx context.Context, client *http.Client, entry norn
 }
 
 func publishNornManifestEntry(ctx context.Context, client *http.Client, publishURL, method, token string, entry nornManifestEntry) (string, string, error) {
+	return publishJSON(ctx, client, publishURL, method, token, entry)
+}
+
+func publishJSON(ctx context.Context, client *http.Client, publishURL, method, token string, payload any) (string, string, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	body, err := json.Marshal(entry)
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", "", fmt.Errorf("encode publish payload: %w", err)
 	}

@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.36.0 | Passed | Passed | Corpus coverage present | Lifecycle index publish coverage added | CLI lifecycle index publish tests added | Adds dry-run-first backup catalog metadata publishing without backup contents |
 | v0.35.0 | Passed | Passed | Corpus coverage present | Norn publish coverage added | CLI Norn publish tests added | Adds dry-run-first Norn manifest publishing with explicit HTTP execution |
 | v0.34.0 | Passed | Passed | Corpus coverage present | Lifecycle index diff coverage added | CLI lifecycle index diff tests added | Adds bundle, retention decision, and artifact delta reporting between lifecycle manifest indexes |
 | v0.33.0 | Passed | Passed | Corpus coverage present | Lifecycle index verification coverage added | CLI lifecycle index verify tests added | Adds artifact size and hash verification for lifecycle manifest indexes |

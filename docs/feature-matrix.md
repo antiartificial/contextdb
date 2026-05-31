@@ -51,6 +51,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Lifecycle manifest index | Implemented | v0.32 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index --dir --out --report` writes a compact JSON catalog with bundle retention decisions, artifact sizes, and hashes |
 | Lifecycle index verify | Implemented | v0.33 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index verify --in --report` re-checks indexed artifact existence, byte sizes, and SHA-256 hashes |
 | Lifecycle index diff | Implemented | v0.34 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index diff --old --new --report` compares backup catalogs for bundle membership, retention decision, and artifact hash changes |
+| Lifecycle index publish | Implemented | v0.36 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index publish --in --dry-run --report` validates backup catalog metadata for ops publication without uploading backup contents |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |

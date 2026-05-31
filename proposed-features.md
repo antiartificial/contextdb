@@ -217,6 +217,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Norn manifest publish | Implemented | `contextdb norn publish --dry-run --report` validates a publish plan by default, with `--execute --publish-url` for explicit authenticated registration writes |
 
+## Completed In v0.36.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Backup index publish to Norn | Implemented | `contextdb snapshot lifecycle index publish --in PATH --dry-run --report` validates backup catalog metadata for publication without uploading backup contents |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -259,6 +265,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup index verification | Proves a saved lifecycle catalog still matches files on disk | Completed in v0.33.0 with `contextdb snapshot lifecycle index verify --in --report` |
 | Backup index summary diff | Shows whether two saved lifecycle catalogs still agree across runs or hosts | Completed in v0.34.0 with `contextdb snapshot lifecycle index diff --old --new --report` |
 | Norn manifest publish | Lets operators validate and then publish the generated service entry | Completed in v0.35.0 with dry-run-first `contextdb norn publish` |
+| Backup index publish to Norn | Shares backup catalog state with ops tooling without moving backup contents | Completed in v0.36.0 with dry-run-first lifecycle index metadata publishing |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -545,7 +552,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Backup index publish to Norn | Norn publish can now write service entries; backup catalog metadata could use the same dry-run-first shape | Publish current lifecycle index metadata to a Norn-compatible ops endpoint without uploading backup contents |
+| Backup index publish to Norn | Norn publish can now write service entries; backup catalog metadata could use the same dry-run-first shape | Completed in v0.36.0 with `contextdb snapshot lifecycle index publish --in --report` |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.36.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
