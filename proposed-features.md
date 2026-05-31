@@ -283,6 +283,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review handoff retry backoff policy | Implemented | Go SDK, REST, and GraphQL expose read-only retry recommendations with recommended time, delay, readiness, and reason derived from receipt history |
 
+## Completed In v0.47.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Backup publish drift watch | Implemented | `contextdb snapshot lifecycle index publish drift --in PATH --published-url URL --report` compares local backup catalog metadata with the published ops payload |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -326,6 +332,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup index summary diff | Shows whether two saved lifecycle catalogs still agree across runs or hosts | Completed in v0.34.0 with `contextdb snapshot lifecycle index diff --old --new --report` |
 | Norn manifest publish | Lets operators validate and then publish the generated service entry | Completed in v0.35.0 with dry-run-first `contextdb norn publish` |
 | Backup index publish to Norn | Shares backup catalog state with ops tooling without moving backup contents | Completed in v0.36.0 with dry-run-first lifecycle index metadata publishing |
+| Backup publish drift watch | Detects whether published backup catalog metadata still matches the latest local lifecycle index | Completed in v0.47.0 with `contextdb snapshot lifecycle index publish drift` |
 | Review escalation rules | Highlights assigned, due snoozed, and high-priority source anomaly tasks that have aged past thresholds | Completed in v0.37.0 with review queue escalation metadata |
 | Review escalation digest | Summarizes escalated review work for dashboards and handoffs | Completed in v0.38.0 with grouped digest APIs |
 | Review escalation digest export | Preserves escalation handoff snapshots for later audit | Completed in v0.39.0 with durable digest events |
@@ -713,15 +720,15 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | Review handoff retry backoff policy | Explicit retry exists, but repeated failures still need operator-safe pacing guidance | Completed in v0.46.0 with dry-run backoff recommendations from receipt history |
-| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
+| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Completed in v0.47.0 with a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
 
-## Fresh Brainstorm After v0.46.0
+## Fresh Brainstorm After v0.47.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need to see repeated failures by endpoint | Group retry recommendation counts by target URL and status family |
+| Backup publish freshness monitor | Drift comparison exists on demand, but operators still need freshness thresholds | Add a non-mutating check that compares published generated_at with a max age |

@@ -210,9 +210,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.46.0",
+  "version": "0.47.0",
   "api_version": "v1",
-  "docs_version": "0.46.0",
+  "docs_version": "0.47.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -427,6 +427,12 @@ curl http://localhost:7701/v1/version
       "description": "Snapshot lifecycle index publish validates and optionally sends backup catalog metadata to a configured ops endpoint without uploading backup contents."
     },
     {
+      "name": "lifecycle-index-publish-drift",
+      "status": "stable",
+      "since": "v0.47.0",
+      "description": "Snapshot lifecycle index publish drift compares local backup catalog metadata with the published ops payload."
+    },
+    {
       "name": "review-escalation-rules",
       "status": "stable",
       "since": "v0.37.0",
@@ -492,7 +498,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.46.0"
+  "release_notes_path": "/contextdb/releases/v0.47.0"
 }
 ```
 

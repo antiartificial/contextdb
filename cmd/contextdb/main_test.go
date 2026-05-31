@@ -900,6 +900,72 @@ func TestBuildSnapshotLifecycleIndexPublishReportRequiresPublishURLWhenExecuting
 	is.True(strings.Contains(report.ValidationErrors[0], "--publish-url"))
 }
 
+func TestBuildSnapshotLifecycleIndexPublishDriftReportNoDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	payload := buildSnapshotLifecycleIndexPublishPayload(index)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Method, http.MethodGet)
+		is.Equal(r.Header.Get("Authorization"), "Bearer index-token")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer srv.Close()
+
+	report, err := buildSnapshotLifecycleIndexPublishDriftReport(context.Background(), srv.Client(), out, snapshotLifecycleIndexPublishDriftOptions{
+		PublishedURL: srv.URL,
+		Token:        "index-token",
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(!report.Drift)
+	is.Equal(report.Status, "200 OK")
+	is.Equal(len(report.Differences), 0)
+	is.Equal(report.LocalPayload.TotalBundles, 1)
+	is.Equal(report.PublishedPayload.TotalBundles, 1)
+}
+
+func TestBuildSnapshotLifecycleIndexPublishDriftReportFindsDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	payload := buildSnapshotLifecycleIndexPublishPayload(index)
+	payload.TotalBundles = 2
+	payload.Bundles[0].Decision = "prune"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(snapshotLifecycleIndexPublishReport{Payload: payload})
+	}))
+	defer srv.Close()
+
+	report, err := buildSnapshotLifecycleIndexPublishDriftReport(context.Background(), srv.Client(), out, snapshotLifecycleIndexPublishDriftOptions{
+		PublishedURL: srv.URL,
+	})
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(report.Drift)
+	is.True(len(report.Differences) >= 2)
+	is.True(strings.Contains(strings.Join(report.Differences, "\n"), "total_bundles differs"))
+	is.True(strings.Contains(strings.Join(report.Differences, "\n"), "decision differs"))
+}
+
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
 	t.Helper()
 	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])

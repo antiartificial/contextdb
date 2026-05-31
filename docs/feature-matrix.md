@@ -52,6 +52,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Lifecycle index verify | Implemented | v0.33 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index verify --in --report` re-checks indexed artifact existence, byte sizes, and SHA-256 hashes |
 | Lifecycle index diff | Implemented | v0.34 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index diff --old --new --report` compares backup catalogs for bundle membership, retention decision, and artifact hash changes |
 | Lifecycle index publish | Implemented | v0.36 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index publish --in --dry-run --report` validates backup catalog metadata for ops publication without uploading backup contents |
+| Lifecycle index publish drift | Implemented | v0.47 | `operations`, `backup`, `audit` | `contextdb snapshot lifecycle index publish drift --in --published-url --report` compares local and published backup catalog metadata |
 | Release health page | Implemented | v0.11.2 | `operations`, `release`, `durability` | Docs page records unit, docs-build, ranking, durability, API contract, and race/soak release gates |
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
@@ -73,5 +74,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Backup publish drift watch for operators comparing live published backup catalog metadata with local lifecycle indexes.
+2. Ranking eval snapshots for release-to-release score drift visibility.
 3. Deeper doctor store/index consistency checks.

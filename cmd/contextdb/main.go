@@ -404,6 +404,10 @@ func runSnapshotLifecycleIndex(args []string) {
 }
 
 func runSnapshotLifecycleIndexPublish(args []string) {
+	if len(args) > 0 && args[0] == "drift" {
+		runSnapshotLifecycleIndexPublishDrift(args[1:])
+		return
+	}
 	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish", flag.ExitOnError)
 	inPath := fs.String("in", "", "JSON lifecycle index to publish")
 	publishURL := fs.String("publish-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL"), "backup index metadata publish endpoint")
@@ -437,6 +441,39 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 		fmt.Fprintln(os.Stdout, "dry-run ok")
 	} else {
 		fmt.Fprintln(os.Stdout, "published")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishDrift(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish drift", flag.ExitOnError)
+	inPath := fs.String("in", "", "local JSON lifecycle index to compare")
+	publishedURL := fs.String("published-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL"), "published backup index metadata URL")
+	method := fs.String("method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_METHOD", http.MethodGet), "HTTP method for fetching published metadata")
+	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the published metadata endpoint")
+	reportOut := fs.Bool("report", false, "print a JSON backup index publish drift report")
+	timeout := fs.Duration("timeout", 5*time.Second, "published metadata request timeout")
+	_ = fs.Parse(args)
+
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	report, err := buildSnapshotLifecycleIndexPublishDriftReport(ctx, http.DefaultClient, *inPath, snapshotLifecycleIndexPublishDriftOptions{
+		PublishedURL: *publishedURL,
+		Method:       *method,
+		Token:        *token,
+	})
+	if err != nil {
+		if *reportOut && (report.IndexFile != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish drift: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if report.Drift {
+		fmt.Fprintln(os.Stdout, "drift detected")
+	} else {
+		fmt.Fprintln(os.Stdout, "no drift")
 	}
 }
 
@@ -736,6 +773,12 @@ type snapshotLifecycleIndexPublishOptions struct {
 	DryRun     bool
 }
 
+type snapshotLifecycleIndexPublishDriftOptions struct {
+	PublishedURL string
+	Method       string
+	Token        string
+}
+
 type snapshotLifecycleIndex struct {
 	SchemaVersion    int                                `json:"schema_version"`
 	IndexFile        string                             `json:"index_file"`
@@ -814,6 +857,19 @@ type snapshotLifecycleIndexPublishReport struct {
 	Status           string                               `json:"status,omitempty"`
 	Response         string                               `json:"response,omitempty"`
 	Payload          snapshotLifecycleIndexPublishPayload `json:"payload"`
+	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishDriftReport struct {
+	OK               bool                                 `json:"ok"`
+	Drift            bool                                 `json:"drift"`
+	IndexFile        string                               `json:"index_file"`
+	PublishedURL     string                               `json:"published_url,omitempty"`
+	Method           string                               `json:"method,omitempty"`
+	Status           string                               `json:"status,omitempty"`
+	LocalPayload     snapshotLifecycleIndexPublishPayload `json:"local_payload"`
+	PublishedPayload snapshotLifecycleIndexPublishPayload `json:"published_payload"`
+	Differences      []string                             `json:"differences,omitempty"`
 	ValidationErrors []string                             `json:"validation_errors,omitempty"`
 }
 
@@ -1413,6 +1469,162 @@ func buildSnapshotLifecycleIndexPublishPayload(index snapshotLifecycleIndex) sna
 		payload.Bundles = append(payload.Bundles, summary)
 	}
 	return payload
+}
+
+func buildSnapshotLifecycleIndexPublishDriftReport(ctx context.Context, client *http.Client, path string, opts snapshotLifecycleIndexPublishDriftOptions) (snapshotLifecycleIndexPublishDriftReport, error) {
+	path = strings.TrimSpace(path)
+	report := snapshotLifecycleIndexPublishDriftReport{
+		IndexFile:    path,
+		PublishedURL: strings.TrimSpace(opts.PublishedURL),
+		Method:       strings.ToUpper(strings.TrimSpace(opts.Method)),
+	}
+	if report.Method == "" {
+		report.Method = http.MethodGet
+	}
+	if path == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--in is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if report.PublishedURL == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--published-url or CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	index, err := readSnapshotLifecycleIndex(path)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if index.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported index schema_version %d", index.SchemaVersion))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.LocalPayload = buildSnapshotLifecycleIndexPublishPayload(index)
+	published, status, err := fetchSnapshotLifecycleIndexPublishedPayload(ctx, client, report.PublishedURL, report.Method, opts.Token)
+	report.Status = status
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	report.PublishedPayload = published
+	report.Differences = diffSnapshotLifecycleIndexPublishPayloads(report.LocalPayload, report.PublishedPayload)
+	report.Drift = len(report.Differences) > 0
+	report.OK = !report.Drift
+	if report.Drift {
+		return report, fmt.Errorf("published lifecycle index drift found: %s", strings.Join(report.Differences, "; "))
+	}
+	return report, nil
+}
+
+func fetchSnapshotLifecycleIndexPublishedPayload(ctx context.Context, client *http.Client, publishedURL, method, token string) (snapshotLifecycleIndexPublishPayload, string, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, method, publishedURL, nil)
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	if token = strings.TrimSpace(token); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, resp.Status, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return snapshotLifecycleIndexPublishPayload{}, resp.Status, fmt.Errorf("published metadata returned status %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	payload, err := decodeSnapshotLifecycleIndexPublishedPayload(body)
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, resp.Status, err
+	}
+	return payload, resp.Status, nil
+}
+
+func decodeSnapshotLifecycleIndexPublishedPayload(body []byte) (snapshotLifecycleIndexPublishPayload, error) {
+	var payload snapshotLifecycleIndexPublishPayload
+	if err := json.Unmarshal(body, &payload); err == nil && strings.TrimSpace(payload.Kind) != "" {
+		return payload, nil
+	}
+	var wrapped struct {
+		Payload snapshotLifecycleIndexPublishPayload `json:"payload"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, fmt.Errorf("decode published metadata: %w", err)
+	}
+	if strings.TrimSpace(wrapped.Payload.Kind) == "" {
+		return snapshotLifecycleIndexPublishPayload{}, errors.New("decode published metadata: missing payload kind")
+	}
+	return wrapped.Payload, nil
+}
+
+func diffSnapshotLifecycleIndexPublishPayloads(local, published snapshotLifecycleIndexPublishPayload) []string {
+	var diffs []string
+	compareString := func(name, a, b string) {
+		if a != b {
+			diffs = append(diffs, fmt.Sprintf("%s differs: local=%q published=%q", name, a, b))
+		}
+	}
+	compareInt := func(name string, a, b int) {
+		if a != b {
+			diffs = append(diffs, fmt.Sprintf("%s differs: local=%d published=%d", name, a, b))
+		}
+	}
+	compareString("kind", local.Kind, published.Kind)
+	compareInt("schema_version", local.SchemaVersion, published.SchemaVersion)
+	compareString("contextdb_version", local.ContextDBVersion, published.ContextDBVersion)
+	compareString("namespace", local.Namespace, published.Namespace)
+	compareInt("keep", local.Keep, published.Keep)
+	compareInt("total_bundles", local.TotalBundles, published.TotalBundles)
+	compareInt("keep_bundles", local.KeepBundles, published.KeepBundles)
+	compareInt("pruneable_bundles", local.PruneableBundles, published.PruneableBundles)
+
+	localBundles := map[string]snapshotLifecycleIndexPublishBundleSummary{}
+	for _, bundle := range local.Bundles {
+		localBundles[publishBundleKey(bundle)] = bundle
+	}
+	publishedBundles := map[string]snapshotLifecycleIndexPublishBundleSummary{}
+	for _, bundle := range published.Bundles {
+		publishedBundles[publishBundleKey(bundle)] = bundle
+	}
+	for key, localBundle := range localBundles {
+		publishedBundle, ok := publishedBundles[key]
+		if !ok {
+			diffs = append(diffs, "bundle missing from published payload: "+key)
+			continue
+		}
+		if localBundle.Promoted != publishedBundle.Promoted {
+			diffs = append(diffs, fmt.Sprintf("bundle %s promoted differs: local=%t published=%t", key, localBundle.Promoted, publishedBundle.Promoted))
+		}
+		if localBundle.Decision != publishedBundle.Decision {
+			diffs = append(diffs, fmt.Sprintf("bundle %s decision differs: local=%q published=%q", key, localBundle.Decision, publishedBundle.Decision))
+		}
+		if localBundle.ArtifactCount != publishedBundle.ArtifactCount {
+			diffs = append(diffs, fmt.Sprintf("bundle %s artifact_count differs: local=%d published=%d", key, localBundle.ArtifactCount, publishedBundle.ArtifactCount))
+		}
+		if localBundle.ExistingBytes != publishedBundle.ExistingBytes {
+			diffs = append(diffs, fmt.Sprintf("bundle %s existing_bytes differs: local=%d published=%d", key, localBundle.ExistingBytes, publishedBundle.ExistingBytes))
+		}
+		if localBundle.IndexedSHA256s != publishedBundle.IndexedSHA256s {
+			diffs = append(diffs, fmt.Sprintf("bundle %s indexed_sha256s differs: local=%d published=%d", key, localBundle.IndexedSHA256s, publishedBundle.IndexedSHA256s))
+		}
+	}
+	for key := range publishedBundles {
+		if _, ok := localBundles[key]; !ok {
+			diffs = append(diffs, "bundle missing from local payload: "+key)
+		}
+	}
+	sort.Strings(diffs)
+	return diffs
+}
+
+func publishBundleKey(bundle snapshotLifecycleIndexPublishBundleSummary) string {
+	return bundle.Namespace + "\x00" + bundle.CreatedAt + "\x00" + bundle.Summary
 }
 
 func readSnapshotLifecycleIndex(path string) (snapshotLifecycleIndex, error) {
