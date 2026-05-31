@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -675,6 +677,22 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	}
 }
 
+func TestRetryFatigueCookbookPresetReferenceMatchesSDK(t *testing.T) {
+	is := is.New(t)
+
+	rows := readRetryFatigueCookbookPresetRows(t)
+	presets := client.ReviewHandoffRetryFatiguePresets()
+
+	is.Equal(len(rows), len(presets))
+	for _, preset := range presets {
+		row, ok := rows[preset.Name]
+		is.True(ok)
+		is.Equal(row.ExpandedFilters, retryFatiguePresetExpandedFilters(preset))
+		is.Equal(row.ExampleRESTQuery, preset.ExampleRESTQuery)
+		is.Equal(row.ExampleGraphQL, preset.ExampleGraphQL)
+	}
+}
+
 func TestNamespace_ReviewQueueIncludesSourceTrustAnomalies(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
@@ -1182,4 +1200,90 @@ func TestNamespace_TemporalAsOfQuery(t *testing.T) {
 	}
 	is.True(found)
 	t.Logf("AsOf query found %d results (expected old fact to be present)", len(results))
+}
+
+type retryFatigueCookbookPresetRow struct {
+	ExpandedFilters  string
+	ExampleRESTQuery string
+	ExampleGraphQL   string
+}
+
+func readRetryFatigueCookbookPresetRows(t *testing.T) map[string]retryFatigueCookbookPresetRow {
+	t.Helper()
+	path := filepath.Join("..", "..", "docs", "deployment", "retry-fatigue-cookbook.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read retry fatigue cookbook: %v", err)
+	}
+	lines := strings.Split(string(data), "\n")
+	rows := map[string]retryFatigueCookbookPresetRow{}
+	inTable := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "| Preset | Expanded filters | Example REST query | Example GraphQL args |") {
+			inTable = true
+			continue
+		}
+		if !inTable {
+			continue
+		}
+		if strings.HasPrefix(line, "|:") {
+			continue
+		}
+		if strings.TrimSpace(line) == "" || !strings.HasPrefix(line, "|") {
+			break
+		}
+		cells := markdownTableCells(line)
+		if len(cells) != 5 {
+			t.Fatalf("unexpected retry fatigue preset row cell count %d in %q", len(cells), line)
+		}
+		name := markdownInlineCode(cells[0])
+		rows[name] = retryFatigueCookbookPresetRow{
+			ExpandedFilters:  strings.Join(markdownInlineCodes(cells[1]), ", "),
+			ExampleRESTQuery: markdownInlineCode(cells[2]),
+			ExampleGraphQL:   markdownInlineCode(cells[3]),
+		}
+	}
+	if len(rows) == 0 {
+		t.Fatalf("retry fatigue cookbook preset reference table was not found")
+	}
+	return rows
+}
+
+func markdownTableCells(line string) []string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "|")
+	line = strings.TrimSuffix(line, "|")
+	parts := strings.Split(line, "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+func markdownInlineCode(cell string) string {
+	codes := markdownInlineCodes(cell)
+	if len(codes) == 0 {
+		return strings.TrimSpace(cell)
+	}
+	return codes[0]
+}
+
+func markdownInlineCodes(cell string) []string {
+	var codes []string
+	parts := strings.Split(cell, "`")
+	for i := 1; i < len(parts); i += 2 {
+		codes = append(codes, parts[i])
+	}
+	return codes
+}
+
+func retryFatiguePresetExpandedFilters(preset client.ReviewHandoffRetryFatiguePreset) string {
+	var filters []string
+	if preset.Owner != "" {
+		filters = append(filters, "owner="+preset.Owner)
+	}
+	if preset.EscalationLevel != "" {
+		filters = append(filters, "escalation_level="+preset.EscalationLevel)
+	}
+	return strings.Join(filters, ", ")
 }

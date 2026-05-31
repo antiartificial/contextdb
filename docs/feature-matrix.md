@@ -102,10 +102,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff retry fatigue presets | Implemented | v0.69 | `review`, `operations`, `handoff` | REST, GraphQL, and Go SDK support stable preset names for repeated owner and escalation lanes |
 | Retry fatigue preset discovery docs | Implemented | v0.73 | `review`, `operations`, `handoff` | Deployment docs provide preset names, expanded filters, and intended handoff audiences for dashboards |
 | Retry fatigue preset examples | Implemented | v0.77 | `review`, `operations`, `handoff` | Preset metadata includes copyable REST query and GraphQL argument snippets |
+| Retry fatigue preset docs drift test | Implemented | v0.81 | `review`, `operations`, `test` | SDK tests verify cookbook preset rows match `ReviewHandoffRetryFatiguePresets()` metadata |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Ranking baseline manifest verification for CI artifact integrity checks.
-3. Retry fatigue preset docs drift test for cookbook and SDK metadata alignment.
+2. Published backup receipt verification doctor for combined health checks.
+3. KV derived refresh receipt for executed cache repair audit records.

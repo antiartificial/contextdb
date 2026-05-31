@@ -487,6 +487,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking baseline manifest verifier | Implemented | `contextdb eval ranking baseline manifest verify --manifest PATH` verifies artifact inventory paths, byte sizes, and SHA-256 hashes |
 
+## Completed In v0.81.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Retry fatigue preset example docs test | Implemented | `TestRetryFatigueCookbookPresetReferenceMatchesSDK` verifies cookbook preset rows match `ReviewHandoffRetryFatiguePresets()` metadata |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1023,11 +1029,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.80.0
+## Fresh Brainstorm After v0.81.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Retry fatigue preset example docs test | Preset examples now ship in metadata, but docs could drift from SDK values | Add a small test that cookbook preset rows match `ReviewHandoffRetryFatiguePresets()` |
 | Published backup receipt verification doctor | Receipt verification exists, but operators may want it inside combined health checks | Add a doctor option that verifies publish receipts beside drift and freshness checks |
 | KV derived refresh receipt | Derived KV execution now has a checklist, but audit records would help incident review | Add optional `--receipt-out` for executed derived KV refreshes with payload hash and doctor confirmation fields |
 | Ranking baseline manifest summary export | Verification now catches drift, but CI may want a small Markdown recap | Add `--markdown` or `--markdown-out` for manifest verification summaries |
+| Retry fatigue preset API schema fixture | Preset docs now have drift coverage, but API examples could use a small schema fixture | Add a test fixture for retry fatigue preset JSON fields across SDK and REST |
