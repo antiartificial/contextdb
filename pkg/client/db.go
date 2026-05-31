@@ -759,8 +759,17 @@ type ReviewHandoffRetryRequest struct {
 type ReviewHandoffRetryFatigueRequest struct {
 	After           time.Time
 	Now             time.Time
+	Preset          string
 	Owner           string
 	EscalationLevel string
+}
+
+// ReviewHandoffRetryFatiguePreset names a reusable retry fatigue filter lane.
+type ReviewHandoffRetryFatiguePreset struct {
+	Name            string `json:"name"`
+	Owner           string `json:"owner,omitempty"`
+	EscalationLevel string `json:"escalation_level,omitempty"`
+	Description     string `json:"description"`
 }
 
 // ReviewHandoffWebhookDelivery describes one dry-run webhook delivery that would be sent.
@@ -887,6 +896,28 @@ func ReviewHandoffRetryFatigueMarkdown(summaries []ReviewHandoffRetryFatigueSumm
 		)
 	}
 	return b.String()
+}
+
+// ReviewHandoffRetryFatiguePresets returns stable named retry fatigue filter lanes.
+func ReviewHandoffRetryFatiguePresets() []ReviewHandoffRetryFatiguePreset {
+	return []ReviewHandoffRetryFatiguePreset{
+		{
+			Name:            "review-overdue",
+			EscalationLevel: "review_overdue",
+			Description:     "Retry fatigue for review handoffs that escalated because assigned or snoozed work is overdue.",
+		},
+		{
+			Name:            "source-trust-anomaly",
+			EscalationLevel: "source_trust_anomaly",
+			Description:     "Retry fatigue for handoffs generated from source trust anomaly review tasks.",
+		},
+		{
+			Name:            "unassigned-review-overdue",
+			Owner:           "unassigned",
+			EscalationLevel: "review_overdue",
+			Description:     "Retry fatigue for overdue review handoffs without an assigned owner.",
+		},
+	}
 }
 
 // GapRequest configures knowledge-gap detection for a namespace.
@@ -2356,6 +2387,7 @@ func (h *NamespaceHandle) ReviewHandoffRetryFatigueFiltered(ctx context.Context,
 }
 
 func filterReviewHandoffRetryRecommendations(recommendations []ReviewHandoffRetryRecommendation, req ReviewHandoffRetryFatigueRequest) []ReviewHandoffRetryRecommendation {
+	req = applyReviewHandoffRetryFatiguePreset(req)
 	owner := strings.TrimSpace(req.Owner)
 	escalationLevel := strings.TrimSpace(req.EscalationLevel)
 	if owner == "" && escalationLevel == "" {
@@ -2363,7 +2395,8 @@ func filterReviewHandoffRetryRecommendations(recommendations []ReviewHandoffRetr
 	}
 	out := make([]ReviewHandoffRetryRecommendation, 0, len(recommendations))
 	for _, recommendation := range recommendations {
-		if owner != "" && recommendation.Owner != owner {
+		recommendationOwner := reviewHandoffFatigueGroupValue(recommendation.Owner, "unassigned")
+		if owner != "" && recommendationOwner != owner {
 			continue
 		}
 		if escalationLevel != "" && recommendation.EscalationLevel != escalationLevel {
@@ -2372,6 +2405,26 @@ func filterReviewHandoffRetryRecommendations(recommendations []ReviewHandoffRetr
 		out = append(out, recommendation)
 	}
 	return out
+}
+
+func applyReviewHandoffRetryFatiguePreset(req ReviewHandoffRetryFatigueRequest) ReviewHandoffRetryFatigueRequest {
+	presetName := strings.TrimSpace(req.Preset)
+	if presetName == "" {
+		return req
+	}
+	for _, preset := range ReviewHandoffRetryFatiguePresets() {
+		if preset.Name != presetName {
+			continue
+		}
+		if strings.TrimSpace(req.Owner) == "" {
+			req.Owner = preset.Owner
+		}
+		if strings.TrimSpace(req.EscalationLevel) == "" {
+			req.EscalationLevel = preset.EscalationLevel
+		}
+		return req
+	}
+	return req
 }
 
 func reviewHandoffFatigueGroupValue(value, fallback string) string {

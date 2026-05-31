@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.68.0",
+  "version": "0.69.0",
   "api_version": "v1",
-  "docs_version": "0.68.0",
+  "docs_version": "0.69.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -614,6 +614,12 @@ curl http://localhost:7701/v1/version
       "description": "Docs include owner and escalation lane recipes for retry fatigue handoffs."
     },
     {
+      "name": "review-handoff-retry-fatigue-presets",
+      "status": "stable",
+      "since": "v0.69.0",
+      "description": "Retry fatigue supports stable preset names for repeated owner and escalation lanes."
+    },
+    {
       "name": "doctor-published-backup-repair-hint",
       "status": "stable",
       "since": "v0.66.0",
@@ -625,7 +631,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.68.0"
+  "release_notes_path": "/contextdb/releases/v0.69.0"
 }
 ```
 
@@ -1001,9 +1007,9 @@ Summarize repeated retry pressure by endpoint without sending retries:
 curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue"
 ```
 
-The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, owner counts, escalation-level counts, status-family counts, and the latest failure detail for each endpoint.
+The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, owner counts, escalation-level counts, status-family counts, the latest failure detail for each endpoint, and stable `presets` metadata for repeated owner and escalation lanes.
 
-Add `owner` or `escalation_level` query parameters when the handoff should focus on a specific workload owner or escalation class.
+Add `owner`, `escalation_level`, or `preset` query parameters when the handoff should focus on a specific workload owner, escalation class, or named lane.
 
 Export the same fatigue view as Markdown for incident handoffs:
 

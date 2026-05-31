@@ -604,6 +604,23 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.NoErr(err)
 	is.Equal(len(filteredFatigue), 1)
 	filteredFatigue, err = ns.ReviewHandoffRetryFatigueFiltered(ctx, client.ReviewHandoffRetryFatigueRequest{
+		After:  start,
+		Now:    retryCandidates[0].LastAttemptAt.Add(3 * time.Minute),
+		Preset: "review-overdue",
+	})
+	is.NoErr(err)
+	is.Equal(len(filteredFatigue), 1)
+	filteredFatigue, err = ns.ReviewHandoffRetryFatigueFiltered(ctx, client.ReviewHandoffRetryFatigueRequest{
+		After:  start,
+		Now:    retryCandidates[0].LastAttemptAt.Add(3 * time.Minute),
+		Preset: "source-trust-anomaly",
+	})
+	is.NoErr(err)
+	is.Equal(len(filteredFatigue), 0)
+	presets := client.ReviewHandoffRetryFatiguePresets()
+	is.True(len(presets) >= 3)
+	is.Equal(presets[0].Name, "review-overdue")
+	filteredFatigue, err = ns.ReviewHandoffRetryFatigueFiltered(ctx, client.ReviewHandoffRetryFatigueRequest{
 		After: start,
 		Now:   retryCandidates[0].LastAttemptAt.Add(3 * time.Minute),
 		Owner: "bob",

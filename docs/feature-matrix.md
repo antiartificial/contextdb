@@ -90,10 +90,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff retry fatigue owner groups | Implemented | v0.58 | `review`, `operations`, `handoff` | Retry fatigue summaries include owner and escalation-level counts in JSON, GraphQL, and Markdown |
 | Review handoff retry fatigue filters | Implemented | v0.60 | `review`, `operations`, `handoff` | REST, GraphQL, and Go SDK can filter retry fatigue by owner and escalation level |
 | Review handoff retry fatigue cookbook | Implemented | v0.65 | `review`, `operations`, `handoff` | Deployment docs provide owner and escalation-lane recipes for retry fatigue handoffs |
+| Review handoff retry fatigue presets | Implemented | v0.69 | `review`, `operations`, `handoff` | REST, GraphQL, and Go SDK support stable preset names for repeated owner and escalation lanes |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Retry fatigue saved filter presets for repeated owner and escalation lanes.
-3. Published backup repair execution guard for safer catalog replacement.
+2. Published backup repair execution guard for safer catalog replacement.
+3. KV derivation freshness doctor for stale derived cache values.

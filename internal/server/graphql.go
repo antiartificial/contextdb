@@ -1585,6 +1585,7 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 					"namespace":       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
 					"mode":            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
 					"after":           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"preset":          &graphql.ArgumentConfig{Type: graphql.String},
 					"owner":           &graphql.ArgumentConfig{Type: graphql.String},
 					"escalationLevel": &graphql.ArgumentConfig{Type: graphql.String},
 				},
@@ -2025,11 +2026,13 @@ func (s *GraphQLServer) resolveReviewHandoffRetryFatigue(p graphql.ResolveParams
 	}
 	mode, _ := p.Args["mode"].(string)
 	after, _ := p.Args["after"].(time.Time)
+	preset, _ := p.Args["preset"].(string)
 	owner, _ := p.Args["owner"].(string)
 	escalationLevel, _ := p.Args["escalationLevel"].(string)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ReviewHandoffRetryFatigueFiltered(p.Context, client.ReviewHandoffRetryFatigueRequest{
 		After:           after,
+		Preset:          preset,
 		Owner:           owner,
 		EscalationLevel: escalationLevel,
 	})

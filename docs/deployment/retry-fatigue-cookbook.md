@@ -26,6 +26,16 @@ curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-f
 
 Common lanes include `review_overdue`, `source_trust_anomaly`, and any custom escalation value saved in the review handoff digest.
 
+## Use A Preset Lane
+
+Use `preset` when dashboards or handoff scripts should share a stable lane name:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue?preset=review-overdue"
+```
+
+Built-in presets are `review-overdue`, `source-trust-anomaly`, and `unassigned-review-overdue`. JSON responses include the same preset metadata so clients can render the available lanes without hard-coding descriptions.
+
 ## Focus An Owner And Lane
 
 Combine both filters when the incident is specific to one owner inside one escalation class:
@@ -54,8 +64,7 @@ Use the same filters in GraphQL dashboards:
 query {
   reviewHandoffRetryFatigue(
     namespace: "my-app"
-    owner: "alice"
-    escalationLevel: "review_overdue"
+    preset: "review-overdue"
   ) {
     targetUrl
     candidates

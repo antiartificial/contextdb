@@ -312,6 +312,7 @@ type reviewHandoffRetryRecommendationsResponse struct {
 
 type reviewHandoffRetryFatigueResponse struct {
 	Summaries []client.ReviewHandoffRetryFatigueSummary `json:"summaries"`
+	Presets   []client.ReviewHandoffRetryFatiguePreset  `json:"presets,omitempty"`
 }
 
 type reviewDecisionsResponse struct {
@@ -1046,6 +1047,7 @@ func (s *RESTServer) handleReviewHandoffWebhookRetryFatigue(w http.ResponseWrite
 	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
 	summaries, err := h.ReviewHandoffRetryFatigueFiltered(r.Context(), client.ReviewHandoffRetryFatigueRequest{
 		After:           after,
+		Preset:          strings.TrimSpace(r.URL.Query().Get("preset")),
 		Owner:           strings.TrimSpace(r.URL.Query().Get("owner")),
 		EscalationLevel: strings.TrimSpace(r.URL.Query().Get("escalation_level")),
 	})
@@ -1058,7 +1060,7 @@ func (s *RESTServer) handleReviewHandoffWebhookRetryFatigue(w http.ResponseWrite
 		_, _ = w.Write([]byte(client.ReviewHandoffRetryFatigueMarkdown(summaries)))
 		return
 	}
-	writeJSON(w, http.StatusOK, reviewHandoffRetryFatigueResponse{Summaries: summaries})
+	writeJSON(w, http.StatusOK, reviewHandoffRetryFatigueResponse{Summaries: summaries, Presets: client.ReviewHandoffRetryFatiguePresets()})
 }
 
 func (s *RESTServer) handleRecordReviewEscalationDigest(w http.ResponseWriter, r *http.Request) {

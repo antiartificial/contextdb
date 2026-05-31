@@ -483,6 +483,16 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	escalationLevels := summary["escalation_levels"].([]any)
 	is.Equal(len(escalationLevels), 1)
 	is.Equal(escalationLevels[0].(map[string]any)["escalation_level"], "review_overdue")
+	presets := retryFatigueResp["presets"].([]any)
+	is.True(len(presets) >= 3)
+	is.Equal(presets[0].(map[string]any)["name"], "review-overdue")
+	reqRetryFatiguePreset := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue?preset=review-overdue", nil)
+	wRetryFatiguePreset := httptest.NewRecorder()
+	handler.ServeHTTP(wRetryFatiguePreset, reqRetryFatiguePreset)
+	is.Equal(wRetryFatiguePreset.Code, http.StatusOK)
+	var retryFatiguePresetResp map[string]any
+	is.NoErr(json.Unmarshal(wRetryFatiguePreset.Body.Bytes(), &retryFatiguePresetResp))
+	is.Equal(len(retryFatiguePresetResp["summaries"].([]any)), 1)
 	reqRetryFatigueFiltered := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue?owner=bob", nil)
 	wRetryFatigueFiltered := httptest.NewRecorder()
 	handler.ServeHTTP(wRetryFatigueFiltered, reqRetryFatigueFiltered)
@@ -1055,6 +1065,25 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	}
 	retryFatigueFiltered := resp["data"].(map[string]any)["reviewHandoffRetryFatigue"].([]any)
 	is.Equal(len(retryFatigueFiltered), 0)
+	retryFatiguePresetBody, _ := json.Marshal(map[string]any{
+		"query": `query {
+			reviewHandoffRetryFatigue(namespace: "graphql-test", preset: "review-overdue") {
+				targetUrl
+			}
+		}`,
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(retryFatiguePresetBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql retry fatigue preset errors: %v", errs)
+	}
+	retryFatiguePreset := resp["data"].(map[string]any)["reviewHandoffRetryFatigue"].([]any)
+	is.Equal(len(retryFatiguePreset), 1)
 	failGraphQLWebhook = false
 
 	retryWebhookBody, _ := json.Marshal(map[string]any{

@@ -415,6 +415,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking baseline deletion plan | Implemented | `contextdb eval ranking --baseline-retention-dir DIR --emit-delete-script` prints reviewed `rm -- ...` commands for existing pruneable ranking baseline artifacts |
 
+## Completed In v0.69.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Retry fatigue saved filter presets | Implemented | REST `preset=`, GraphQL `preset:`, Go SDK `Preset`, and response preset metadata provide stable retry fatigue lane names |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -951,11 +957,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.68.0
+## Fresh Brainstorm After v0.69.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Retry fatigue saved filter presets | Cookbook examples help humans, but repeated lanes could use named presets | Add optional docs or metadata for stable owner/escalation lane preset names |
 | Published backup repair execution guard | Hints identify the command, but operators may need a checklist before replacing published metadata | Add cookbook safety checks for when to execute published catalog replacement after drift |
 | KV derivation freshness doctor | Derived cache values can age quietly after graph writes | Add an optional doctor check that reads derived KV metadata and warns when `generated_at` is older than a configured age |
 | Ranking baseline retention cookbook | Delete scripts exist, but teams may need policy examples for release cadence | Add docs for keep counts by release rhythm and CI artifact storage patterns |
+| Retry fatigue preset discovery docs | Presets are exposed in API responses, but dashboards may need a compact reference table | Add a docs table with preset names, expanded filters, and intended handoff audiences |
