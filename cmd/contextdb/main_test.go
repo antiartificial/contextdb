@@ -1044,6 +1044,25 @@ func TestBuildRankingEvalSnapshotReport(t *testing.T) {
 	is.True(report.Queries[0].TopResults[0].Score > 0)
 }
 
+func TestBuildRankingEvalMarkdown(t *testing.T) {
+	is := is.New(t)
+
+	report, err := buildRankingEvalSnapshotReport(context.Background(), rankingEvalSnapshotOptions{
+		TopK:        5,
+		GeneratedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.NoErr(err)
+	markdown := buildRankingEvalMarkdown(report)
+	is.True(strings.Contains(markdown, "# Ranking Eval Recap"))
+	is.True(strings.Contains(markdown, "Mean reciprocal rank"))
+	is.True(strings.Contains(markdown, "representative"))
+	is.True(strings.Contains(markdown, "## Query Results"))
+	is.True(strings.Contains(markdown, report.Queries[0].ID))
+	is.True(strings.Contains(markdown, "yes"))
+	is.True(strings.Contains(markdown, "sim "))
+}
+
 func TestBuildStoreConsistencyCheck(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

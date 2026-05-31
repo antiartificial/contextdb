@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.55.0 | Passed | Passed | Markdown recap coverage added | Corpus coverage present | CLI ranking eval Markdown test added | Adds compact Markdown release-review summaries for representative corpus ranking |
 | v0.54.0 | Passed | Passed | Corpus coverage present | KV sampling coverage added | CLI doctor KV consistency tests added | Adds opt-in KV hot-key sampling and refresh candidate reporting |
 | v0.53.0 | Passed | Passed | Corpus coverage present | Retry fatigue Markdown coverage added | Go SDK and REST Markdown export tests added | Adds Markdown incident handoff export for endpoint-level retry fatigue |
 | v0.52.0 | Passed | Passed | Corpus coverage present | Publish freshness coverage added | CLI publish freshness tests added | Adds read-only freshness checks for published backup catalog metadata |

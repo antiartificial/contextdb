@@ -147,7 +147,9 @@ func runEval(args []string) {
 func runEvalRanking(args []string) {
 	fs := flag.NewFlagSet("contextdb eval ranking", flag.ExitOnError)
 	outPath := fs.String("out", "", "JSON ranking eval snapshot to write")
+	markdownOutPath := fs.String("markdown-out", "", "Markdown ranking eval recap to write")
 	reportOut := fs.Bool("report", false, "print the JSON ranking eval snapshot")
+	markdownReportOut := fs.Bool("markdown", false, "print the Markdown ranking eval recap")
 	topK := fs.Int("top-k", 5, "number of ranked results to include per query")
 	_ = fs.Parse(args)
 
@@ -165,7 +167,16 @@ func runEvalRanking(args []string) {
 			os.Exit(1)
 		}
 	}
-	if *reportOut || strings.TrimSpace(*outPath) == "" {
+	if strings.TrimSpace(*markdownOutPath) != "" {
+		if err := writeTextFile(*markdownOutPath, buildRankingEvalMarkdown(report)); err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if *markdownReportOut {
+		fmt.Print(buildRankingEvalMarkdown(report))
+	}
+	if *reportOut || (strings.TrimSpace(*outPath) == "" && strings.TrimSpace(*markdownOutPath) == "" && !*markdownReportOut) {
 		writeIndentedJSON(report)
 	}
 }
@@ -1969,6 +1980,110 @@ func buildRankingEvalSnapshotReport(ctx context.Context, opts rankingEvalSnapsho
 	return report, nil
 }
 
+func buildRankingEvalMarkdown(report rankingEvalSnapshotReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Ranking Eval Recap\n\n")
+	fmt.Fprintf(&b, "- Generated: `%s`\n", markdownInline(report.GeneratedAt))
+	fmt.Fprintf(&b, "- ContextDB version: `%s`\n", markdownInline(report.ContextDBVersion))
+	fmt.Fprintf(&b, "- Corpus: `%s`\n", markdownInline(report.Corpus))
+	fmt.Fprintf(&b, "- Top K: `%d`\n", report.TopK)
+	fmt.Fprintf(&b, "- Total queries: `%d`\n", report.TotalQueries)
+	fmt.Fprintf(&b, "- Passed: `%d`\n", report.PassedQueries)
+	fmt.Fprintf(&b, "- Failed: `%d`\n", report.FailedQueries)
+	fmt.Fprintf(&b, "- Mean reciprocal rank: `%.3f`\n\n", report.MeanReciprocal)
+
+	if report.FailedQueries > 0 {
+		fmt.Fprintf(&b, "## Failed Queries\n\n")
+		fmt.Fprintf(&b, "| Query | Category | Correct rank | Cutoff | Top result |\n")
+		fmt.Fprintf(&b, "| --- | --- | ---: | ---: | --- |\n")
+		for _, query := range report.Queries {
+			if query.Passed {
+				continue
+			}
+			fmt.Fprintf(&b, "| %s | %s | %s | %d | %s |\n",
+				markdownCell(query.ID),
+				markdownCell(query.Category),
+				markdownCell(formatRankingEvalRank(query.CorrectRank)),
+				query.ExpectedRankCutoff,
+				markdownCell(formatRankingTopResult(query)))
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	fmt.Fprintf(&b, "## Query Results\n\n")
+	fmt.Fprintf(&b, "| Query | Category | Passed | Correct rank | Reciprocal rank | Top result | Score | Score breakdown |\n")
+	fmt.Fprintf(&b, "| --- | --- | --- | ---: | ---: | --- | ---: | --- |\n")
+	for _, query := range report.Queries {
+		top := rankingEvalTopResult(query)
+		fmt.Fprintf(&b, "| %s | %s | %s | %s | %.3f | %s | %.3f | %s |\n",
+			markdownCell(query.ID),
+			markdownCell(query.Category),
+			markdownCell(formatRankingEvalPass(query.Passed)),
+			markdownCell(formatRankingEvalRank(query.CorrectRank)),
+			query.ReciprocalRank,
+			markdownCell(formatRankingTopResult(query)),
+			top.Score,
+			markdownCell(formatRankingScoreBreakdown(top)))
+	}
+	return b.String()
+}
+
+func rankingEvalTopResult(query rankingEvalSnapshotQuery) rankingEvalSnapshotResult {
+	if len(query.TopResults) == 0 {
+		return rankingEvalSnapshotResult{}
+	}
+	return query.TopResults[0]
+}
+
+func formatRankingTopResult(query rankingEvalSnapshotQuery) string {
+	top := rankingEvalTopResult(query)
+	if top.NodeID == "" {
+		return "none"
+	}
+	expected := ""
+	if top.Expected {
+		expected = " expected"
+	}
+	return fmt.Sprintf("#%d %s%s", top.Rank, top.NodeID, expected)
+}
+
+func formatRankingScoreBreakdown(result rankingEvalSnapshotResult) string {
+	if result.NodeID == "" {
+		return "none"
+	}
+	breakdown := result.ScoreBreakdown
+	return fmt.Sprintf("sim %.3f, conf %.3f, rec %.3f, util %.3f",
+		breakdown.Similarity,
+		breakdown.Confidence,
+		breakdown.Recency,
+		breakdown.Utility)
+}
+
+func formatRankingEvalRank(rank int) string {
+	if rank == 0 {
+		return "missing"
+	}
+	return strconv.Itoa(rank)
+}
+
+func formatRankingEvalPass(passed bool) string {
+	if passed {
+		return "yes"
+	}
+	return "no"
+}
+
+func markdownInline(value string) string {
+	return strings.ReplaceAll(value, "`", "'")
+}
+
+func markdownCell(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "|", "\\|")
+	return strings.TrimSpace(value)
+}
+
 func rankingEvalExpectedRankCutoff(category string) int {
 	switch category {
 	case "poisoning", "temporal", "procedural":
@@ -3070,6 +3185,13 @@ func writeJSONFile(path string, v any) error {
 	}
 	data = append(data, '\n')
 	return os.WriteFile(path, data, 0o644)
+}
+
+func writeTextFile(path, value string) error {
+	if !strings.HasSuffix(value, "\n") {
+		value += "\n"
+	}
+	return os.WriteFile(path, []byte(value), 0o644)
 }
 
 func runDoctor(args []string) {

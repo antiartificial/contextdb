@@ -331,6 +331,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | KV consistency sampling | First slice implemented | `contextdb doctor --kv-key KEY` samples expected hot keys and reports missing cache refresh candidates without mutating KV |
 
+## Completed In v0.55.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking eval Markdown recap | Implemented | `contextdb eval ranking --markdown` and `--markdown-out PATH` emit a compact release-review summary with totals, MRR, failures, top results, and score breakdowns |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -776,7 +782,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Store repair execution | Doctor can now identify vector rebuild candidates, but operators still need an explicit repair action | Completed in v0.50.0 with dry-run-first vector reindexing for reviewed candidates |
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need to see repeated failures by endpoint | Group retry recommendation counts by target URL and status family |
 | Backup publish freshness monitor | Drift comparison exists on demand, but operators still need freshness thresholds | Completed in v0.52.0 with a read-only check that compares published generated_at with a max age |
-| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
 
 ## Fresh Brainstorm After v0.50.0
 
@@ -785,7 +791,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need endpoint-level fatigue signals | Completed in v0.51.0 with grouped retry recommendation counts by target URL, status family, readiness, and last error |
 | Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Completed in v0.52.0 with a read-only freshness check for published `generated_at` and `--max-age` |
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
-| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
 
 ## Fresh Brainstorm After v0.51.0
 
@@ -794,7 +800,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Backup publish freshness monitor | Published backup catalog drift can be checked on demand, but stale publications need age thresholds | Completed in v0.52.0 with a read-only freshness check for published `generated_at` and `--max-age` |
 | Retry fatigue markdown export | Endpoint fatigue summaries are useful, but handoffs often need human-readable incident notes | Emit Markdown from retry fatigue with top failing endpoint, readiness counts, and latest errors |
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
-| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
 
 ## Fresh Brainstorm After v0.52.0
 
@@ -802,7 +808,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | Retry fatigue markdown export | Endpoint fatigue summaries are useful, but handoffs often need human-readable incident notes | Completed in v0.53.0 with Markdown from retry fatigue, readiness counts, and latest errors |
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
-| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
 
 ## Fresh Brainstorm After v0.53.0
@@ -810,7 +816,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | First slice completed in v0.54.0 with doctor sampling for expected hot keys |
-| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
 
@@ -819,6 +825,15 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
-| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
+| Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+
+## Fresh Brainstorm After v0.55.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| Ranking eval historical diff | Markdown recaps summarize a single run, but reviewers still need release-to-release score movement | Compare two ranking snapshots and emit largest rank and score movements |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
