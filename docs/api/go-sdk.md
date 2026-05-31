@@ -304,6 +304,8 @@ items, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
     LowConfidenceThreshold:    0.35,
     SourceTrustDropThreshold:  0.2,
     SourceRefutationThreshold: 2,
+    EscalationAfter:           72 * time.Hour,
+    SourceAnomalyEscalationPriority: 0.9,
     Types:                     []string{"source_trust_anomaly"},
     SourceID:                  "docs-crawler",
     Status:                    "open",
@@ -314,7 +316,7 @@ for _, item := range items {
 }
 ```
 
-Source trust anomaly tasks are emitted as `ReviewItem{Type: "source_trust_anomaly"}` when configured source credibility thresholds are crossed. Review queue filters can narrow by item type, source, workflow status, and owner; items with no recorded decision match `Status: "open"`.
+Source trust anomaly tasks are emitted as `ReviewItem{Type: "source_trust_anomaly"}` when configured source credibility thresholds are crossed. Review queue filters can narrow by item type, source, workflow status, and owner; items with no recorded decision match `Status: "open"`. When `EscalationAfter` is set, returned items can include `Escalated`, `EscalationLevel`, `EscalationReason`, and `EscalationAgeHours` for overdue assigned or due snoozed tasks and high-priority source anomaly items.
 
 Review decisions persist workflow state without making queue generation stateful:
 

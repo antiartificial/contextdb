@@ -58,6 +58,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
 | Norn manifest publish | Implemented | v0.35 | `operations`, `deployment` | `contextdb norn publish --dry-run --report` validates a publish plan by default, with `--execute --publish-url` for explicit HTTP registration |
+| Review escalation rules | Implemented | v0.37 | `review`, `operations` | Review queues can add escalation metadata for aged assigned or snoozed tasks and high-priority source anomaly items |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates

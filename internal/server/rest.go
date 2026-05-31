@@ -747,6 +747,24 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 		}
 		sourceRefutationThreshold = parsed
 	}
+	escalationAfter := time.Duration(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("escalation_after_hours")); raw != "" {
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid escalation_after_hours: %w", err))
+			return
+		}
+		escalationAfter = time.Duration(parsed * float64(time.Hour))
+	}
+	sourceAnomalyEscalationPriority := 0.0
+	if raw := strings.TrimSpace(r.URL.Query().Get("source_anomaly_escalation_priority")); raw != "" {
+		parsed, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid source_anomaly_escalation_priority: %w", err))
+			return
+		}
+		sourceAnomalyEscalationPriority = parsed
+	}
 	limit := 0
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		parsed, err := strconv.Atoi(raw)
@@ -763,16 +781,18 @@ func (s *RESTServer) handleReviewQueue(w http.ResponseWriter, r *http.Request) {
 
 	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
 	items, err := h.ReviewQueue(r.Context(), client.ReviewQueueRequest{
-		After:                     after,
-		LowConfidenceThreshold:    threshold,
-		SourceTrustThreshold:      sourceTrustThreshold,
-		SourceTrustDropThreshold:  sourceTrustDropThreshold,
-		SourceRefutationThreshold: sourceRefutationThreshold,
-		Types:                     types,
-		SourceID:                  sourceID,
-		Status:                    status,
-		Owner:                     owner,
-		Limit:                     limit,
+		After:                           after,
+		LowConfidenceThreshold:          threshold,
+		SourceTrustThreshold:            sourceTrustThreshold,
+		SourceTrustDropThreshold:        sourceTrustDropThreshold,
+		SourceRefutationThreshold:       sourceRefutationThreshold,
+		EscalationAfter:                 escalationAfter,
+		SourceAnomalyEscalationPriority: sourceAnomalyEscalationPriority,
+		Types:                           types,
+		SourceID:                        sourceID,
+		Status:                          status,
+		Owner:                           owner,
+		Limit:                           limit,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

@@ -404,6 +404,22 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				item, _ := p.Source.(client.ReviewItem)
 				return item.ReviewedAt, nil
 			}},
+			"escalated": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.Escalated, nil
+			}},
+			"escalationLevel": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.EscalationLevel, nil
+			}},
+			"escalationReason": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.EscalationReason, nil
+			}},
+			"escalationAgeHours": &graphql.Field{Type: graphql.Float, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				item, _ := p.Source.(client.ReviewItem)
+				return item.EscalationAgeHours, nil
+			}},
 		},
 	})
 
@@ -1087,18 +1103,20 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 			"reviewQueue": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewItemType))),
 				Args: graphql.FieldConfigArgument{
-					"namespace":                 &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
-					"mode":                      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
-					"after":                     &graphql.ArgumentConfig{Type: graphql.DateTime},
-					"lowConfidenceThreshold":    &graphql.ArgumentConfig{Type: graphql.Float},
-					"sourceTrustThreshold":      &graphql.ArgumentConfig{Type: graphql.Float},
-					"sourceTrustDropThreshold":  &graphql.ArgumentConfig{Type: graphql.Float},
-					"sourceRefutationThreshold": &graphql.ArgumentConfig{Type: graphql.Int},
-					"types":                     &graphql.ArgumentConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
-					"sourceId":                  &graphql.ArgumentConfig{Type: graphql.String},
-					"status":                    &graphql.ArgumentConfig{Type: graphql.String},
-					"owner":                     &graphql.ArgumentConfig{Type: graphql.String},
-					"limit":                     &graphql.ArgumentConfig{Type: graphql.Int},
+					"namespace":                       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":                            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":                           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"lowConfidenceThreshold":          &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustThreshold":            &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustDropThreshold":        &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceRefutationThreshold":       &graphql.ArgumentConfig{Type: graphql.Int},
+					"escalationAfterHours":            &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceAnomalyEscalationPriority": &graphql.ArgumentConfig{Type: graphql.Float},
+					"types":                           &graphql.ArgumentConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+					"sourceId":                        &graphql.ArgumentConfig{Type: graphql.String},
+					"status":                          &graphql.ArgumentConfig{Type: graphql.String},
+					"owner":                           &graphql.ArgumentConfig{Type: graphql.String},
+					"limit":                           &graphql.ArgumentConfig{Type: graphql.Int},
 				},
 				Resolve: s.resolveReviewQueue,
 			},
@@ -1341,6 +1359,8 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 	sourceTrustThreshold, _ := p.Args["sourceTrustThreshold"].(float64)
 	sourceTrustDropThreshold, _ := p.Args["sourceTrustDropThreshold"].(float64)
 	sourceRefutationThreshold, _ := p.Args["sourceRefutationThreshold"].(int)
+	escalationAfterHours, _ := p.Args["escalationAfterHours"].(float64)
+	sourceAnomalyEscalationPriority, _ := p.Args["sourceAnomalyEscalationPriority"].(float64)
 	types, _ := stringList(p.Args["types"])
 	sourceID, _ := p.Args["sourceId"].(string)
 	status, _ := p.Args["status"].(string)
@@ -1348,16 +1368,18 @@ func (s *GraphQLServer) resolveReviewQueue(p graphql.ResolveParams) (interface{}
 	limit, _ := p.Args["limit"].(int)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ReviewQueue(p.Context, client.ReviewQueueRequest{
-		After:                     after,
-		LowConfidenceThreshold:    threshold,
-		SourceTrustThreshold:      sourceTrustThreshold,
-		SourceTrustDropThreshold:  sourceTrustDropThreshold,
-		SourceRefutationThreshold: sourceRefutationThreshold,
-		Types:                     types,
-		SourceID:                  sourceID,
-		Status:                    status,
-		Owner:                     owner,
-		Limit:                     limit,
+		After:                           after,
+		LowConfidenceThreshold:          threshold,
+		SourceTrustThreshold:            sourceTrustThreshold,
+		SourceTrustDropThreshold:        sourceTrustDropThreshold,
+		SourceRefutationThreshold:       sourceRefutationThreshold,
+		EscalationAfter:                 time.Duration(escalationAfterHours * float64(time.Hour)),
+		SourceAnomalyEscalationPriority: sourceAnomalyEscalationPriority,
+		Types:                           types,
+		SourceID:                        sourceID,
+		Status:                          status,
+		Owner:                           owner,
+		Limit:                           limit,
 	})
 }
 

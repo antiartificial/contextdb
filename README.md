@@ -5,9 +5,9 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.36.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.36.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.37.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.37.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
-**Current release:** `v0.36.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+**Current release:** `v0.37.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
 
 ## What & Why
@@ -249,7 +249,7 @@ diff, _ := retrieval.ComputeBeliefDiff(ctx, graph, "ops", nil)
 
 **[Source trust timeline](docs/api/rest.md#source-trust-timeline)** -- Source credibility changes can be inspected over time from durable feedback events, and review tasks can be emitted for credibility drops or repeated refutations. *Typical vector DBs: source trust history is outside the retrieval system.*
 
-**[Claim review queue](docs/api/rest.md#claim-review-queue)** -- Refuted, stale, low-confidence, and contradictory claims become ranked review tasks with durable assignment, snooze, resolution, and note events. *Typical vector DBs: review queues live in a separate moderation system.*
+**[Claim review queue](docs/api/rest.md#claim-review-queue)** -- Refuted, stale, low-confidence, source anomaly, and contradictory claims become ranked review tasks with durable assignment, snooze, resolution, notes, and escalation metadata. *Typical vector DBs: review queues live in a separate moderation system.*
 
 **[Knowledge acquisition planner](docs/api/rest.md#knowledge-acquisition-plan)** -- Gap reports and weak claims become prioritized research, crawl, and verification tasks. *Typical vector DBs: acquisition planning is separate from retrieval.*
 

@@ -202,6 +202,8 @@ query {
     lowConfidenceThreshold: 0.35
     sourceTrustDropThreshold: 0.2
     sourceRefutationThreshold: 2
+    escalationAfterHours: 72
+    sourceAnomalyEscalationPriority: 0.9
     types: ["source_trust_anomaly"]
     sourceId: "docs-crawler"
     status: "open"
@@ -224,6 +226,10 @@ query {
     decision
     note
     reviewedAt
+    escalated
+    escalationLevel
+    escalationReason
+    escalationAgeHours
   }
 }
 ```

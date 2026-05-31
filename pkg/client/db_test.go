@@ -3,6 +3,7 @@ package client_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -393,6 +394,19 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(queue[0].Owner, "alice")
 	is.Equal(queue[0].Note, "check source logs")
 
+	escalated, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
+		LowConfidenceThreshold: 0.35,
+		EscalationAfter:        time.Hour,
+		Now:                    decision.TxTime.Add(2 * time.Hour),
+	})
+	is.NoErr(err)
+	is.True(len(escalated) > 0)
+	is.Equal(escalated[0].ID, reviewID)
+	is.True(escalated[0].Escalated)
+	is.Equal(escalated[0].EscalationLevel, "review_overdue")
+	is.True(strings.Contains(escalated[0].EscalationReason, "assigned review"))
+	is.True(escalated[0].EscalationAgeHours >= 2)
+
 	filtered, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
 		LowConfidenceThreshold: 0.35,
 		Types:                  []string{"low_confidence"},
@@ -461,6 +475,21 @@ func TestNamespace_ReviewQueueIncludesSourceTrustAnomalies(t *testing.T) {
 		}
 	}
 	is.True(found)
+
+	escalated, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
+		After:                           start,
+		SourceTrustDropThreshold:        0.1,
+		SourceAnomalyEscalationPriority: 0.6,
+		EscalationAfter:                 time.Hour,
+		Now:                             time.Now().Add(2 * time.Hour),
+		Types:                           []string{"source_trust_anomaly"},
+		SourceID:                        "crawler",
+	})
+	is.NoErr(err)
+	is.True(len(escalated) > 0)
+	is.True(escalated[0].Escalated)
+	is.Equal(escalated[0].EscalationLevel, "source_anomaly_high")
+	is.True(strings.Contains(escalated[0].EscalationReason, "source anomaly priority"))
 }
 
 func TestNamespace_ReviewQueueIncludesContradictions(t *testing.T) {

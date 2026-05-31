@@ -629,16 +629,19 @@ type SourceTrustPoint struct {
 
 // ReviewQueueRequest configures claim review queue generation.
 type ReviewQueueRequest struct {
-	After                     time.Time
-	LowConfidenceThreshold    float64
-	SourceTrustThreshold      float64
-	SourceTrustDropThreshold  float64
-	SourceRefutationThreshold int
-	Types                     []string
-	SourceID                  string
-	Status                    string
-	Owner                     string
-	Limit                     int
+	After                           time.Time
+	Now                             time.Time
+	LowConfidenceThreshold          float64
+	SourceTrustThreshold            float64
+	SourceTrustDropThreshold        float64
+	SourceRefutationThreshold       int
+	EscalationAfter                 time.Duration
+	SourceAnomalyEscalationPriority float64
+	Types                           []string
+	SourceID                        string
+	Status                          string
+	Owner                           string
+	Limit                           int
 }
 
 // ReviewDecisionRequest records durable workflow state for a derived review task.
@@ -666,24 +669,28 @@ type ReviewDecision struct {
 
 // ReviewItem is a derived operator task for claims that need attention.
 type ReviewItem struct {
-	ID         string      `json:"id"`
-	Type       string      `json:"type"`
-	Priority   float64     `json:"priority"`
-	Reason     string      `json:"reason"`
-	NodeID     uuid.UUID   `json:"node_id,omitempty"`
-	NodeIDs    []uuid.UUID `json:"node_ids,omitempty"`
-	SourceID   string      `json:"source_id,omitempty"`
-	Action     string      `json:"action,omitempty"`
-	Text       string      `json:"text,omitempty"`
-	CreatedAt  time.Time   `json:"created_at"`
-	Suggested  string      `json:"suggested_action"`
-	Confidence float64     `json:"confidence,omitempty"`
-	Status     string      `json:"status,omitempty"`
-	Owner      string      `json:"owner,omitempty"`
-	Decision   string      `json:"decision,omitempty"`
-	Note       string      `json:"note,omitempty"`
-	RecheckAt  time.Time   `json:"recheck_at,omitempty"`
-	ReviewedAt time.Time   `json:"reviewed_at,omitempty"`
+	ID                 string      `json:"id"`
+	Type               string      `json:"type"`
+	Priority           float64     `json:"priority"`
+	Reason             string      `json:"reason"`
+	NodeID             uuid.UUID   `json:"node_id,omitempty"`
+	NodeIDs            []uuid.UUID `json:"node_ids,omitempty"`
+	SourceID           string      `json:"source_id,omitempty"`
+	Action             string      `json:"action,omitempty"`
+	Text               string      `json:"text,omitempty"`
+	CreatedAt          time.Time   `json:"created_at"`
+	Suggested          string      `json:"suggested_action"`
+	Confidence         float64     `json:"confidence,omitempty"`
+	Status             string      `json:"status,omitempty"`
+	Owner              string      `json:"owner,omitempty"`
+	Decision           string      `json:"decision,omitempty"`
+	Note               string      `json:"note,omitempty"`
+	RecheckAt          time.Time   `json:"recheck_at,omitempty"`
+	ReviewedAt         time.Time   `json:"reviewed_at,omitempty"`
+	Escalated          bool        `json:"escalated,omitempty"`
+	EscalationLevel    string      `json:"escalation_level,omitempty"`
+	EscalationReason   string      `json:"escalation_reason,omitempty"`
+	EscalationAgeHours float64     `json:"escalation_age_hours,omitempty"`
 }
 
 // GapRequest configures knowledge-gap detection for a namespace.
@@ -1445,7 +1452,10 @@ func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueReques
 	if threshold == 0 {
 		threshold = 0.35
 	}
-	now := time.Now()
+	now := req.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
 	items := make([]ReviewItem, 0)
 
 	events, err := h.FeedbackEvents(ctx, req.After)
@@ -1521,6 +1531,7 @@ func (h *NamespaceHandle) ReviewQueue(ctx context.Context, req ReviewQueueReques
 		return nil, err
 	}
 	items = applyReviewDecisions(items, latestReviewDecisions(decisions), now)
+	items = applyReviewEscalations(items, req, now)
 	items = filterReviewItems(items, req)
 
 	sort.SliceStable(items, func(i, j int) bool {
@@ -2089,6 +2100,41 @@ func applyReviewDecisions(items []ReviewItem, decisions map[string]ReviewDecisio
 		out = append(out, item)
 	}
 	return out
+}
+
+func applyReviewEscalations(items []ReviewItem, req ReviewQueueRequest, now time.Time) []ReviewItem {
+	if req.EscalationAfter <= 0 {
+		return items
+	}
+	sourcePriority := req.SourceAnomalyEscalationPriority
+	if sourcePriority == 0 {
+		sourcePriority = 0.9
+	}
+	for i := range items {
+		item := &items[i]
+		status := reviewItemStatus(*item)
+		switch {
+		case (status == "assigned" || status == "snoozed") && !item.ReviewedAt.IsZero():
+			age := now.Sub(item.ReviewedAt)
+			if age >= req.EscalationAfter {
+				item.Escalated = true
+				item.EscalationLevel = "review_overdue"
+				item.EscalationReason = fmt.Sprintf("%s review has waited %.1f hours", status, age.Hours())
+				item.EscalationAgeHours = age.Hours()
+				item.Priority = maxFloat(item.Priority, 1.0+age.Hours()/168.0)
+			}
+		case item.Type == "source_trust_anomaly" && item.Priority >= sourcePriority && !item.CreatedAt.IsZero():
+			age := now.Sub(item.CreatedAt)
+			if age >= req.EscalationAfter {
+				item.Escalated = true
+				item.EscalationLevel = "source_anomaly_high"
+				item.EscalationReason = fmt.Sprintf("source anomaly priority %.2f has waited %.1f hours", item.Priority, age.Hours())
+				item.EscalationAgeHours = age.Hours()
+				item.Priority = maxFloat(item.Priority, 1.1+age.Hours()/168.0)
+			}
+		}
+	}
+	return items
 }
 
 func filterReviewItems(items []ReviewItem, req ReviewQueueRequest) []ReviewItem {

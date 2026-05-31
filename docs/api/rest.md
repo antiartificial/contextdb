@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.36.0",
+  "version": "0.37.0",
   "api_version": "v1",
-  "docs_version": "0.36.0",
+  "docs_version": "0.37.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -415,6 +415,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.36.0",
       "description": "Snapshot lifecycle index publish validates and optionally sends backup catalog metadata to a configured ops endpoint without uploading backup contents."
+    },
+    {
+      "name": "review-escalation-rules",
+      "status": "stable",
+      "since": "v0.37.0",
+      "description": "Review queue escalation metadata flags aged assigned or snoozed items and high-priority source anomaly tasks."
     }
   ],
   "migrations": [
@@ -422,7 +428,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.36.0"
+  "release_notes_path": "/contextdb/releases/v0.37.0"
 }
 ```
 
@@ -631,6 +637,8 @@ Query parameters:
 | `source_trust_threshold` | Optional latest source credibility threshold for source-trust anomaly tasks |
 | `source_trust_drop_threshold` | Optional credibility drop threshold across the selected feedback window |
 | `source_refutation_threshold` | Optional count threshold for repeated source refutations |
+| `escalation_after_hours` | Optional age threshold that adds escalation metadata to overdue assigned, due snoozed, or high-priority source anomaly items |
+| `source_anomaly_escalation_priority` | Optional priority threshold for escalating source-trust anomaly items; defaults to `0.9` when escalation is enabled |
 | `type` | Optional comma-separated review item types, such as `low_confidence` or `source_trust_anomaly` |
 | `source_id` | Optional source identifier filter |
 | `status` | Optional workflow status filter; undecided items match `open` |
@@ -658,7 +666,11 @@ Query parameters:
       "owner": "alice",
       "decision": "needs_evidence",
       "note": "check source logs",
-      "reviewed_at": "2026-05-30T17:10:00Z"
+      "reviewed_at": "2026-05-30T17:10:00Z",
+      "escalated": true,
+      "escalation_level": "review_overdue",
+      "escalation_reason": "assigned review has waited 72.0 hours",
+      "escalation_age_hours": 72
     }
   ]
 }
