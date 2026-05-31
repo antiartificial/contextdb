@@ -109,10 +109,10 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Retry fatigue preset discovery docs | Implemented | v0.73 | `review`, `operations`, `handoff` | Deployment docs provide preset names, expanded filters, and intended handoff audiences for dashboards |
 | Retry fatigue preset examples | Implemented | v0.77 | `review`, `operations`, `handoff` | Preset metadata includes copyable REST query and GraphQL argument snippets |
 | Retry fatigue preset docs drift test | Implemented | v0.81 | `review`, `operations`, `test` | SDK tests verify cookbook preset rows match `ReviewHandoffRetryFatiguePresets()` metadata |
-| Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
+| Admin/debug UI | Implemented | v0.88 | `inspectability`, `operations` | Observe port serves `/admin/` with runtime stats and a belief debugger backed by `/admin/api/belief` |
 
 ## Next Candidates
 
-1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
+1. Ranking/debugger search integration for choosing nodes without copying UUIDs.
 2. Retry fatigue preset API schema fixture for REST/SDK parity.
 3. Doctor backup receipt runbook lane for repair closure checklists.

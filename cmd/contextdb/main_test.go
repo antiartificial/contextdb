@@ -1699,6 +1699,20 @@ func TestWriteRankingEvalBaselineArtifactManifestVerifyBundle(t *testing.T) {
 	annotationsData, err := os.ReadFile(filepath.Join(bundleDir, "ranking-baseline-manifest-annotations.txt"))
 	is.NoErr(err)
 	is.Equal(string(annotationsData), "\n")
+	indexData, err := os.ReadFile(filepath.Join(bundleDir, "ranking-baseline-manifest-verification-index.json"))
+	is.NoErr(err)
+	var index rankingEvalBaselineArtifactManifestVerifyBundleIndex
+	is.NoErr(json.Unmarshal(indexData, &index))
+	is.Equal(index.Kind, "contextdb.ranking.baseline.verification_bundle")
+	is.Equal(index.SchemaVersion, 1)
+	is.Equal(index.Status, "passed")
+	is.True(index.OK)
+	is.Equal(index.ManifestFile, manifestPath)
+	is.Equal(len(index.Artifacts), 3)
+	is.Equal(index.Artifacts[0].Kind, "json_report")
+	is.True(strings.HasSuffix(index.Artifacts[0].Path, "ranking-baseline-manifest-verification.json"))
+	is.True(index.Artifacts[0].Bytes > 0)
+	is.True(index.Artifacts[0].SHA256 != "")
 }
 
 func TestBuildRankingEvalBaselineDeleteScript(t *testing.T) {

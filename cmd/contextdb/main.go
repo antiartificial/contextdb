@@ -1543,6 +1543,24 @@ type rankingEvalBaselineArtifactManifestVerifyReportItem struct {
 	ValidationErrors []string `json:"validation_errors,omitempty"`
 }
 
+type rankingEvalBaselineArtifactManifestVerifyBundleIndex struct {
+	Kind             string                                                         `json:"kind"`
+	SchemaVersion    int                                                            `json:"schema_version"`
+	GeneratedAt      string                                                         `json:"generated_at"`
+	Status           string                                                         `json:"status"`
+	OK               bool                                                           `json:"ok"`
+	ManifestFile     string                                                         `json:"manifest_file"`
+	ContextDBVersion string                                                         `json:"contextdb_version,omitempty"`
+	Artifacts        []rankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact `json:"artifacts"`
+}
+
+type rankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact struct {
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
+}
+
 type rankingEvalBaselineVersion struct {
 	Path  string
 	Major int
@@ -3227,7 +3245,55 @@ func writeRankingEvalBaselineArtifactManifestVerifyBundle(dir string, report ran
 	if err := writeTextFile(filepath.Join(dir, "ranking-baseline-manifest-annotations.txt"), buildRankingEvalBaselineArtifactManifestFailureAnnotations(report)); err != nil {
 		return err
 	}
+	if err := writeRankingEvalBaselineArtifactManifestVerifyBundleIndex(dir, report, time.Now().UTC()); err != nil {
+		return err
+	}
 	return nil
+}
+
+func writeRankingEvalBaselineArtifactManifestVerifyBundleIndex(dir string, report rankingEvalBaselineArtifactManifestVerifyReport, generatedAt time.Time) error {
+	status := "passed"
+	if !report.OK {
+		status = "failed"
+	}
+	index := rankingEvalBaselineArtifactManifestVerifyBundleIndex{
+		Kind:             "contextdb.ranking.baseline.verification_bundle",
+		SchemaVersion:    1,
+		GeneratedAt:      generatedAt.Format(time.RFC3339),
+		Status:           status,
+		OK:               report.OK,
+		ManifestFile:     report.ManifestFile,
+		ContextDBVersion: report.ContextDBVersion,
+	}
+	for _, artifact := range []struct {
+		kind string
+		path string
+	}{
+		{kind: "json_report", path: filepath.Join(dir, "ranking-baseline-manifest-verification.json")},
+		{kind: "markdown_summary", path: filepath.Join(dir, "ranking-baseline-manifest-verification.md")},
+		{kind: "ci_annotations", path: filepath.Join(dir, "ranking-baseline-manifest-annotations.txt")},
+	} {
+		item, err := buildRankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact(artifact.kind, artifact.path)
+		if err != nil {
+			return err
+		}
+		index.Artifacts = append(index.Artifacts, item)
+	}
+	return writeJSONFile(filepath.Join(dir, "ranking-baseline-manifest-verification-index.json"), index)
+}
+
+func buildRankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact(kind, path string) (rankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return rankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact{}, fmt.Errorf("read ranking baseline verification bundle artifact: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return rankingEvalBaselineArtifactManifestVerifyBundleIndexArtifact{
+		Kind:   kind,
+		Path:   path,
+		Bytes:  int64(len(data)),
+		SHA256: hex.EncodeToString(sum[:]),
+	}, nil
 }
 
 func artifactManifestValidationPrefix(item rankingEvalBaselineArtifactManifestVerifyReportItem, msg string) string {

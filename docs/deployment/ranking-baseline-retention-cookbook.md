@@ -58,7 +58,7 @@ contextdb eval ranking baseline manifest verify \
   --bundle-dir ranking-baseline-verification
 ```
 
-The bundle directory contains `ranking-baseline-manifest-verification.json`, `ranking-baseline-manifest-verification.md`, and `ranking-baseline-manifest-annotations.txt` with stable names. The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash. Use `--markdown` for a stdout recap or `--markdown-out` to save the artifact summary beside the JSON report. Use `--annotations` or `--annotations-out` when CI should surface each failed artifact as an annotation line.
+The bundle directory contains `ranking-baseline-manifest-verification.json`, `ranking-baseline-manifest-verification.md`, `ranking-baseline-manifest-annotations.txt`, and `ranking-baseline-manifest-verification-index.json` with stable names. The index records bundle status, generated time, artifact paths, byte sizes, and SHA-256 hashes. The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash. Use `--markdown` for a stdout recap or `--markdown-out` to save the artifact summary beside the JSON report. Use `--annotations` or `--annotations-out` when CI should surface each failed artifact as an annotation line.
 
 ## GitHub Actions Annotation Recipe
 

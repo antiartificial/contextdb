@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/antiartificial/contextdb/internal/admin"
 	"github.com/antiartificial/contextdb/internal/federation"
 	"github.com/antiartificial/contextdb/internal/observe"
 	"github.com/antiartificial/contextdb/pkg/client"
@@ -100,9 +101,12 @@ func (s *Server) Start() error {
 
 	// Observe server (metrics, pprof, health)
 	if s.reg != nil {
+		obsMux := http.NewServeMux()
+		obsMux.Handle("/", observe.Handler(s.reg))
+		obsMux.Handle("/admin/", admin.New(s.db))
 		s.obsServer = &http.Server{
 			Addr:    s.config.ObserveAddr,
-			Handler: observe.Handler(s.reg),
+			Handler: obsMux,
 		}
 		go func() {
 			s.logger.Info("observe server started", "addr", s.config.ObserveAddr)

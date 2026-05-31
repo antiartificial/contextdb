@@ -5,9 +5,9 @@
 
 Most vector databases treat embeddings as the whole story. But AI systems that interact with the real world need facts that expire, sources that lie, memory that decays, and context that matters. contextdb handles all four.
 
-[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.87.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.87.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
+[**Documentation**](https://antiartificial.github.io/contextdb) | [**Quick Start**](https://antiartificial.github.io/contextdb/quick-start) | [**v0.88.0 Recap**](https://antiartificial.github.io/contextdb/releases/v0.88.0) | [**GraphQL**](https://antiartificial.github.io/contextdb/api/graphql) | [**Feature Matrix**](https://antiartificial.github.io/contextdb/feature-matrix)
 
-**Current release:** `v0.87.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+**Current release:** `v0.88.0`. contextdb is usable today, but still pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 
 
 ## What & Why
@@ -253,7 +253,7 @@ diff, _ := retrieval.ComputeBeliefDiff(ctx, graph, "ops", nil)
 
 **[Knowledge acquisition planner](docs/api/rest.md#knowledge-acquisition-plan)** -- Gap reports and weak claims become prioritized research, crawl, and verification tasks. *Typical vector DBs: acquisition planning is separate from retrieval.*
 
-**[Admin UI](docs/deployment/scaled.md)** -- Built-in dashboard on the observe port with stats, metrics links, and [time-travel queries](docs/examples.md#time-travel-admin-api). *Typical vector DBs: external tooling.*
+**[Admin UI](docs/api/rest.md#admin-ui)** -- Built-in dashboard on the observe port with stats, metrics links, time-travel APIs, and a belief debugger for source, support, contradiction, provenance, and confidence evidence. *Typical vector DBs: external tooling.*
 
 ## Scoring function
 

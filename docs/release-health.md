@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.88.0 | Passed | Passed | Admin debugger and bundle index coverage added | Corpus coverage present | Admin API and CLI bundle index tests added | Mounts the admin dashboard/debugger and adds bundle index metadata |
 | v0.87.0 | Passed | Passed | Ranking baseline verification bundle coverage added | Corpus coverage present | CLI bundle artifact tests added | Adds stable bundle output for manifest verification reports |
 | v0.86.0 | Passed | Passed | Ranking baseline annotation workflow docs added | Corpus coverage present | Docs build coverage | Adds a GitHub Actions recipe for manifest verification annotations and artifacts |
 | v0.85.0 | Passed | Passed | Ranking baseline failure annotation coverage added | Corpus coverage present | CLI annotation formatter tests added | Adds CI annotation output for ranking baseline manifest failures |

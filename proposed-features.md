@@ -529,11 +529,18 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking baseline verification bundle command | Implemented | `contextdb eval ranking baseline manifest verify --bundle-dir DIR` writes JSON, Markdown, and annotation artifacts with stable filenames |
 
+## Completed In v0.88.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Admin dashboard and belief debugger | Implemented | Observe server mounts `/admin/`, and `/admin/api/belief?ns=NS&id=UUID` returns source, support, contradiction, provenance, and confidence evidence |
+| Ranking baseline bundle index metadata | Implemented | Verification bundles include `ranking-baseline-manifest-verification-index.json` with artifact paths, byte sizes, SHA-256 hashes, status, and generated time |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
-| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Back it with the existing GraphQL surface |
+| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; next step is search/explain-rank integration |
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Snapshot foundation completed in v0.48.0; next step is dashboard/UI |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
@@ -608,7 +615,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs next | First useful slice |
 |:--------|:--------------------|:-------------------|
-| Belief debugger UI | GraphQL plus introspection gives a stable product surface for an inspection tool | Read-only local UI for search results, explain-rank comparisons, sources, edges, and narrative reports |
+| Belief debugger search integration | The first debugger UI can inspect a known UUID; operators need discovery and comparison flows next | Add admin search results, explain-rank comparison, and source-trust context to the debugger |
 | Release health page | The release process now has concrete test categories to report | Completed in v0.11.2; next step is generated CI-backed status |
 | Explain-rank graph evidence | The first explain-rank slice covers score deltas; graph-aware evidence makes explanations deeper | Support-chain evidence completed in v0.11.0; source trust context and contradiction path summaries remain useful next steps |
 | Doctor backup readiness | The doctor command now has live metadata and write/read checks; backup checks make it more operationally complete | Completed in v0.10.0; deeper store/index consistency checks remain |
@@ -1065,11 +1072,12 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.87.0
+## Fresh Brainstorm After v0.88.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Ranking baseline bundle index metadata | Bundle output exists, but downstream jobs may want one pointer file | Add a small bundle index JSON with artifact paths, generated_at, status, and hashes |
+| Ranking/debugger search integration | The debugger can inspect a known UUID, but operators need to find candidate nodes quickly | Add an admin search panel that calls retrieve and lets users open a result in the belief debugger |
 | Retry fatigue preset API schema fixture | Preset docs now have drift coverage, but API examples could use a small schema fixture | Add a test fixture for retry fatigue preset JSON fields across SDK and REST |
 | Doctor backup receipt runbook lane | Receipt verification is in doctor, but teams may want a full incident checklist | Add a deployment recipe combining freshness, drift, receipt verify, and repair closure |
 | KV derived refresh receipt verifier | Refresh receipts now exist, but incident review may need later integrity checks | Add a verifier that recomputes report/value hash and checks written-key doctor commands |
+| Ranking baseline bundle index verifier | Bundle indexes now point to report artifacts, but downstream jobs may want integrity checks | Add a verifier that re-hashes the bundle files and confirms the index status matches the JSON report |
