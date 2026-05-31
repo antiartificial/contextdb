@@ -499,6 +499,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Published backup receipt verification doctor | Implemented | `contextdb doctor --published-backup-receipt PATH --published-backup-index PATH` verifies catalog repair receipts in the combined doctor report |
 
+## Completed In v0.83.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| KV derived refresh receipt | Implemented | `contextdb repair kv-cache --derive recent-nodes --execute --receipt-out PATH` writes a receipt with value hash, executed report, and doctor confirmation command |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1035,11 +1041,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.82.0
+## Fresh Brainstorm After v0.83.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV derived refresh receipt | Derived KV execution now has a checklist, but audit records would help incident review | Add optional `--receipt-out` for executed derived KV refreshes with payload hash and doctor confirmation fields |
 | Ranking baseline manifest summary export | Verification now catches drift, but CI may want a small Markdown recap | Add `--markdown` or `--markdown-out` for manifest verification summaries |
 | Retry fatigue preset API schema fixture | Preset docs now have drift coverage, but API examples could use a small schema fixture | Add a test fixture for retry fatigue preset JSON fields across SDK and REST |
 | Doctor backup receipt runbook lane | Receipt verification is in doctor, but teams may want a full incident checklist | Add a deployment recipe combining freshness, drift, receipt verify, and repair closure |
+| KV derived refresh receipt verifier | Refresh receipts now exist, but incident review may need later integrity checks | Add a verifier that recomputes report/value hash and checks written-key doctor commands |

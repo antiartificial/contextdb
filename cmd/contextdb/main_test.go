@@ -1849,6 +1849,51 @@ func TestBuildKVRefreshReportExecute(t *testing.T) {
 	is.Equal(string(value), "refreshed")
 }
 
+func TestBuildKVRefreshReceipt(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	value := []byte(`{"kind":"contextdb.kv.derived.recent_nodes","generated_at":"2026-06-01T12:00:00Z"}`)
+
+	report, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys:        []string{"context:prod:support:recent-nodes"},
+		Value:       value,
+		ValueSource: "derived:recent-nodes",
+		Execute:     true,
+		GeneratedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	receipt, err := buildKVRefreshReceipt(report, value)
+
+	is.NoErr(err)
+	is.Equal(receipt.Kind, "contextdb.kv.refresh.receipt")
+	is.Equal(receipt.SchemaVersion, 1)
+	is.Equal(receipt.GeneratedAt, "2026-06-01T12:00:00Z")
+	is.Equal(receipt.ValueSource, "derived:recent-nodes")
+	is.True(receipt.ValueSHA256 != "")
+	is.Equal(receipt.Report.Written, 1)
+	is.Equal(receipt.RecommendedDoctorCommand, "contextdb doctor --kv-derived-key 'context:prod:support:recent-nodes' --report")
+}
+
+func TestBuildKVRefreshReceiptRejectsDryRun(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	report, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys:        []string{"context:prod:support:recent-nodes"},
+		Value:       []byte("refreshed"),
+		ValueSource: "derived:recent-nodes",
+		GeneratedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	_, err = buildKVRefreshReceipt(report, []byte("refreshed"))
+
+	is.True(err != nil)
+	is.True(strings.Contains(err.Error(), "requires executed report"))
+}
+
 func TestBuildKVRefreshReportOverwrite(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

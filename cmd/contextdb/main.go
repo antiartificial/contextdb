@@ -368,6 +368,7 @@ func runRepairKVCache(args []string) {
 	ttl := fs.Int("ttl", 0, "TTL seconds for refreshed keys; 0 means no explicit expiry")
 	overwrite := fs.Bool("overwrite", false, "refresh keys even when they already have values")
 	execute := fs.Bool("execute", false, "write reviewed KV refresh candidates")
+	receiptOut := fs.String("receipt-out", "", "write a JSON derived KV refresh receipt after successful --execute")
 	reportOut := fs.Bool("report", false, "print the JSON KV refresh report")
 	_ = fs.Parse(args)
 
@@ -386,6 +387,16 @@ func runRepairKVCache(args []string) {
 		fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", err)
 		os.Exit(2)
 	}
+	if strings.TrimSpace(*receiptOut) != "" {
+		if !*execute {
+			fmt.Fprintln(os.Stderr, "contextdb repair kv-cache: --receipt-out requires --execute")
+			os.Exit(2)
+		}
+		if valueSource != "derived:recent-nodes" {
+			fmt.Fprintln(os.Stderr, "contextdb repair kv-cache: --receipt-out requires --derive recent-nodes")
+			os.Exit(2)
+		}
+	}
 	report, err := buildKVRefreshReport(context.Background(), kv, kvRefreshOptions{
 		Keys:        keys,
 		Value:       valueBytes,
@@ -401,6 +412,17 @@ func runRepairKVCache(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", err)
 		os.Exit(1)
+	}
+	if strings.TrimSpace(*receiptOut) != "" {
+		receipt, receiptErr := buildKVRefreshReceipt(report, valueBytes)
+		if receiptErr != nil {
+			fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", receiptErr)
+			os.Exit(1)
+		}
+		if writeErr := writeJSONFile(*receiptOut, receipt); writeErr != nil {
+			fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", writeErr)
+			os.Exit(1)
+		}
 	}
 	if !*reportOut {
 		fmt.Fprintln(os.Stdout, "ok")
@@ -1555,6 +1577,17 @@ type kvRefreshReport struct {
 	OK                bool                `json:"ok"`
 	ValidationErrors  []string            `json:"validation_errors,omitempty"`
 	Items             []kvRefreshPlanItem `json:"items"`
+}
+
+type kvRefreshReceipt struct {
+	Kind                     string          `json:"kind"`
+	SchemaVersion            int             `json:"schema_version"`
+	GeneratedAt              string          `json:"generated_at"`
+	ContextDBVersion         string          `json:"contextdb_version"`
+	ValueSource              string          `json:"value_source"`
+	ValueSHA256              string          `json:"value_sha256"`
+	RecommendedDoctorCommand string          `json:"recommended_doctor_command,omitempty"`
+	Report                   kvRefreshReport `json:"report"`
 }
 
 type kvRefreshPlanItem struct {
@@ -3628,6 +3661,50 @@ func buildKVRefreshReport(ctx context.Context, kv store.KVStore, opts kvRefreshO
 		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
 	}
 	return report, nil
+}
+
+func buildKVRefreshReceipt(report kvRefreshReport, value []byte) (kvRefreshReceipt, error) {
+	if !report.Execute || report.DryRun {
+		return kvRefreshReceipt{}, errors.New("kv refresh receipt requires executed report")
+	}
+	if report.ValueSource != "derived:recent-nodes" {
+		return kvRefreshReceipt{}, errors.New("kv refresh receipt requires derived recent-nodes value source")
+	}
+	sum := sha256.Sum256(value)
+	return kvRefreshReceipt{
+		Kind:                     "contextdb.kv.refresh.receipt",
+		SchemaVersion:            1,
+		GeneratedAt:              report.GeneratedAt,
+		ContextDBVersion:         buildinfo.Version,
+		ValueSource:              report.ValueSource,
+		ValueSHA256:              hex.EncodeToString(sum[:]),
+		RecommendedDoctorCommand: kvRefreshReceiptDoctorCommand(report),
+		Report:                   report,
+	}, nil
+}
+
+func kvRefreshReceiptDoctorCommand(report kvRefreshReport) string {
+	command := "contextdb doctor"
+	seen := map[string]struct{}{}
+	for _, item := range report.Items {
+		if item.Action != "written" {
+			continue
+		}
+		key := strings.TrimSpace(item.Key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		command += " --kv-derived-key " + shellQuote(key)
+	}
+	if len(seen) == 0 {
+		return ""
+	}
+	command += " --report"
+	return command
 }
 
 func kvRefreshValue(ctx context.Context, graph store.GraphStore, opts kvRefreshValueOptions) ([]byte, string, error) {

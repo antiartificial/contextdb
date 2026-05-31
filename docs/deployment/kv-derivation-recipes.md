@@ -60,6 +60,7 @@ contextdb repair kv-cache \
   --derive-label SessionContext \
   --derive-limit 5 \
   --execute \
+  --receipt-out context-prod-support-recent-nodes.receipt.json \
   --report
 ```
 
@@ -96,6 +97,8 @@ contextdb doctor \
 ```
 
 If the dry-run payload is wrong, fix the derivation inputs before executing. Common corrections are adding `--derive-label`, changing `--derive-namespace`, lowering `--derive-limit`, or choosing a more specific hot-key name for the consumer.
+
+`--receipt-out` is only valid with `--execute --derive recent-nodes`. The receipt records the executed refresh report, the SHA-256 hash of the reviewed derived value, and a `contextdb doctor --kv-derived-key ... --report` command to confirm the refreshed keys.
 
 ## Common Patterns
 

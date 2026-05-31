@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.83.0 | Passed | Passed | Corpus coverage present | KV derived refresh receipt coverage added | CLI KV refresh receipt tests added | Adds receipts for executed derived KV refreshes |
 | v0.82.0 | Passed | Passed | Corpus coverage present | Published backup receipt doctor coverage added | CLI doctor receipt verify tests added | Adds published backup receipt verification to combined doctor reports |
 | v0.81.0 | Passed | Passed | Corpus coverage present | Retry fatigue docs drift coverage added | SDK preset docs alignment test added | Adds a test that keeps retry fatigue cookbook presets aligned with SDK metadata |
 | v0.80.0 | Passed | Passed | Ranking baseline manifest verification coverage added | Corpus coverage present | CLI ranking manifest verify tests added | Adds integrity verification for ranking baseline artifact manifests |
