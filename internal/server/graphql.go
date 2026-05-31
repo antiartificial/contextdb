@@ -528,6 +528,56 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	reviewHandoffWebhookDeliveryType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewHandoffWebhookDelivery",
+		Fields: graphql.Fields{
+			"targetUrl": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.TargetURL, nil
+			}},
+			"method": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.Method, nil
+			}},
+			"dryRun": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.DryRun, nil
+			}},
+			"eventId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.EventID.String(), nil
+			}},
+			"plannedAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.PlannedAt, nil
+			}},
+			"totalEscalated": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.TotalEscalated, nil
+			}},
+			"payloadSha256": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.PayloadSHA256, nil
+			}},
+			"signature": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.Signature, nil
+			}},
+			"attempt": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.Attempt, nil
+			}},
+			"maxAttempts": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.MaxAttempts, nil
+			}},
+			"groups": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewEscalationGroupType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.Groups, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -1221,6 +1271,21 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewHandoffs,
 			},
+			"reviewHandoffWebhookPlan": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffWebhookDeliveryType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace":       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"owner":           &graphql.ArgumentConfig{Type: graphql.String},
+					"escalationLevel": &graphql.ArgumentConfig{Type: graphql.String},
+					"limit":           &graphql.ArgumentConfig{Type: graphql.Int},
+					"targetUrl":       &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"secret":          &graphql.ArgumentConfig{Type: graphql.String},
+					"maxAttempts":     &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveReviewHandoffWebhookPlan,
+			},
 			"reviewDecisions": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
 				Args: graphql.FieldConfigArgument{
@@ -1554,6 +1619,33 @@ func (s *GraphQLServer) resolveReviewHandoffs(p graphql.ResolveParams) (interfac
 		Owner:           owner,
 		EscalationLevel: level,
 		Limit:           limit,
+	})
+}
+
+func (s *GraphQLServer) resolveReviewHandoffWebhookPlan(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	owner, _ := p.Args["owner"].(string)
+	level, _ := p.Args["escalationLevel"].(string)
+	limit, _ := p.Args["limit"].(int)
+	targetURL, _ := p.Args["targetUrl"].(string)
+	secret, _ := p.Args["secret"].(string)
+	maxAttempts, _ := p.Args["maxAttempts"].(int)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewHandoffWebhookPlan(p.Context, client.ReviewHandoffWebhookRequest{
+		ReviewHandoffRequest: client.ReviewHandoffRequest{
+			After:           after,
+			Owner:           owner,
+			EscalationLevel: level,
+			Limit:           limit,
+		},
+		TargetURL:   targetURL,
+		Secret:      secret,
+		MaxAttempts: maxAttempts,
 	})
 }
 

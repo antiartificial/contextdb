@@ -54,6 +54,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/queue", s.handleReviewQueue)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalations", s.handleReviewEscalations)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoffs", s.handleReviewHandoffs)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/plan", s.handleReviewHandoffWebhookPlan)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalation-digests", s.handleReviewEscalationDigests)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/escalation-digests", s.handleRecordReviewEscalationDigest)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
@@ -257,6 +258,21 @@ type reviewEscalationDigestsResponse struct {
 
 type reviewHandoffsResponse struct {
 	Handoffs []client.ReviewEscalationDigest `json:"handoffs"`
+}
+
+type reviewHandoffWebhookPlanRequest struct {
+	Mode            string `json:"mode"`
+	After           string `json:"after,omitempty"`
+	Owner           string `json:"owner,omitempty"`
+	EscalationLevel string `json:"escalation_level,omitempty"`
+	Limit           int    `json:"limit,omitempty"`
+	TargetURL       string `json:"target_url"`
+	Secret          string `json:"secret,omitempty"`
+	MaxAttempts     int    `json:"max_attempts,omitempty"`
+}
+
+type reviewHandoffWebhookPlanResponse struct {
+	Deliveries []client.ReviewHandoffWebhookDelivery `json:"deliveries"`
 }
 
 type reviewDecisionsResponse struct {
@@ -814,6 +830,35 @@ func (s *RESTServer) handleReviewHandoffs(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, reviewHandoffsResponse{Handoffs: handoffs})
 }
 
+func (s *RESTServer) handleReviewHandoffWebhookPlan(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	var body reviewHandoffWebhookPlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	req, err := reviewHandoffWebhookRequestFromBody(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	mode := body.Mode
+	if mode == "" {
+		mode = r.URL.Query().Get("mode")
+	}
+	h := s.db.Namespace(ns, resolveMode(mode))
+	deliveries, err := h.ReviewHandoffWebhookPlan(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewHandoffWebhookPlanResponse{Deliveries: deliveries})
+}
+
 func (s *RESTServer) handleRecordReviewEscalationDigest(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
 	tenant := TenantFromContext(r.Context())
@@ -908,6 +953,28 @@ func parseReviewHandoffRequest(r *http.Request) (client.ReviewHandoffRequest, er
 		req.Limit = parsed
 	}
 	return req, nil
+}
+
+func reviewHandoffWebhookRequestFromBody(body reviewHandoffWebhookPlanRequest) (client.ReviewHandoffWebhookRequest, error) {
+	var after time.Time
+	if strings.TrimSpace(body.After) != "" {
+		parsed, err := time.Parse(time.RFC3339, body.After)
+		if err != nil {
+			return client.ReviewHandoffWebhookRequest{}, fmt.Errorf("invalid after timestamp: %w", err)
+		}
+		after = parsed
+	}
+	return client.ReviewHandoffWebhookRequest{
+		ReviewHandoffRequest: client.ReviewHandoffRequest{
+			After:           after,
+			Owner:           strings.TrimSpace(body.Owner),
+			EscalationLevel: strings.TrimSpace(body.EscalationLevel),
+			Limit:           body.Limit,
+		},
+		TargetURL:   strings.TrimSpace(body.TargetURL),
+		Secret:      body.Secret,
+		MaxAttempts: body.MaxAttempts,
+	}, nil
 }
 
 func reviewQueueRequestFromDigestBody(body reviewEscalationDigestRequest) (client.ReviewQueueRequest, error) {

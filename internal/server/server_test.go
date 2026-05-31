@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -341,6 +342,28 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	handoffs := handoffsResp["handoffs"].([]any)
 	is.Equal(len(handoffs), 1)
 	is.Equal(handoffs[0].(map[string]any)["note"], "weekly handoff")
+
+	webhookBody, _ := json.Marshal(map[string]any{
+		"owner":            "alice",
+		"escalation_level": "review_overdue",
+		"target_url":       "https://ops.example.test/contextdb/handoffs",
+		"secret":           "test-secret",
+	})
+	reqWebhookPlan := httptest.NewRequest("POST", "/v1/namespaces/channel:general/review/handoff-webhooks/plan", bytes.NewReader(webhookBody))
+	reqWebhookPlan.Header.Set("Content-Type", "application/json")
+	wWebhookPlan := httptest.NewRecorder()
+	handler.ServeHTTP(wWebhookPlan, reqWebhookPlan)
+	is.Equal(wWebhookPlan.Code, http.StatusOK)
+	var webhookPlanResp map[string]any
+	is.NoErr(json.Unmarshal(wWebhookPlan.Body.Bytes(), &webhookPlanResp))
+	deliveries := webhookPlanResp["deliveries"].([]any)
+	is.Equal(len(deliveries), 1)
+	delivery := deliveries[0].(map[string]any)
+	is.Equal(delivery["target_url"], "https://ops.example.test/contextdb/handoffs")
+	is.Equal(delivery["dry_run"], true)
+	is.Equal(delivery["method"], "POST")
+	is.Equal(delivery["total_escalated"], float64(1))
+	is.True(strings.HasPrefix(delivery["signature"].(string), "sha256="))
 
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
@@ -741,6 +764,15 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				totalEscalated
 				groups { owner escalationLevel count }
 			}
+			reviewHandoffWebhookPlan(namespace: "graphql-test", owner: "alice", escalationLevel: "review_overdue", targetUrl: "https://ops.example.test/contextdb/handoffs", secret: "test-secret") {
+				targetUrl
+				method
+				dryRun
+				totalEscalated
+				payloadSha256
+				signature
+				maxAttempts
+			}
 			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
 				id
 				type
@@ -829,6 +861,15 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	graphQLHandoffs := data["reviewHandoffs"].([]any)
 	is.Equal(len(graphQLHandoffs), 1)
 	is.Equal(graphQLHandoffs[0].(map[string]any)["note"], "graphql handoff")
+	graphQLWebhookPlan := data["reviewHandoffWebhookPlan"].([]any)
+	is.Equal(len(graphQLWebhookPlan), 1)
+	graphQLDelivery := graphQLWebhookPlan[0].(map[string]any)
+	is.Equal(graphQLDelivery["targetUrl"], "https://ops.example.test/contextdb/handoffs")
+	is.Equal(graphQLDelivery["dryRun"], true)
+	is.Equal(graphQLDelivery["method"], "POST")
+	is.Equal(graphQLDelivery["totalEscalated"], float64(1))
+	is.True(strings.HasPrefix(graphQLDelivery["signature"].(string), "sha256="))
+	is.Equal(graphQLDelivery["maxAttempts"], float64(3))
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)

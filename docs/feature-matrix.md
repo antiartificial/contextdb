@@ -62,10 +62,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review escalation digest | Implemented | v0.38 | `review`, `operations` | Review escalation digests group escalated tasks by owner, source, item type, and escalation level |
 | Review escalation digest export | Implemented | v0.39 | `review`, `operations` | Review escalation digest snapshots can be recorded and listed for durable handoffs |
 | Review handoff feed | Implemented | v0.40 | `review`, `operations` | Saved escalation digest snapshots can be polled by owner and escalation level |
+| Review handoff webhook plans | Implemented | v0.41 | `review`, `operations` | Signed dry-run webhook delivery plans expose payload, headers, and retry metadata without sending requests |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Review handoff webhook delivery for teams that want push notifications after polling-friendly feeds.
+2. Review handoff webhook execution for teams that want push notifications after dry-run delivery planning.
 3. Deeper doctor store/index consistency checks.

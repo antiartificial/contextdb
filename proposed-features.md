@@ -247,6 +247,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review handoff subscriptions | Implemented | Go SDK, REST, and GraphQL expose polling-friendly handoff feeds filtered by owner and escalation level |
 
+## Completed In v0.41.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Review handoff webhook plans | Implemented | Go SDK, REST, and GraphQL expose signed dry-run webhook delivery plans with payload hashes, optional HMAC signatures, headers, and retry metadata |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -294,6 +300,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review escalation digest | Summarizes escalated review work for dashboards and handoffs | Completed in v0.38.0 with grouped digest APIs |
 | Review escalation digest export | Preserves escalation handoff snapshots for later audit | Completed in v0.39.0 with durable digest events |
 | Review handoff subscriptions | Lets owners poll saved escalation handoff snapshots by severity | Completed in v0.40.0 with owner/level filtered handoff feeds |
+| Review handoff webhooks | Lets teams validate push-style handoff delivery before enabling outbound sends | Completed in v0.41.0 with signed dry-run webhook plans |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -625,7 +632,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Review handoff webhooks | Polling handoff feeds exist, but some owners need push delivery | Add dry-run-first webhook delivery for saved handoff snapshots with retry metadata |
+| Review handoff webhooks | Polling handoff feeds exist, but some owners need push delivery | Completed in v0.41.0 with signed dry-run webhook delivery plans and retry metadata |
+| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.41.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Review handoff webhook execution | Dry-run plans prove payload shape, but delivery still needs explicit execution controls | Add opt-in `execute` support with timeout, response status capture, and no background retries |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |

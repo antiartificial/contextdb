@@ -280,8 +280,24 @@ query {
     totalEscalated
     groups { owner count escalationLevel }
   }
+
+  reviewHandoffWebhookPlan(
+    namespace: "my-app"
+    owner: "alice"
+    escalationLevel: "review_overdue"
+    targetUrl: "https://ops.example.test/contextdb/handoffs"
+    secret: "webhook-signing-secret"
+  ) {
+    targetUrl
+    dryRun
+    payloadSha256
+    signature
+    maxAttempts
+  }
 }
 ```
+
+`reviewHandoffWebhookPlan` is dry-run only: it prepares signed delivery payloads and retry metadata without sending outbound webhooks.
 
 Record and inspect review workflow state with:
 

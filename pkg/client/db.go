@@ -32,10 +32,14 @@ package client
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -722,6 +726,37 @@ type ReviewHandoffRequest struct {
 	Owner           string
 	EscalationLevel string
 	Limit           int
+}
+
+// ReviewHandoffWebhookRequest configures dry-run webhook delivery plans for saved handoff feeds.
+type ReviewHandoffWebhookRequest struct {
+	ReviewHandoffRequest
+	TargetURL   string
+	Secret      string
+	MaxAttempts int
+	Now         time.Time
+}
+
+// ReviewHandoffWebhookDelivery describes one dry-run webhook delivery that would be sent.
+type ReviewHandoffWebhookDelivery struct {
+	TargetURL       string                  `json:"target_url"`
+	Method          string                  `json:"method"`
+	DryRun          bool                    `json:"dry_run"`
+	EventID         uuid.UUID               `json:"event_id"`
+	Namespace       string                  `json:"namespace,omitempty"`
+	GeneratedAt     time.Time               `json:"generated_at"`
+	PlannedAt       time.Time               `json:"planned_at"`
+	Owner           string                  `json:"owner,omitempty"`
+	EscalationLevel string                  `json:"escalation_level,omitempty"`
+	TotalEscalated  int                     `json:"total_escalated"`
+	Groups          []ReviewEscalationGroup `json:"groups"`
+	Payload         json.RawMessage         `json:"payload"`
+	PayloadSHA256   string                  `json:"payload_sha256"`
+	Signature       string                  `json:"signature,omitempty"`
+	Headers         map[string]string       `json:"headers"`
+	Attempt         int                     `json:"attempt"`
+	MaxAttempts     int                     `json:"max_attempts"`
+	NextRetryAfter  time.Duration           `json:"next_retry_after,omitempty"`
 }
 
 // GapRequest configures knowledge-gap detection for a namespace.
@@ -1747,6 +1782,76 @@ func matchingEscalationGroups(groups []ReviewEscalationGroup, owner, level strin
 		out = append(out, group)
 	}
 	return out
+}
+
+// ReviewHandoffWebhookPlan returns signed dry-run webhook deliveries for saved handoff snapshots.
+func (h *NamespaceHandle) ReviewHandoffWebhookPlan(ctx context.Context, req ReviewHandoffWebhookRequest) ([]ReviewHandoffWebhookDelivery, error) {
+	target := strings.TrimSpace(req.TargetURL)
+	if target == "" {
+		return nil, fmt.Errorf("review handoff webhook: target URL is required")
+	}
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("review handoff webhook: invalid target URL")
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return nil, fmt.Errorf("review handoff webhook: target URL must be http or https")
+	}
+	plannedAt := req.Now
+	if plannedAt.IsZero() {
+		plannedAt = time.Now().UTC()
+	}
+	maxAttempts := req.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 3
+	}
+	handoffs, err := h.ReviewHandoffs(ctx, req.ReviewHandoffRequest)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReviewHandoffWebhookDelivery, 0, len(handoffs))
+	for _, digest := range handoffs {
+		payload, err := json.Marshal(digest)
+		if err != nil {
+			return nil, fmt.Errorf("review handoff webhook: marshal payload: %w", err)
+		}
+		sum := sha256.Sum256(payload)
+		payloadSHA := hex.EncodeToString(sum[:])
+		headers := map[string]string{
+			"Content-Type":                 "application/json",
+			"X-ContextDB-Delivery-Mode":    "dry-run",
+			"X-ContextDB-Handoff-Event-ID": digest.EventID.String(),
+			"X-ContextDB-Payload-SHA256":   payloadSHA,
+		}
+		signature := ""
+		if req.Secret != "" {
+			mac := hmac.New(sha256.New, []byte(req.Secret))
+			_, _ = mac.Write(payload)
+			signature = "sha256=" + hex.EncodeToString(mac.Sum(nil))
+			headers["X-ContextDB-Signature"] = signature
+		}
+		out = append(out, ReviewHandoffWebhookDelivery{
+			TargetURL:       target,
+			Method:          "POST",
+			DryRun:          true,
+			EventID:         digest.EventID,
+			Namespace:       digest.Namespace,
+			GeneratedAt:     digest.GeneratedAt,
+			PlannedAt:       plannedAt,
+			Owner:           strings.TrimSpace(req.Owner),
+			EscalationLevel: strings.TrimSpace(req.EscalationLevel),
+			TotalEscalated:  digest.TotalEscalated,
+			Groups:          digest.Groups,
+			Payload:         json.RawMessage(payload),
+			PayloadSHA256:   payloadSHA,
+			Signature:       signature,
+			Headers:         headers,
+			Attempt:         1,
+			MaxAttempts:     maxAttempts,
+			NextRetryAfter:  time.Minute,
+		})
+	}
+	return out, nil
 }
 
 // Explain returns a narrative report explaining what is known about a node.

@@ -445,6 +445,28 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(handoffs[0].EventID, recordedDigest.EventID)
 	is.Equal(handoffs[0].TotalEscalated, 1)
 	is.Equal(handoffs[0].Groups[0].Owner, "alice")
+	webhooks, err := ns.ReviewHandoffWebhookPlan(ctx, client.ReviewHandoffWebhookRequest{
+		ReviewHandoffRequest: client.ReviewHandoffRequest{
+			After:           start,
+			Owner:           "alice",
+			EscalationLevel: "review_overdue",
+		},
+		TargetURL: "https://ops.example.test/contextdb/handoffs",
+		Secret:    "test-secret",
+		Now:       start.Add(3 * time.Hour),
+	})
+	is.NoErr(err)
+	is.Equal(len(webhooks), 1)
+	is.Equal(webhooks[0].EventID, recordedDigest.EventID)
+	is.Equal(webhooks[0].TargetURL, "https://ops.example.test/contextdb/handoffs")
+	is.True(webhooks[0].DryRun)
+	is.Equal(webhooks[0].Method, "POST")
+	is.Equal(webhooks[0].TotalEscalated, 1)
+	is.True(strings.HasPrefix(webhooks[0].Signature, "sha256="))
+	is.Equal(webhooks[0].Headers["X-ContextDB-Signature"], webhooks[0].Signature)
+	is.Equal(webhooks[0].Headers["X-ContextDB-Delivery-Mode"], "dry-run")
+	is.Equal(webhooks[0].MaxAttempts, 3)
+	is.True(len(webhooks[0].Payload) > 0)
 
 	filtered, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
 		LowConfidenceThreshold: 0.35,

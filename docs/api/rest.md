@@ -22,6 +22,7 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/review/escalation-digests` | Record durable escalation digest snapshot |
 | `GET` | `/v1/namespaces/{ns}/review/escalation-digests` | List durable escalation digest snapshots |
 | `GET` | `/v1/namespaces/{ns}/review/handoffs` | Poll filtered review handoff snapshots |
+| `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/plan` | Plan signed dry-run review handoff webhook deliveries |
 | `GET` | `/v1/namespaces/{ns}/review/decisions` | Review workflow decision history |
 | `POST` | `/v1/namespaces/{ns}/review/decisions` | Record review assignment, snooze, or resolution |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/validate` | Validate a claim |
@@ -204,9 +205,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.40.0",
+  "version": "0.41.0",
   "api_version": "v1",
-  "docs_version": "0.40.0",
+  "docs_version": "0.41.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -443,6 +444,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.40.0",
       "description": "Review handoff feeds expose saved escalation digest snapshots filtered by owner and escalation level."
+    },
+    {
+      "name": "review-handoff-webhook-plan",
+      "status": "stable",
+      "since": "v0.41.0",
+      "description": "Review handoff webhook plans produce signed dry-run delivery payloads for saved escalation handoffs."
     }
   ],
   "migrations": [
@@ -450,7 +457,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.40.0"
+  "release_notes_path": "/contextdb/releases/v0.41.0"
 }
 ```
 
@@ -763,6 +770,21 @@ curl "http://localhost:7701/v1/namespaces/my-app/review/handoffs?owner=alice&esc
 ```
 
 The handoff feed returns saved digest snapshots whose groups match the requested owner and escalation level.
+
+Plan signed dry-run webhook deliveries for handoffs with:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/plan \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "owner": "alice",
+    "escalation_level": "review_overdue",
+    "target_url": "https://ops.example.test/contextdb/handoffs",
+    "secret": "webhook-signing-secret"
+  }'
+```
+
+The response includes `dry_run: true`, the JSON payload that would be posted, `payload_sha256`, a `sha256=` HMAC signature when `secret` is provided, and retry metadata. The endpoint does not send outbound requests.
 
 Record workflow state for a derived review item with:
 

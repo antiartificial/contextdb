@@ -335,10 +335,21 @@ handoffs, err := ns.ReviewHandoffs(ctx, client.ReviewHandoffRequest{
     Owner: "alice",
     EscalationLevel: "review_overdue",
 })
+deliveries, err := ns.ReviewHandoffWebhookPlan(ctx, client.ReviewHandoffWebhookRequest{
+    ReviewHandoffRequest: client.ReviewHandoffRequest{
+        Owner: "alice",
+        EscalationLevel: "review_overdue",
+    },
+    TargetURL: "https://ops.example.test/contextdb/handoffs",
+    Secret: "webhook-signing-secret",
+})
 _ = saved
 _ = digests
 _ = handoffs
+_ = deliveries
 ```
+
+`ReviewHandoffWebhookPlan` is dry-run only. It returns the payload, SHA-256 digest, optional HMAC signature, headers, and retry metadata for each saved handoff snapshot without sending outbound requests.
 
 Review decisions persist workflow state without making queue generation stateful:
 
