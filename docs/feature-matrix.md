@@ -33,6 +33,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb doctor` | Implemented, non-mutating checks | v0.4 | `operations`, `introspection` | CLI checks live REST ping, version, features, and migration metadata |
 | `contextdb doctor --sample-write` | Implemented, opt-in mutating probe | v0.4.1 | `operations`, `durability` | CLI writes a deduplicated probe node and verifies vector retrieval sees it |
 | `contextdb doctor --backup-marker` | Implemented, opt-in readiness check | v0.10 | `operations`, `backup`, `durability` | CLI verifies a backup marker file exists and is newer than `--max-backup-age` |
+| `contextdb doctor --store-consistency` | Implemented, opt-in local check | v0.49 | `operations`, `durability` | CLI samples valid graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
 | Snapshot backup marker | Implemented | v0.19 | `operations`, `backup`, `durability` | `contextdb snapshot export --backup-marker` writes a doctor-compatible marker only after export succeeds |
@@ -75,5 +76,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Store repair/index rebuild for deeper live consistency checks.
-3. Deeper doctor store/index consistency checks.
+2. Store repair execution for reviewed vector rebuild candidates.
+3. Retry fatigue summary for recurring failed handoff endpoints.

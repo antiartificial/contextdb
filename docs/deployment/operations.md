@@ -57,6 +57,17 @@ contextdb doctor --backup-marker /var/lib/contextdb/.last-backup --max-backup-ag
 
 The JSON report includes a `backup_readiness` check with the observed marker age.
 
+### Store Consistency
+
+Add `--store-consistency` when doctor runs on the same host and environment as the local contextdb data directory:
+
+```bash
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb doctor --store-consistency --store-namespace my-app --store-sample 100
+```
+
+The check samples valid graph nodes, verifies content fingerprint lookup for fingerprinted nodes, and uses vector search to confirm vector-bearing graph nodes are visible in the vector index. Missing vector hits are reported as rebuild candidates. The check is read-only and opt-in.
+
 ## Snapshot Backup And Restore
 
 Use `contextdb snapshot export` to write an NDJSON namespace backup:

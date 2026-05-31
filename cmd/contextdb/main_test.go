@@ -11,9 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/matryer/is"
 
 	"github.com/antiartificial/contextdb/internal/buildinfo"
+	"github.com/antiartificial/contextdb/internal/core"
+	memstore "github.com/antiartificial/contextdb/internal/store/memory"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
 
@@ -986,6 +989,59 @@ func TestBuildRankingEvalSnapshotReport(t *testing.T) {
 	is.Equal(len(report.Queries), report.TotalQueries)
 	is.True(len(report.Queries[0].TopResults) > 0)
 	is.True(report.Queries[0].TopResults[0].Score > 0)
+}
+
+func TestBuildStoreConsistencyCheck(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	kv := memstore.NewKVStore()
+	nodeID := uuid.New()
+	node := core.Node{
+		ID:          nodeID,
+		Namespace:   "prod",
+		Properties:  map[string]any{"text": "store consistency probe"},
+		Vector:      []float32{1, 0, 0, 0},
+		Fingerprint: core.ContentFingerprint("store consistency probe"),
+		Confidence:  0.9,
+		ValidFrom:   time.Now().Add(-time.Minute),
+		TxTime:      time.Now().Add(-time.Minute),
+	}
+	is.NoErr(graph.UpsertNode(ctx, node))
+	vecs.RegisterNode(node)
+	is.NoErr(vecs.Index(ctx, core.VectorEntry{Namespace: "prod", NodeID: &nodeID, Vector: node.Vector}))
+
+	check := buildStoreConsistencyCheck(ctx, graph, vecs, kv, "prod", 10)
+
+	is.True(check.OK)
+	is.Equal(check.Name, "store_consistency")
+	is.True(strings.Contains(check.Detail, "sampled=1"))
+	is.True(strings.Contains(check.Detail, "fingerprints=1"))
+	is.True(strings.Contains(check.Detail, "vectors=1"))
+}
+
+func TestBuildStoreConsistencyCheckFindsVectorRebuildCandidate(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	kv := memstore.NewKVStore()
+	node := core.Node{
+		ID:         uuid.New(),
+		Namespace:  "prod",
+		Properties: map[string]any{"text": "missing vector index"},
+		Vector:     []float32{1, 0, 0, 0},
+		Confidence: 0.9,
+		ValidFrom:  time.Now().Add(-time.Minute),
+		TxTime:     time.Now().Add(-time.Minute),
+	}
+	is.NoErr(graph.UpsertNode(ctx, node))
+
+	check := buildStoreConsistencyCheck(ctx, graph, vecs, kv, "prod", 10)
+
+	is.True(!check.OK)
+	is.True(strings.Contains(check.Detail, "vector rebuild candidate"))
 }
 
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {

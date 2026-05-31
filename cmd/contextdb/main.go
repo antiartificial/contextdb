@@ -48,6 +48,7 @@ import (
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/retrieval"
 	"github.com/antiartificial/contextdb/internal/server"
+	"github.com/antiartificial/contextdb/internal/store"
 	"github.com/antiartificial/contextdb/pkg/client"
 	"github.com/antiartificial/contextdb/testdata"
 )
@@ -1832,6 +1833,68 @@ func rankingEvalContainsNode(ids []uuid.UUID, id uuid.UUID) bool {
 	return false
 }
 
+func buildStoreConsistencyCheck(ctx context.Context, graph store.GraphStore, vecs store.VectorIndex, kv store.KVStore, namespace string, sampleLimit int) doctor.CheckResult {
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		namespace = "default"
+	}
+	if sampleLimit <= 0 {
+		sampleLimit = 100
+	}
+	nodes, err := graph.ValidAt(ctx, namespace, time.Now(), nil)
+	if err != nil {
+		return doctor.CheckResult{Name: "store_consistency", OK: false, Detail: "graph scan: " + err.Error()}
+	}
+	if len(nodes) > sampleLimit {
+		nodes = nodes[:sampleLimit]
+	}
+	fingerprintChecked := 0
+	vectorChecked := 0
+	var issues []string
+	for _, node := range nodes {
+		if node.Fingerprint != "" {
+			fingerprintChecked++
+			found, err := graph.GetNodeByFingerprint(ctx, namespace, node.Fingerprint)
+			if err != nil {
+				issues = append(issues, fmt.Sprintf("fingerprint lookup failed for %s: %v", node.ID, err))
+			} else if found == nil || found.ID != node.ID {
+				issues = append(issues, fmt.Sprintf("fingerprint lookup mismatch for %s", node.ID))
+			}
+		}
+		if len(node.Vector) > 0 {
+			vectorChecked++
+			results, err := vecs.Search(ctx, store.VectorQuery{
+				Namespace: namespace,
+				Vector:    node.Vector,
+				TopK:      10,
+				AsOf:      time.Now(),
+			})
+			if err != nil {
+				issues = append(issues, fmt.Sprintf("vector search failed for %s: %v", node.ID, err))
+			} else if !scoredResultsContainNode(results, node.ID) {
+				issues = append(issues, fmt.Sprintf("vector rebuild candidate %s", node.ID))
+			}
+		}
+	}
+	if kv == nil {
+		issues = append(issues, "kv store unavailable")
+	}
+	detail := fmt.Sprintf("namespace=%s sampled=%d fingerprints=%d vectors=%d rebuild_candidates=%d", namespace, len(nodes), fingerprintChecked, vectorChecked, len(issues))
+	if len(issues) > 0 {
+		return doctor.CheckResult{Name: "store_consistency", OK: false, Detail: detail + ": " + strings.Join(issues, "; ")}
+	}
+	return doctor.CheckResult{Name: "store_consistency", OK: true, Detail: detail}
+}
+
+func scoredResultsContainNode(results []core.ScoredNode, id uuid.UUID) bool {
+	for _, result := range results {
+		if result.Node.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func readSnapshotLifecycleIndex(path string) (snapshotLifecycleIndex, error) {
 	var index snapshotLifecycleIndex
 	data, err := os.ReadFile(strings.TrimSpace(path))
@@ -2732,6 +2795,9 @@ func runDoctor(args []string) {
 	sampleNamespace := fs.String("sample-namespace", "_doctor", "namespace to use with --sample-write")
 	backupMarker := fs.String("backup-marker", "", "path to a backup marker file to check for recency")
 	maxBackupAge := fs.Duration("max-backup-age", 24*time.Hour, "maximum acceptable age for --backup-marker")
+	storeConsistency := fs.Bool("store-consistency", false, "check local graph, vector, and fingerprint consistency")
+	storeNamespace := fs.String("store-namespace", "default", "namespace to check with --store-consistency")
+	storeSample := fs.Int("store-sample", 100, "maximum valid graph nodes to sample with --store-consistency")
 	_ = fs.Parse(args)
 
 	report, err := doctor.Run(context.Background(), doctor.Options{
@@ -2744,6 +2810,19 @@ func runDoctor(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb doctor: %v\n", err)
 		os.Exit(2)
+	}
+	if *storeConsistency {
+		db := openSnapshotDB()
+		defer db.Close()
+		graph, vecs, kv, _ := db.Stores()
+		report.Checks = append(report.Checks, buildStoreConsistencyCheck(context.Background(), graph, vecs, kv, *storeNamespace, *storeSample))
+		report.OK = true
+		for _, check := range report.Checks {
+			if !check.OK {
+				report.OK = false
+				break
+			}
+		}
 	}
 	writeIndentedJSON(report)
 	if !report.OK {

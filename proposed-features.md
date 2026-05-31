@@ -295,6 +295,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking eval snapshots | Implemented | `contextdb eval ranking --out PATH --report` emits JSON top-k, expected rank, reciprocal rank, MRR, and score breakdowns for the representative corpus |
 
+## Completed In v0.49.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Store repair/index rebuild | First slice implemented | `contextdb doctor --store-consistency --store-namespace NAME` samples valid graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -319,7 +325,7 @@ This is the working backlog for features that would make contextdb more useful, 
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
-| `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | Non-mutating checks completed in v0.4.0; opt-in sample write/retrieve probe completed in v0.4.1; deeper store/index checks remain |
+| `contextdb doctor` | One command to verify stores, migrations, indexes, health, and sample writes | Non-mutating checks completed in v0.4.0; opt-in sample write/retrieve probe completed in v0.4.1; store consistency sampling completed in v0.49.0 |
 | Release health page | Makes release confidence visible | Completed in v0.11.2; next step is generating gate status from CI artifacts |
 | Backup/restore command | Productizes snapshot import/export | Completed in v0.17.0 with Go client helpers, CLI export/import, seeded filters, namespace restore override, and dry-run validation |
 | Automated backup runbook | Makes backups repeatable for live deployments | Completed in v0.21.0 with scheduled export, restore preview, backup marker, doctor, launchd/systemd, and Norn pairing docs |
@@ -349,7 +355,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review handoff retry queue | Helps operators identify failed handoff deliveries that still need action | Completed in v0.44.0 with read-only retry candidates |
 | Review handoff retry execution | Lets operators resend a reviewed failed handoff without introducing automatic background retries | Completed in v0.45.0 with explicit digest/target retry execution and receipt recording |
 | Review handoff retry backoff policy | Helps operators pace repeated retries without adding background scheduling | Completed in v0.46.0 with read-only recommendations from receipt history |
-| Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
+| Store repair/index rebuild | Helps recover from vector index or KV drift | First doctor consistency slice completed in v0.49.0; explicit repair execution remains |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
 ## Test Investments
@@ -728,13 +734,13 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Review handoff retry backoff policy | Explicit retry exists, but repeated failures still need operator-safe pacing guidance | Completed in v0.46.0 with dry-run backoff recommendations from receipt history |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Completed in v0.47.0 with a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Completed in v0.48.0 with JSON score-drift reports for the representative corpus |
-| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Completed in v0.49.0 with a doctor check that samples graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
 
-## Fresh Brainstorm After v0.48.0
+## Fresh Brainstorm After v0.49.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+| Store repair execution | Doctor can now identify vector rebuild candidates, but operators still need an explicit repair action | Add dry-run-first vector reindexing for reviewed candidates |
 | Retry fatigue summary | Backoff guidance exists per failed handoff, but operators need to see repeated failures by endpoint | Group retry recommendation counts by target URL and status family |
 | Backup publish freshness monitor | Drift comparison exists on demand, but operators still need freshness thresholds | Add a non-mutating check that compares published generated_at with a max age |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
