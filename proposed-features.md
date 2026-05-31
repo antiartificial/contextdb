@@ -403,6 +403,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Doctor published backup repair hint | Implemented | Published backup drift reports and doctor checks include `recommended_publish_command` pointing to dry-run lifecycle index publish |
 
+## Completed In v0.67.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| KV derivation recipes | Implemented | `docs/deployment/kv-derivation-recipes.md` documents stable key naming, recent-node scopes, dry-run review, and execute promotion |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -939,11 +945,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.66.0
+## Fresh Brainstorm After v0.67.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV derivation recipes | The first derived value exists, but operators may need safe examples for naming hot keys | Add cookbook docs for recent-node session context key naming and review flow |
 | Ranking baseline deletion plan | Retention reports identify pruneable artifacts, but deletion should stay reviewable | Add an optional `--emit-delete-script` for pruneable ranking baselines without deleting files |
 | Retry fatigue saved filter presets | Cookbook examples help humans, but repeated lanes could use named presets | Add optional docs or metadata for stable owner/escalation lane preset names |
 | Published backup repair execution guard | Hints identify the command, but operators may need a checklist before replacing published metadata | Add cookbook safety checks for when to execute published catalog replacement after drift |
+| KV derivation freshness doctor | Derived cache values can age quietly after graph writes | Add an optional doctor check that reads derived KV metadata and warns when `generated_at` is older than a configured age |

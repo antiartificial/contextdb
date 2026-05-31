@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.66.0",
+  "version": "0.67.0",
   "api_version": "v1",
-  "docs_version": "0.66.0",
+  "docs_version": "0.67.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -270,6 +270,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.63.0",
       "description": "KV cache repair can derive reviewed recent-node session context values from graph data."
+    },
+    {
+      "name": "kv-cache-derivation-recipes",
+      "status": "stable",
+      "since": "v0.67.0",
+      "description": "Docs include naming, review, and promotion recipes for derived recent-node KV values."
     },
     {
       "name": "feedback-event-log",
@@ -613,7 +619,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.66.0"
+  "release_notes_path": "/contextdb/releases/v0.67.0"
 }
 ```
 

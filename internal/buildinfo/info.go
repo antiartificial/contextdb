@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.66.0"
+	Version = "0.67.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.66.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.67.0",
 	}
 }
 
@@ -62,6 +62,7 @@ func Features() []Feature {
 		{Name: "vector-index-repair", Status: "stable", Since: "v0.50.0", Description: "Dry-run-first CLI repair reindexes reviewed vector rebuild candidates from graph nodes."},
 		{Name: "kv-cache-refresh-repair", Status: "stable", Since: "v0.59.0", Description: "Dry-run-first CLI repair refreshes reviewed KV hot-key cache values."},
 		{Name: "kv-cache-derived-recent-nodes", Status: "stable", Since: "v0.63.0", Description: "KV cache repair can derive reviewed recent-node session context values from graph data."},
+		{Name: "kv-cache-derivation-recipes", Status: "stable", Since: "v0.67.0", Description: "Docs include naming, review, and promotion recipes for derived recent-node KV values."},
 		{Name: "feedback-event-log", Status: "stable", Since: "v0.5.0", Description: "Durable feedback audit events exposed through the Go SDK, REST, and GraphQL."},
 		{Name: "source-trust-timeline", Status: "stable", Since: "v0.6.0", Description: "Source credibility timeline points derived from durable feedback events."},
 		{Name: "claim-review-queue", Status: "stable", Since: "v0.7.0", Description: "Derived review tasks for refuted, stale, low-confidence, and contradictory claims."},

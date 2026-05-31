@@ -41,6 +41,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb repair vector-index` | Implemented, dry-run first | v0.50 | `operations`, `durability` | CLI reports vector rebuild candidates and reindexes reviewed graph-node vectors only with `--execute` |
 | `contextdb repair kv-cache` | Implemented, dry-run first | v0.59 | `operations`, `durability` | CLI plans reviewed KV hot-key refreshes and writes explicit values only with `--execute` |
 | `contextdb repair kv-cache --derive recent-nodes` | Implemented, dry-run first | v0.63 | `operations`, `durability` | CLI derives reviewed recent-node session context values from graph data before optional KV writes |
+| KV derivation recipes | Implemented | v0.67 | `operations`, `durability`, `deployment` | Deployment docs provide naming, review, and promotion recipes for derived recent-node KV cache values |
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
 | Snapshot backup marker | Implemented | v0.19 | `operations`, `backup`, `durability` | `contextdb snapshot export --backup-marker` writes a doctor-compatible marker only after export succeeds |
@@ -93,5 +94,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. KV derivation recipes for reviewed hot-key naming.
-3. Ranking baseline deletion scripts for reviewable baseline cleanup.
+2. Ranking baseline deletion scripts for reviewable baseline cleanup.
+3. Retry fatigue saved filter presets for repeated owner and escalation lanes.
