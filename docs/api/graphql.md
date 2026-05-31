@@ -340,6 +340,21 @@ query {
 }
 ```
 
+Find unresolved failed deliveries without sending retries:
+
+```graphql
+query {
+  reviewHandoffRetryCandidates(namespace: "my-app") {
+    digestEventId
+    targetUrl
+    attempts
+    lastStatusCode
+    payloadSha256
+    lastError
+  }
+}
+```
+
 Record and inspect review workflow state with:
 
 ```graphql

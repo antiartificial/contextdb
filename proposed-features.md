@@ -265,6 +265,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review handoff delivery receipts | Implemented | Go SDK, REST, and GraphQL expose append-only webhook delivery receipt events with target URL, status, payload hash, response hash, and error text |
 
+## Completed In v0.44.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Review handoff retry queue | Implemented | Go SDK, REST, and GraphQL expose read-only retry candidates grouped by digest event and target URL for unresolved failed deliveries |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -315,6 +321,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review handoff webhooks | Lets teams validate push-style handoff delivery before enabling outbound sends | Completed in v0.41.0 with signed dry-run webhook plans |
 | Review handoff webhook execution | Lets teams send push-style handoff delivery intentionally | Completed in v0.42.0 with explicit synchronous delivery and response capture |
 | Review handoff delivery receipts | Makes executed handoff delivery auditable | Completed in v0.43.0 with append-only receipt events and list APIs |
+| Review handoff retry queue | Helps operators identify failed handoff deliveries that still need action | Completed in v0.44.0 with read-only retry candidates |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -673,7 +680,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Review handoff retry queue | Receipts record delivery outcomes, but failed handoffs still need coordinated retry planning | Add a retry candidate query that groups failed receipts by digest event and target URL without sending retries |
+| Review handoff retry queue | Receipts record delivery outcomes, but failed handoffs still need coordinated retry planning | Completed in v0.44.0 with retry candidates grouped by digest event and target URL without sending retries |
+| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.44.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Review handoff retry execution | Retry candidates identify failures, but resend still needs an explicit operator control | Add opt-in resend by digest event ID and target URL with receipt recording and no automatic background loop |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |

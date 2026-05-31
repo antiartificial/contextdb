@@ -784,6 +784,20 @@ type ReviewHandoffDeliveryReceipt struct {
 	Error           string    `json:"error,omitempty"`
 }
 
+// ReviewHandoffRetryCandidate groups failed delivery receipts that may need retry.
+type ReviewHandoffRetryCandidate struct {
+	DigestEventID   uuid.UUID `json:"digest_event_id"`
+	TargetURL       string    `json:"target_url"`
+	LastReceiptID   uuid.UUID `json:"last_receipt_id"`
+	LastAttemptAt   time.Time `json:"last_attempt_at"`
+	Owner           string    `json:"owner,omitempty"`
+	EscalationLevel string    `json:"escalation_level,omitempty"`
+	Attempts        int       `json:"attempts"`
+	LastStatusCode  int       `json:"last_status_code,omitempty"`
+	PayloadSHA256   string    `json:"payload_sha256"`
+	LastError       string    `json:"last_error,omitempty"`
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -2005,6 +2019,45 @@ func (h *NamespaceHandle) ReviewHandoffDeliveryReceipts(ctx context.Context, aft
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return out[i].DeliveredAt.After(out[j].DeliveredAt)
+	})
+	return out, nil
+}
+
+// ReviewHandoffRetryCandidates returns latest failed handoff delivery groups without sending retries.
+func (h *NamespaceHandle) ReviewHandoffRetryCandidates(ctx context.Context, after time.Time) ([]ReviewHandoffRetryCandidate, error) {
+	receipts, err := h.ReviewHandoffDeliveryReceipts(ctx, after)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(receipts, func(i, j int) bool {
+		return receipts[i].DeliveredAt.Before(receipts[j].DeliveredAt)
+	})
+	candidates := map[string]ReviewHandoffRetryCandidate{}
+	for _, receipt := range receipts {
+		key := receipt.DigestEventID.String() + "\x00" + receipt.TargetURL
+		candidate := candidates[key]
+		candidate.Attempts++
+		if receipt.Success {
+			delete(candidates, key)
+			continue
+		}
+		candidate.DigestEventID = receipt.DigestEventID
+		candidate.TargetURL = receipt.TargetURL
+		candidate.LastReceiptID = receipt.ReceiptID
+		candidate.LastAttemptAt = receipt.DeliveredAt
+		candidate.Owner = receipt.Owner
+		candidate.EscalationLevel = receipt.EscalationLevel
+		candidate.LastStatusCode = receipt.StatusCode
+		candidate.PayloadSHA256 = receipt.PayloadSHA256
+		candidate.LastError = receipt.Error
+		candidates[key] = candidate
+	}
+	out := make([]ReviewHandoffRetryCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		out = append(out, candidate)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].LastAttemptAt.After(out[j].LastAttemptAt)
 	})
 	return out, nil
 }

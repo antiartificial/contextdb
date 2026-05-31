@@ -65,10 +65,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff webhook plans | Implemented | v0.41 | `review`, `operations` | Signed dry-run webhook delivery plans expose payload, headers, and retry metadata without sending requests |
 | Review handoff webhook execution | Implemented | v0.42 | `review`, `operations` | Explicit webhook delivery sends synchronous POSTs with timeout, status, body, and error capture |
 | Review handoff delivery receipts | Implemented | v0.43 | `review`, `operations`, `audit` | Executed handoff webhooks append durable receipts with target URL, status, payload hash, response hash, and errors |
+| Review handoff retry candidates | Implemented | v0.44 | `review`, `operations`, `audit` | Failed handoff receipts are grouped by digest and target URL for retry review without sending retries |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Review handoff retry queue for teams that need durable retry coordination after receipt capture.
+2. Review handoff retry execution for teams that want explicit resend controls after candidate review.
 3. Deeper doctor store/index consistency checks.

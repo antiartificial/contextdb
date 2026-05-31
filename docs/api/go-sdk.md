@@ -354,15 +354,17 @@ executed, err := ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhook
     Timeout: 5 * time.Second,
 })
 receipts, err := ns.ReviewHandoffDeliveryReceipts(ctx, time.Now().Add(-24*time.Hour))
+retryCandidates, err := ns.ReviewHandoffRetryCandidates(ctx, time.Now().Add(-24*time.Hour))
 _ = saved
 _ = digests
 _ = handoffs
 _ = deliveries
 _ = executed
 _ = receipts
+_ = retryCandidates
 ```
 
-`ReviewHandoffWebhookPlan` is dry-run only. `ReviewHandoffWebhookDeliver` requires `Execute: true`, sends synchronous `POST` requests, captures status/body/error, and records append-only receipts with payload and response hashes.
+`ReviewHandoffWebhookPlan` is dry-run only. `ReviewHandoffWebhookDeliver` requires `Execute: true`, sends synchronous `POST` requests, captures status/body/error, and records append-only receipts with payload and response hashes. `ReviewHandoffRetryCandidates` groups unresolved failed receipts for operator review without sending retries.
 
 Review decisions persist workflow state without making queue generation stateful:
 

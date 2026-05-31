@@ -410,6 +410,37 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(receipt["status_code"], float64(http.StatusAccepted))
 	is.True(receipt["payload_sha256"].(string) != "")
 	is.True(receipt["response_sha256"].(string) != "")
+	failedWebhookTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("try later"))
+	}))
+	defer failedWebhookTarget.Close()
+	failedDeliverBody, _ := json.Marshal(map[string]any{
+		"owner":            "alice",
+		"escalation_level": "review_overdue",
+		"target_url":       failedWebhookTarget.URL,
+		"secret":           "test-secret",
+		"execute":          true,
+		"timeout_ms":       1000,
+	})
+	reqFailedWebhookDeliver := httptest.NewRequest("POST", "/v1/namespaces/channel:general/review/handoff-webhooks/deliver", bytes.NewReader(failedDeliverBody))
+	reqFailedWebhookDeliver.Header.Set("Content-Type", "application/json")
+	wFailedWebhookDeliver := httptest.NewRecorder()
+	handler.ServeHTTP(wFailedWebhookDeliver, reqFailedWebhookDeliver)
+	is.Equal(wFailedWebhookDeliver.Code, http.StatusOK)
+	reqRetryCandidates := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-candidates", nil)
+	wRetryCandidates := httptest.NewRecorder()
+	handler.ServeHTTP(wRetryCandidates, reqRetryCandidates)
+	is.Equal(wRetryCandidates.Code, http.StatusOK)
+	var retryCandidatesResp map[string]any
+	is.NoErr(json.Unmarshal(wRetryCandidates.Body.Bytes(), &retryCandidatesResp))
+	candidates := retryCandidatesResp["candidates"].([]any)
+	is.Equal(len(candidates), 1)
+	candidate := candidates[0].(map[string]any)
+	is.Equal(candidate["target_url"], failedWebhookTarget.URL)
+	is.Equal(candidate["attempts"], float64(1))
+	is.Equal(candidate["last_status_code"], float64(http.StatusBadGateway))
+	is.True(candidate["last_error"].(string) != "")
 
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
@@ -875,6 +906,13 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				responseSha256
 				error
 			}
+			reviewHandoffRetryCandidates(namespace: "graphql-test") {
+				targetUrl
+				attempts
+				lastStatusCode
+				payloadSha256
+				lastError
+			}
 			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
 				id
 				type
@@ -980,6 +1018,8 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(graphQLReceipt["statusCode"], float64(http.StatusAccepted))
 	is.True(graphQLReceipt["payloadSha256"].(string) != "")
 	is.True(graphQLReceipt["responseSha256"].(string) != "")
+	graphQLRetryCandidates := data["reviewHandoffRetryCandidates"].([]any)
+	is.Equal(len(graphQLRetryCandidates), 0)
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)

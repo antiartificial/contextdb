@@ -644,6 +644,52 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 		},
 	})
 
+	reviewHandoffRetryCandidateType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "ReviewHandoffRetryCandidate",
+		Fields: graphql.Fields{
+			"digestEventId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.DigestEventID.String(), nil
+			}},
+			"targetUrl": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.TargetURL, nil
+			}},
+			"lastReceiptId": &graphql.Field{Type: graphql.NewNonNull(graphql.ID), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.LastReceiptID.String(), nil
+			}},
+			"lastAttemptAt": &graphql.Field{Type: graphql.DateTime, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.LastAttemptAt, nil
+			}},
+			"owner": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.Owner, nil
+			}},
+			"escalationLevel": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.EscalationLevel, nil
+			}},
+			"attempts": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.Attempts, nil
+			}},
+			"lastStatusCode": &graphql.Field{Type: graphql.Int, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.LastStatusCode, nil
+			}},
+			"payloadSha256": &graphql.Field{Type: graphql.NewNonNull(graphql.String), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.PayloadSHA256, nil
+			}},
+			"lastError": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				candidate, _ := p.Source.(client.ReviewHandoffRetryCandidate)
+				return candidate.LastError, nil
+			}},
+		},
+	})
+
 	citedClaimType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "CitedClaim",
 		Fields: graphql.Fields{
@@ -1361,6 +1407,15 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewHandoffDeliveryReceipts,
 			},
+			"reviewHandoffRetryCandidates": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffRetryCandidateType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveReviewHandoffRetryCandidates,
+			},
 			"reviewDecisions": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
 				Args: graphql.FieldConfigArgument{
@@ -1750,6 +1805,17 @@ func (s *GraphQLServer) resolveReviewHandoffDeliveryReceipts(p graphql.ResolvePa
 	after, _ := p.Args["after"].(time.Time)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ReviewHandoffDeliveryReceipts(p.Context, after)
+}
+
+func (s *GraphQLServer) resolveReviewHandoffRetryCandidates(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewHandoffRetryCandidates(p.Context, after)
 }
 
 func (s *GraphQLServer) resolveDeliverReviewHandoffWebhook(p graphql.ResolveParams) (interface{}, error) {
