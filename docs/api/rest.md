@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.58.0",
+  "version": "0.59.0",
   "api_version": "v1",
-  "docs_version": "0.58.0",
+  "docs_version": "0.59.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -252,6 +252,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.50.0",
       "description": "Dry-run-first CLI repair reindexes reviewed vector rebuild candidates from graph nodes."
+    },
+    {
+      "name": "kv-cache-refresh-repair",
+      "status": "stable",
+      "since": "v0.59.0",
+      "description": "Dry-run-first CLI repair refreshes reviewed KV hot-key cache values."
     },
     {
       "name": "feedback-event-log",
@@ -565,7 +571,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.58.0"
+  "release_notes_path": "/contextdb/releases/v0.59.0"
 }
 ```
 

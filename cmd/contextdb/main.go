@@ -217,12 +217,14 @@ func runEvalRanking(args []string) {
 
 func runRepair(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "contextdb repair: expected vector-index")
+		fmt.Fprintln(os.Stderr, "contextdb repair: expected vector-index or kv-cache")
 		os.Exit(2)
 	}
 	switch args[0] {
 	case "vector-index":
 		runRepairVectorIndex(args[1:])
+	case "kv-cache":
+		runRepairKVCache(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb repair: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -246,6 +248,47 @@ func runRepairVectorIndex(args []string) {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb repair vector-index: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runRepairKVCache(args []string) {
+	fs := flag.NewFlagSet("contextdb repair kv-cache", flag.ExitOnError)
+	var keys repeatedStringFlag
+	fs.Var(&keys, "key", "KV hot key to refresh; repeat for multiple keys")
+	value := fs.String("value", "", "literal value to write for each refresh candidate")
+	valueFile := fs.String("value-file", "", "file containing the value to write for each refresh candidate")
+	ttl := fs.Int("ttl", 0, "TTL seconds for refreshed keys; 0 means no explicit expiry")
+	overwrite := fs.Bool("overwrite", false, "refresh keys even when they already have values")
+	execute := fs.Bool("execute", false, "write reviewed KV refresh candidates")
+	reportOut := fs.Bool("report", false, "print the JSON KV refresh report")
+	_ = fs.Parse(args)
+
+	valueBytes, valueSource, err := kvRefreshValue(*value, *valueFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", err)
+		os.Exit(2)
+	}
+	db := openSnapshotDB()
+	defer db.Close()
+	_, _, kv, _ := db.Stores()
+	report, err := buildKVRefreshReport(context.Background(), kv, kvRefreshOptions{
+		Keys:        keys,
+		Value:       valueBytes,
+		ValueSource: valueSource,
+		TTLSeconds:  *ttl,
+		Overwrite:   *overwrite,
+		Execute:     *execute,
+		GeneratedAt: time.Now(),
+	})
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", err)
 		os.Exit(1)
 	}
 	if !*reportOut {
@@ -1182,6 +1225,45 @@ type rankingEvalDiffQuery struct {
 	CurrentTopScore        float64 `json:"current_top_score"`
 	TopScoreDelta          float64 `json:"top_score_delta"`
 	TopResultChanged       bool    `json:"top_result_changed"`
+}
+
+type kvRefreshOptions struct {
+	Keys        []string
+	Value       []byte
+	ValueSource string
+	TTLSeconds  int
+	Overwrite   bool
+	Execute     bool
+	GeneratedAt time.Time
+}
+
+type kvRefreshReport struct {
+	SchemaVersion     int                 `json:"schema_version"`
+	ContextDBVersion  string              `json:"contextdb_version"`
+	GeneratedAt       string              `json:"generated_at"`
+	DryRun            bool                `json:"dry_run"`
+	Execute           bool                `json:"execute"`
+	Overwrite         bool                `json:"overwrite"`
+	TTLSeconds        int                 `json:"ttl_seconds"`
+	ValueSource       string              `json:"value_source"`
+	Keys              int                 `json:"keys"`
+	Present           int                 `json:"present"`
+	Missing           int                 `json:"missing"`
+	RefreshCandidates int                 `json:"refresh_candidates"`
+	Written           int                 `json:"written"`
+	Skipped           int                 `json:"skipped"`
+	OK                bool                `json:"ok"`
+	ValidationErrors  []string            `json:"validation_errors,omitempty"`
+	Items             []kvRefreshPlanItem `json:"items"`
+}
+
+type kvRefreshPlanItem struct {
+	Key        string `json:"key"`
+	Present    bool   `json:"present"`
+	Action     string `json:"action"`
+	ValueBytes int    `json:"value_bytes,omitempty"`
+	TTLSeconds int    `json:"ttl_seconds,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 type vectorIndexRepairReport struct {
@@ -2478,6 +2560,121 @@ func buildKVConsistencyCheck(ctx context.Context, kv store.KVStore, keys []strin
 		return doctor.CheckResult{Name: "kv_consistency", OK: false, Detail: detail + ": " + strings.Join(issues, "; ")}
 	}
 	return doctor.CheckResult{Name: "kv_consistency", OK: true, Detail: detail}
+}
+
+func buildKVRefreshReport(ctx context.Context, kv store.KVStore, opts kvRefreshOptions) (kvRefreshReport, error) {
+	generatedAt := opts.GeneratedAt
+	if generatedAt.IsZero() {
+		generatedAt = time.Now()
+	}
+	report := kvRefreshReport{
+		SchemaVersion:    1,
+		ContextDBVersion: buildinfo.Version,
+		GeneratedAt:      generatedAt.UTC().Format(time.RFC3339),
+		DryRun:           !opts.Execute,
+		Execute:          opts.Execute,
+		Overwrite:        opts.Overwrite,
+		TTLSeconds:       opts.TTLSeconds,
+		ValueSource:      strings.TrimSpace(opts.ValueSource),
+	}
+	if report.ValueSource == "" {
+		report.ValueSource = "literal"
+	}
+	keys := normalizeKVRefreshKeys(opts.Keys)
+	report.Keys = len(keys)
+	if len(keys) == 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "at least one --key is required")
+	}
+	if len(opts.Value) == 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "refresh value must not be empty")
+	}
+	if opts.TTLSeconds < 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "--ttl must be zero or positive")
+	}
+	if kv == nil {
+		report.ValidationErrors = append(report.ValidationErrors, "kv store unavailable")
+	}
+	if len(report.ValidationErrors) > 0 {
+		report.OK = false
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	for _, key := range keys {
+		item := kvRefreshPlanItem{Key: key, ValueBytes: len(opts.Value), TTLSeconds: opts.TTLSeconds}
+		value, err := kv.Get(ctx, key)
+		if err != nil {
+			item.Action = "error"
+			item.Error = err.Error()
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("kv lookup failed for %q: %v", key, err))
+			report.Items = append(report.Items, item)
+			continue
+		}
+		item.Present = len(value) > 0
+		if item.Present {
+			report.Present++
+		} else {
+			report.Missing++
+		}
+		if item.Present && !opts.Overwrite {
+			item.Action = "skip_present"
+			report.Skipped++
+			report.Items = append(report.Items, item)
+			continue
+		}
+		report.RefreshCandidates++
+		if !opts.Execute {
+			item.Action = "plan_write"
+			report.Items = append(report.Items, item)
+			continue
+		}
+		if err := kv.Set(ctx, key, opts.Value, opts.TTLSeconds); err != nil {
+			item.Action = "error"
+			item.Error = err.Error()
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("kv write failed for %q: %v", key, err))
+			report.Items = append(report.Items, item)
+			continue
+		}
+		item.Action = "written"
+		report.Written++
+		report.Items = append(report.Items, item)
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func kvRefreshValue(value, valueFile string) ([]byte, string, error) {
+	value = strings.TrimSpace(value)
+	valueFile = strings.TrimSpace(valueFile)
+	if value != "" && valueFile != "" {
+		return nil, "", errors.New("--value and --value-file are mutually exclusive")
+	}
+	if valueFile != "" {
+		data, err := os.ReadFile(valueFile)
+		if err != nil {
+			return nil, "", fmt.Errorf("read --value-file: %w", err)
+		}
+		return data, "file:" + valueFile, nil
+	}
+	return []byte(value), "literal", nil
+}
+
+func normalizeKVRefreshKeys(keys []string) []string {
+	var normalized []string
+	seen := map[string]struct{}{}
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, key)
+	}
+	return normalized
 }
 
 func buildPublishedBackupFreshnessCheck(ctx context.Context, client *http.Client, opts snapshotLifecycleIndexPublishFreshnessOptions) doctor.CheckResult {

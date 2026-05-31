@@ -355,6 +355,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Retry fatigue owner grouping | Implemented | Retry fatigue summaries now include owner and escalation-level breakdowns across Go SDK, REST, GraphQL, and Markdown handoff export |
 
+## Completed In v0.59.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| KV refresh plan execution | Implemented | `contextdb repair kv-cache --key KEY --value/--value-file --report` plans reviewed hot-key refreshes and `--execute` writes explicit values |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -841,7 +847,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Completed in v0.55.0 with Markdown recaps for MRR, pass/fail totals, failures, top results, and score breakdowns |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Completed in v0.57.0 with `published_backup_freshness` inside `contextdb doctor` |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
@@ -850,7 +856,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
 | Ranking eval historical diff | Markdown recaps summarize a single run, but reviewers still need release-to-release score movement | Completed in v0.56.0 with JSON and Markdown diffs for MRR, pass, rank, and top-score movement |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Completed in v0.57.0 with `published_backup_freshness` inside `contextdb doctor` |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
@@ -859,7 +865,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Completed in v0.57.0 with `published_backup_freshness` inside `contextdb doctor` |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
 | Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
@@ -868,7 +874,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
 | Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
 | Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
@@ -877,7 +883,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
 | Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
 | Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Add optional owner filtering to retry fatigue query parameters |
+
+## Fresh Brainstorm After v0.59.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
+| Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
+| Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Add optional owner filtering to retry fatigue query parameters |
+| KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Add a reviewed derived type for recent-node session context keys |

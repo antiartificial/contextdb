@@ -1235,6 +1235,97 @@ func TestBuildKVConsistencyCheckFindsRefreshCandidate(t *testing.T) {
 	is.True(strings.Contains(check.Detail, "kv refresh candidate"))
 }
 
+func TestBuildKVRefreshReportDryRun(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	is.NoErr(kv.Set(ctx, "context:prod:present", []byte("cached"), 0))
+
+	report, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys:        []string{"context:prod:missing", "context:prod:present", "context:prod:missing"},
+		Value:       []byte("refreshed"),
+		ValueSource: "literal",
+		GeneratedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(report.DryRun)
+	is.Equal(report.GeneratedAt, "2026-06-01T12:00:00Z")
+	is.Equal(report.Keys, 2)
+	is.Equal(report.Present, 1)
+	is.Equal(report.Missing, 1)
+	is.Equal(report.RefreshCandidates, 1)
+	is.Equal(report.Written, 0)
+	is.Equal(report.Skipped, 1)
+	is.Equal(report.Items[0].Action, "plan_write")
+	is.Equal(report.Items[1].Action, "skip_present")
+	value, err := kv.Get(ctx, "context:prod:missing")
+	is.NoErr(err)
+	is.Equal(len(value), 0)
+}
+
+func TestBuildKVRefreshReportExecute(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+
+	report, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys:       []string{"context:prod:missing"},
+		Value:      []byte("refreshed"),
+		TTLSeconds: 60,
+		Execute:    true,
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.True(!report.DryRun)
+	is.Equal(report.RefreshCandidates, 1)
+	is.Equal(report.Written, 1)
+	is.Equal(report.Items[0].Action, "written")
+	is.Equal(report.Items[0].TTLSeconds, 60)
+	value, err := kv.Get(ctx, "context:prod:missing")
+	is.NoErr(err)
+	is.Equal(string(value), "refreshed")
+}
+
+func TestBuildKVRefreshReportOverwrite(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	is.NoErr(kv.Set(ctx, "context:prod:present", []byte("cached"), 0))
+
+	report, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys:      []string{"context:prod:present"},
+		Value:     []byte("refreshed"),
+		Overwrite: true,
+		Execute:   true,
+	})
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.Present, 1)
+	is.Equal(report.RefreshCandidates, 1)
+	is.Equal(report.Written, 1)
+	value, err := kv.Get(ctx, "context:prod:present")
+	is.NoErr(err)
+	is.Equal(string(value), "refreshed")
+}
+
+func TestBuildKVRefreshReportRequiresValue(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+
+	report, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys: []string{"context:prod:missing"},
+	})
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "refresh value"))
+}
+
 func TestBuildVectorIndexRepairReportDryRun(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

@@ -87,6 +87,18 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 
 Missing keys are reported as refresh candidates in a `kv_consistency` check. The check only reads the configured keys and does not refresh or mutate the cache.
 
+Use `contextdb repair kv-cache` after reviewing missing hot keys and choosing the exact cache value to restore. The command is dry-run by default and only writes with `--execute`:
+
+```bash
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb repair kv-cache --key context:my-app:active --value-file ./active-context.json --report
+
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb repair kv-cache --key context:my-app:active --value-file ./active-context.json --execute --report
+```
+
+The repair report lists present keys, missing keys, refresh candidates, skipped keys, and written keys. Existing keys are skipped unless `--overwrite` is set.
+
 Use `contextdb repair vector-index` after reviewing candidates and choosing a maintenance window. The command is dry-run by default and only mutates the vector index with `--execute`:
 
 ```bash
