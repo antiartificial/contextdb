@@ -421,6 +421,10 @@ func runRepairVectorIndex(args []string) {
 }
 
 func runRepairKVCache(args []string) {
+	if len(args) > 0 && args[0] == "receipt" {
+		runRepairKVCacheReceipt(args[1:])
+		return
+	}
 	fs := flag.NewFlagSet("contextdb repair kv-cache", flag.ExitOnError)
 	var keys repeatedStringFlag
 	fs.Var(&keys, "key", "KV hot key to refresh; repeat for multiple keys")
@@ -489,6 +493,40 @@ func runRepairKVCache(args []string) {
 			fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", writeErr)
 			os.Exit(1)
 		}
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runRepairKVCacheReceipt(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb repair kv-cache receipt: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runRepairKVCacheReceiptVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb repair kv-cache receipt: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runRepairKVCacheReceiptVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb repair kv-cache receipt verify", flag.ExitOnError)
+	receiptPath := fs.String("receipt", "", "JSON derived KV refresh receipt to verify")
+	valueFile := fs.String("value-file", "", "optional reviewed derived value file to hash and compare with receipt")
+	reportOut := fs.Bool("report", false, "print a JSON derived KV refresh receipt verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifyKVRefreshReceipt(*receiptPath, *valueFile)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb repair kv-cache receipt verify: %v\n", err)
+		os.Exit(1)
 	}
 	if !*reportOut {
 		fmt.Fprintln(os.Stdout, "ok")
@@ -1700,6 +1738,23 @@ type kvRefreshReceipt struct {
 	ValueSHA256              string          `json:"value_sha256"`
 	RecommendedDoctorCommand string          `json:"recommended_doctor_command,omitempty"`
 	Report                   kvRefreshReport `json:"report"`
+}
+
+type kvRefreshReceiptVerifyReport struct {
+	OK                       bool     `json:"ok"`
+	ReceiptFile              string   `json:"receipt_file"`
+	ValueFile                string   `json:"value_file,omitempty"`
+	Kind                     string   `json:"kind,omitempty"`
+	SchemaVersion            int      `json:"schema_version,omitempty"`
+	ContextDBVersion         string   `json:"contextdb_version,omitempty"`
+	ValueSource              string   `json:"value_source,omitempty"`
+	StoredValueSHA256        string   `json:"stored_value_sha256,omitempty"`
+	ComputedValueSHA256      string   `json:"computed_value_sha256,omitempty"`
+	ComputedReportSHA256     string   `json:"computed_report_sha256,omitempty"`
+	RecommendedDoctorCommand string   `json:"recommended_doctor_command,omitempty"`
+	ComputedDoctorCommand    string   `json:"computed_doctor_command,omitempty"`
+	WrittenKeys              []string `json:"written_keys,omitempty"`
+	ValidationErrors         []string `json:"validation_errors,omitempty"`
 }
 
 type kvRefreshPlanItem struct {
@@ -4111,6 +4166,124 @@ func buildKVRefreshReceipt(report kvRefreshReport, value []byte) (kvRefreshRecei
 		RecommendedDoctorCommand: kvRefreshReceiptDoctorCommand(report),
 		Report:                   report,
 	}, nil
+}
+
+func verifyKVRefreshReceipt(receiptPath, valuePath string) (kvRefreshReceiptVerifyReport, error) {
+	report := kvRefreshReceiptVerifyReport{
+		ReceiptFile: strings.TrimSpace(receiptPath),
+		ValueFile:   strings.TrimSpace(valuePath),
+	}
+	if report.ReceiptFile == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--receipt is required")
+		report.OK = false
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	data, err := os.ReadFile(report.ReceiptFile)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read receipt: %v", err))
+		report.OK = false
+		return report, err
+	}
+	var receipt kvRefreshReceipt
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode receipt: %v", err))
+		report.OK = false
+		return report, err
+	}
+
+	report.Kind = receipt.Kind
+	report.SchemaVersion = receipt.SchemaVersion
+	report.ContextDBVersion = receipt.ContextDBVersion
+	report.ValueSource = receipt.ValueSource
+	report.StoredValueSHA256 = receipt.ValueSHA256
+	report.RecommendedDoctorCommand = receipt.RecommendedDoctorCommand
+	report.ComputedDoctorCommand = kvRefreshReceiptDoctorCommand(receipt.Report)
+	report.WrittenKeys = kvRefreshReceiptWrittenKeys(receipt.Report)
+
+	reportData, err := json.Marshal(receipt.Report)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("marshal embedded report: %v", err))
+	} else {
+		sum := sha256.Sum256(reportData)
+		report.ComputedReportSHA256 = hex.EncodeToString(sum[:])
+	}
+
+	if receipt.Kind != "contextdb.kv.refresh.receipt" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("kind = %q, want contextdb.kv.refresh.receipt", receipt.Kind))
+	}
+	if receipt.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("schema_version = %d, want 1", receipt.SchemaVersion))
+	}
+	if receipt.ValueSource != "derived:recent-nodes" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("value_source = %q, want derived:recent-nodes", receipt.ValueSource))
+	}
+	if !receipt.Report.Execute || receipt.Report.DryRun {
+		report.ValidationErrors = append(report.ValidationErrors, "embedded report must be executed")
+	}
+	if !receipt.Report.OK {
+		report.ValidationErrors = append(report.ValidationErrors, "embedded report ok must be true")
+	}
+	if receipt.Report.ValueSource != receipt.ValueSource {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt value_source does not match embedded report value_source")
+	}
+	if receipt.GeneratedAt != receipt.Report.GeneratedAt {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt generated_at does not match embedded report generated_at")
+	}
+	if len(report.WrittenKeys) == 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "embedded report has no written keys")
+	}
+	if !isLowerHexSHA256(receipt.ValueSHA256) {
+		report.ValidationErrors = append(report.ValidationErrors, "value_sha256 must be a lowercase SHA-256 hex digest")
+	}
+	if receipt.RecommendedDoctorCommand != report.ComputedDoctorCommand {
+		report.ValidationErrors = append(report.ValidationErrors, "recommended_doctor_command does not match embedded report")
+	}
+	if report.ValueFile != "" {
+		value, err := os.ReadFile(report.ValueFile)
+		if err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read value file: %v", err))
+		} else {
+			sum := sha256.Sum256(value)
+			report.ComputedValueSHA256 = hex.EncodeToString(sum[:])
+			if receipt.ValueSHA256 != report.ComputedValueSHA256 {
+				report.ValidationErrors = append(report.ValidationErrors, "value_sha256 does not match --value-file")
+			}
+		}
+	}
+
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func kvRefreshReceiptWrittenKeys(report kvRefreshReport) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, item := range report.Items {
+		if item.Action != "written" {
+			continue
+		}
+		key := strings.TrimSpace(item.Key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out
+}
+
+func isLowerHexSHA256(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil && strings.ToLower(value) == value
 }
 
 func kvRefreshReceiptDoctorCommand(report kvRefreshReport) string {

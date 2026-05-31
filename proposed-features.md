@@ -578,6 +578,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Doctor backup receipt runbook lane | Implemented | `docs/deployment/published-backup-repair-guard.md` now documents a doctor receipt closure lane, and `TestPublishedBackupRepairGuardDocumentsDoctorReceiptClosureLane` guards the required diagnosis, receipt, doctor, and closeout commands |
 
+## Completed In v0.96.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| KV derived refresh receipt verifier | Implemented | `contextdb repair kv-cache receipt verify --receipt PATH --value-file PATH --report` validates derived KV refresh receipt structure, embedded executed report evidence, doctor command drift, and optional reviewed value SHA-256 |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1114,10 +1120,10 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.95.0
+## Fresh Brainstorm After v0.96.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV derived refresh receipt verifier | Refresh receipts now exist, but incident review may need later integrity checks | Add a verifier that recomputes report/value hash and checks written-key doctor commands |
 | Retry fatigue preset schema publication | SDK and REST parity is covered locally, but docs consumers may want a public artifact | Publish the preset schema into the docs site and link it from the API/cookbook pages |
 | Doctor backup receipt closure artifact bundle | The closure lane names evidence, but incident handoff may need one stable bundle command | Add a docs-first or CLI bundle that gathers dry-run, receipt, receipt-check, and final doctor reports |
+| KV derived refresh receipt doctor lane | The standalone verifier exists, but combined health reports could surface receipt drift beside freshness | Add a doctor option that runs `repair kv-cache receipt verify` for incident closeout |

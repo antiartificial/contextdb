@@ -100,6 +100,17 @@ If the dry-run payload is wrong, fix the derivation inputs before executing. Com
 
 `--receipt-out` is only valid with `--execute --derive recent-nodes`. The receipt records the executed refresh report, the SHA-256 hash of the reviewed derived value, and a `contextdb doctor --kv-derived-key ... --report` command to confirm the refreshed keys.
 
+Verify the receipt later before trusting it as incident evidence:
+
+```bash
+contextdb repair kv-cache receipt verify \
+  --receipt context-prod-support-recent-nodes.receipt.json \
+  --value-file context-prod-support-recent-nodes.value.json \
+  --report
+```
+
+The verifier checks the receipt kind and schema, confirms the embedded report was executed for `derived:recent-nodes`, recomputes the doctor confirmation command from written keys, and compares `value_sha256` with `--value-file` when the reviewed value artifact is available.
+
 ## Common Patterns
 
 | Pattern | Key | Scope |

@@ -51,6 +51,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | KV derivation recipes | Implemented | v0.67 | `operations`, `durability`, `deployment` | Deployment docs provide naming, review, and promotion recipes for derived recent-node KV cache values |
 | KV derived repair execution recipe | Implemented | v0.79 | `operations`, `durability`, `deployment` | Deployment docs provide a guarded doctor-hint to dry-run to execute checklist for stale derived KV refreshes |
 | KV derived refresh receipt | Implemented | v0.83 | `operations`, `durability`, `audit` | `repair kv-cache --derive recent-nodes --execute --receipt-out` writes value hash and doctor confirmation evidence |
+| KV derived refresh receipt verifier | Implemented | v0.96 | `operations`, `durability`, `audit` | `repair kv-cache receipt verify --receipt --value-file` validates receipt structure, embedded report evidence, doctor command, and optional reviewed value hash |
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
 | Snapshot backup marker | Implemented | v0.19 | `operations`, `backup`, `durability` | `contextdb snapshot export --backup-marker` writes a doctor-compatible marker only after export succeeds |
@@ -120,6 +121,6 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 ## Next Candidates
 
-1. KV derived refresh receipt verifier for incident evidence.
-2. Retry fatigue preset schema publication for docs consumers.
-3. Doctor backup receipt closure artifact bundle for incident handoff.
+1. Retry fatigue preset schema publication for docs consumers.
+2. Doctor backup receipt closure artifact bundle for incident handoff.
+3. KV derived refresh receipt doctor lane for combined health checks.
