@@ -608,6 +608,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Retry fatigue preset schema version index | Implemented | `docs/public/schemas/index.json` catalogs published docs schemas with owner, feature, status, URL, and release provenance; `TestPublicSchemaIndexCatalogsRetryFatiguePresetSchema` guards the first entry |
 
+## Completed In v0.101.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Doctor backup receipt closure bundle CLI | Implemented | `contextdb snapshot lifecycle index publish closure-bundle --dir PATH --out PATH --report` writes `closure-manifest.json` with expected repair artifacts, byte counts, SHA-256 hashes, and missing-artifact errors |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1144,10 +1150,10 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.100.0
+## Fresh Brainstorm After v0.101.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Doctor backup receipt closure bundle CLI | Stable artifact filenames are documented, but operators may want generated manifests and file checks | Add a command or script recipe that writes a closure bundle manifest with hashes |
 | KV receipt verification fixture bundle | CLI and doctor verification exist, but integrations need sample artifacts to test against | Add tiny passing and failing receipt/value fixtures plus docs showing CI use |
 | Schema catalog drift annotations | The catalog is tested, but CI consumers may want direct failure annotations | Emit a compact annotation line when a public schema catalog entry points to a missing or mismatched artifact |
+| Closure bundle manifest verify | Manifests are written, but later audits should recheck saved hashes | Add `closure-bundle verify --manifest PATH` to compare saved byte counts and SHA-256 values against the bundle directory |

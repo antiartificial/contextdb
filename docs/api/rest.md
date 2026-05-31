@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.100.0",
+  "version": "0.101.0",
   "api_version": "v1",
-  "docs_version": "0.100.0",
+  "docs_version": "0.101.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -788,6 +788,12 @@ curl http://localhost:7701/v1/version
       "description": "Docs publish a schema catalog listing stable JSON contracts for dashboards and automation consumers."
     },
     {
+      "name": "published-backup-closure-bundle-manifest",
+      "status": "stable",
+      "since": "v0.101.0",
+      "description": "CLI can generate a hashed closure manifest for published backup repair evidence bundles."
+    },
+    {
       "name": "admin-observe-dashboard",
       "status": "stable",
       "since": "v0.88.0",
@@ -829,7 +835,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.100.0"
+  "release_notes_path": "/contextdb/releases/v0.101.0"
 }
 ```
 

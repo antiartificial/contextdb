@@ -2605,11 +2605,52 @@ func TestPublishedBackupRepairGuardDocumentsDoctorReceiptClosureLane(t *testing.
 		"05-receipt-verify.json",
 		"06-doctor-receipt-verify.json",
 		"07-doctor-final.json",
+		"contextdb snapshot lifecycle index publish closure-bundle",
+		"closure-manifest.json",
 		"final doctor run proves the published catalog is fresh and matches the local lifecycle index",
 	}
 	for _, want := range required {
 		is.True(strings.Contains(doc, want))
 	}
+}
+
+func TestBuildPublishedBackupRepairClosureBundleManifest(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	for _, artifact := range publishedBackupRepairClosureBundleArtifacts() {
+		is.NoErr(os.WriteFile(filepath.Join(dir, artifact.name), []byte(artifact.name+"\n"), 0o644))
+	}
+
+	manifest, err := buildPublishedBackupRepairClosureBundleManifest(dir, time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC))
+
+	is.NoErr(err)
+	is.True(manifest.OK)
+	is.Equal(manifest.Kind, "contextdb.published_backup_repair.closure_bundle_manifest")
+	is.Equal(manifest.RequiredArtifacts, 8)
+	is.Equal(manifest.PresentArtifacts, 8)
+	is.Equal(manifest.MissingArtifacts, 0)
+	is.Equal(manifest.GeneratedAt, "2026-05-31T12:00:00Z")
+	is.True(manifest.TotalBytes > 0)
+	is.Equal(len(manifest.Artifacts), 8)
+	is.Equal(manifest.Artifacts[0].Name, "01-doctor-freshness-before.json")
+	is.True(manifest.Artifacts[0].Exists)
+	is.True(manifest.Artifacts[0].Bytes > 0)
+	is.True(manifest.Artifacts[0].ChecksumSHA256 != "")
+}
+
+func TestBuildPublishedBackupRepairClosureBundleManifestReportsMissingArtifacts(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	is.NoErr(os.WriteFile(filepath.Join(dir, "01-doctor-freshness-before.json"), []byte("{}\n"), 0o644))
+
+	manifest, err := buildPublishedBackupRepairClosureBundleManifest(dir, time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC))
+
+	is.True(err != nil)
+	is.True(!manifest.OK)
+	is.Equal(manifest.RequiredArtifacts, 8)
+	is.Equal(manifest.PresentArtifacts, 1)
+	is.Equal(manifest.MissingArtifacts, 7)
+	is.True(strings.Contains(strings.Join(manifest.ValidationErrors, "\n"), "missing 02-doctor-drift-before.json"))
 }
 
 func TestValidateNornManifestEntryRejectsWrongApp(t *testing.T) {

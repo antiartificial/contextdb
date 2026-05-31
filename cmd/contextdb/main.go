@@ -832,6 +832,10 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 		runSnapshotLifecycleIndexPublishFreshness(args[1:])
 		return
 	}
+	if len(args) > 0 && args[0] == "closure-bundle" {
+		runSnapshotLifecycleIndexPublishClosureBundle(args[1:])
+		return
+	}
 	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish", flag.ExitOnError)
 	inPath := fs.String("in", "", "JSON lifecycle index to publish")
 	publishURL := fs.String("publish-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL"), "backup index metadata publish endpoint")
@@ -867,6 +871,36 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 		fmt.Fprintln(os.Stdout, "dry-run ok")
 	} else {
 		fmt.Fprintln(os.Stdout, "published")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishClosureBundle(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish closure-bundle", flag.ExitOnError)
+	dir := fs.String("dir", "", "published backup repair closure bundle directory")
+	outPath := fs.String("out", "", "write the JSON closure bundle manifest, defaults to closure-manifest.json in --dir")
+	reportOut := fs.Bool("report", false, "print the JSON closure bundle manifest")
+	_ = fs.Parse(args)
+
+	manifestOut := strings.TrimSpace(*outPath)
+	if manifestOut == "" && strings.TrimSpace(*dir) != "" {
+		manifestOut = filepath.Join(strings.TrimSpace(*dir), "closure-manifest.json")
+	}
+	manifest, err := buildPublishedBackupRepairClosureBundleManifest(*dir, time.Now())
+	if manifestOut != "" {
+		manifest.ManifestFile = manifestOut
+		if writeErr := writeJSONFile(manifestOut, manifest); writeErr != nil && err == nil {
+			err = fmt.Errorf("write closure bundle manifest: %w", writeErr)
+		}
+	}
+	if *reportOut || err != nil {
+		writeIndentedJSON(manifest)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish closure-bundle: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, manifestOut)
 	}
 }
 
@@ -1419,6 +1453,32 @@ type snapshotLifecycleIndexPublishFreshnessReport struct {
 	AgeSeconds       int64                                `json:"age_seconds,omitempty"`
 	PublishedPayload snapshotLifecycleIndexPublishPayload `json:"published_payload"`
 	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleManifest struct {
+	Kind              string                                       `json:"kind"`
+	SchemaVersion     int                                          `json:"schema_version"`
+	ContextDBVersion  string                                       `json:"contextdb_version"`
+	GeneratedAt       string                                       `json:"generated_at"`
+	BundleDir         string                                       `json:"bundle_dir"`
+	ManifestFile      string                                       `json:"manifest_file,omitempty"`
+	OK                bool                                         `json:"ok"`
+	RequiredArtifacts int                                          `json:"required_artifacts"`
+	PresentArtifacts  int                                          `json:"present_artifacts"`
+	MissingArtifacts  int                                          `json:"missing_artifacts"`
+	TotalBytes        int64                                        `json:"total_bytes,omitempty"`
+	Artifacts         []publishedBackupRepairClosureBundleArtifact `json:"artifacts"`
+	ValidationErrors  []string                                     `json:"validation_errors,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleArtifact struct {
+	Step           int    `json:"step"`
+	Name           string `json:"name"`
+	Purpose        string `json:"purpose"`
+	Path           string `json:"path"`
+	Exists         bool   `json:"exists"`
+	Bytes          int64  `json:"bytes,omitempty"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
 }
 
 type snapshotLifecycleIndexPublishPayload struct {
@@ -2579,6 +2639,85 @@ func buildSnapshotLifecycleIndexPublishFreshnessReport(ctx context.Context, clie
 		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
 	}
 	return report, nil
+}
+
+func buildPublishedBackupRepairClosureBundleManifest(dir string, generatedAt time.Time) (publishedBackupRepairClosureBundleManifest, error) {
+	dir = strings.TrimSpace(dir)
+	if generatedAt.IsZero() {
+		generatedAt = time.Now()
+	}
+	manifest := publishedBackupRepairClosureBundleManifest{
+		Kind:             "contextdb.published_backup_repair.closure_bundle_manifest",
+		SchemaVersion:    1,
+		ContextDBVersion: buildinfo.Version,
+		GeneratedAt:      generatedAt.UTC().Format(time.RFC3339),
+		BundleDir:        dir,
+	}
+	if dir == "" {
+		manifest.ValidationErrors = append(manifest.ValidationErrors, "--dir is required")
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		manifest.ValidationErrors = append(manifest.ValidationErrors, fmt.Sprintf("stat bundle dir: %v", err))
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	if !info.IsDir() {
+		manifest.ValidationErrors = append(manifest.ValidationErrors, "--dir must point to a directory")
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	for _, expected := range publishedBackupRepairClosureBundleArtifacts() {
+		artifact := publishedBackupRepairClosureBundleArtifact{
+			Step:    expected.step,
+			Name:    expected.name,
+			Purpose: expected.purpose,
+			Path:    filepath.Join(dir, expected.name),
+		}
+		data, err := os.ReadFile(artifact.Path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				manifest.MissingArtifacts++
+				manifest.ValidationErrors = append(manifest.ValidationErrors, fmt.Sprintf("missing %s", expected.name))
+				manifest.Artifacts = append(manifest.Artifacts, artifact)
+				continue
+			}
+			manifest.ValidationErrors = append(manifest.ValidationErrors, fmt.Sprintf("read %s: %v", expected.name, err))
+			manifest.Artifacts = append(manifest.Artifacts, artifact)
+			continue
+		}
+		sum := sha256.Sum256(data)
+		artifact.Exists = true
+		artifact.Bytes = int64(len(data))
+		artifact.ChecksumSHA256 = hex.EncodeToString(sum[:])
+		manifest.PresentArtifacts++
+		manifest.TotalBytes += artifact.Bytes
+		manifest.Artifacts = append(manifest.Artifacts, artifact)
+	}
+	manifest.RequiredArtifacts = len(manifest.Artifacts)
+	manifest.OK = len(manifest.ValidationErrors) == 0
+	if !manifest.OK {
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	return manifest, nil
+}
+
+type publishedBackupRepairClosureBundleExpectedArtifact struct {
+	step    int
+	name    string
+	purpose string
+}
+
+func publishedBackupRepairClosureBundleArtifacts() []publishedBackupRepairClosureBundleExpectedArtifact {
+	return []publishedBackupRepairClosureBundleExpectedArtifact{
+		{step: 1, name: "01-doctor-freshness-before.json", purpose: "published backup freshness doctor report before repair"},
+		{step: 2, name: "02-doctor-drift-before.json", purpose: "local-vs-published backup catalog drift doctor report before repair"},
+		{step: 3, name: "03-publish-dry-run.json", purpose: "dry-run publish report reviewed before execute"},
+		{step: 4, name: "04-publish-execute.json", purpose: "executed publish report"},
+		{step: 4, name: "04-publish-receipt.json", purpose: "durable publish repair receipt"},
+		{step: 5, name: "05-receipt-verify.json", purpose: "standalone repair receipt verification report"},
+		{step: 6, name: "06-doctor-receipt-verify.json", purpose: "doctor report with published_backup_receipt_verify"},
+		{step: 7, name: "07-doctor-final.json", purpose: "final doctor freshness and drift report after repair"},
+	}
 }
 
 func fetchSnapshotLifecycleIndexPublishedPayload(ctx context.Context, client *http.Client, publishedURL, method, token string) (snapshotLifecycleIndexPublishPayload, string, error) {

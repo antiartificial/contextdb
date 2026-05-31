@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.101.0 | Passed | Passed | Corpus coverage present | Closure bundle manifest coverage added | CLI manifest tests added | Adds hashed manifests for published backup repair closure bundles |
 | v0.100.0 | Passed | Passed | Corpus coverage present | Schema catalog drift covered | Public schema catalog test added | Publishes a docs schema index for dashboard and automation consumers |
 | v0.99.0 | Passed | Passed | Corpus coverage present | KV receipt doctor lane coverage added | CLI doctor receipt check tests added | Adds derived KV refresh receipt verification to combined doctor reports |
 | v0.98.0 | Passed | Passed | Corpus coverage present | Backup closure bundle docs covered | CLI docs regression test updated | Adds stable published-backup repair closure artifact bundle filenames |

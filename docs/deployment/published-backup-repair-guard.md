@@ -139,7 +139,14 @@ contextdb doctor \
   --published-backup-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" \
   --max-published-backup-age 24h \
   --report > "$CONTEXTDB_REPAIR_BUNDLE/07-doctor-final.json"
+
+contextdb snapshot lifecycle index publish closure-bundle \
+  --dir "$CONTEXTDB_REPAIR_BUNDLE" \
+  --out "$CONTEXTDB_REPAIR_BUNDLE/closure-manifest.json" \
+  --report
 ```
+
+The final command writes `closure-manifest.json` with one entry for each expected artifact, including byte counts and SHA-256 hashes. It exits non-zero if any expected artifact is missing, so it can be used as the final incident handoff check.
 
 Keep the bundle directory with the incident record. The stable filenames make it clear which evidence came before the write, which file is the receipt, which checks verified the receipt, and which doctor report closed the repair.
 

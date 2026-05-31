@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.100.0",
+  "contextdb_version": "0.101.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -216,7 +216,7 @@ Lifecycle verification checks that the backup, manifest, and rehearsal files exi
 
 ## Published Catalog Repair Closure
 
-If doctor reports stale or drifted published backup catalog metadata, use the [Published Backup Repair Guard](published-backup-repair-guard) doctor receipt closure lane. That lane combines published freshness, drift diagnosis, dry-run publish review, executed repair receipts, standalone receipt verification, `published_backup_receipt_verify` in doctor, and a final freshness/drift confirmation before closing the incident.
+If doctor reports stale or drifted published backup catalog metadata, use the [Published Backup Repair Guard](published-backup-repair-guard) doctor receipt closure lane. That lane combines published freshness, drift diagnosis, dry-run publish review, executed repair receipts, standalone receipt verification, `published_backup_receipt_verify` in doctor, and a final freshness/drift confirmation before closing the incident. For incident handoffs, finish with `contextdb snapshot lifecycle index publish closure-bundle --dir PATH --out PATH --report` to write a hashed manifest for the closure evidence directory.
 
 ## launchd
 
