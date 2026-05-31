@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -365,6 +366,10 @@ func runSnapshotLifecycleVerify(args []string) {
 }
 
 func runSnapshotLifecycleIndex(args []string) {
+	if len(args) > 0 && args[0] == "diff" {
+		runSnapshotLifecycleIndexDiff(args[1:])
+		return
+	}
 	if len(args) > 0 && args[0] == "verify" {
 		runSnapshotLifecycleIndexVerify(args[1:])
 		return
@@ -391,6 +396,28 @@ func runSnapshotLifecycleIndex(args []string) {
 		writeIndentedJSON(index)
 	} else {
 		fmt.Fprintln(os.Stdout, index.IndexFile)
+	}
+}
+
+func runSnapshotLifecycleIndexDiff(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index diff", flag.ExitOnError)
+	oldPath := fs.String("old", "", "previous JSON lifecycle index to compare")
+	newPath := fs.String("new", "", "new JSON lifecycle index to compare")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle index diff report")
+	_ = fs.Parse(args)
+
+	report, err := diffSnapshotLifecycleIndexes(*oldPath, *newPath)
+	if err != nil {
+		if *reportOut && (report.OldIndex != "" || report.NewIndex != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index diff: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
 
@@ -697,6 +724,36 @@ type snapshotLifecycleIndexArtifactCheck struct {
 	ExpectedSHA256 string   `json:"expected_sha256,omitempty"`
 	ActualSHA256   string   `json:"actual_sha256,omitempty"`
 	Errors         []string `json:"errors,omitempty"`
+}
+
+type snapshotLifecycleIndexDiffReport struct {
+	OK               bool                               `json:"ok"`
+	OldIndex         string                             `json:"old_index"`
+	NewIndex         string                             `json:"new_index"`
+	OldBundles       int                                `json:"old_bundles"`
+	NewBundles       int                                `json:"new_bundles"`
+	AddedBundles     []string                           `json:"added_bundles,omitempty"`
+	RemovedBundles   []string                           `json:"removed_bundles,omitempty"`
+	ChangedBundles   []snapshotLifecycleIndexBundleDiff `json:"changed_bundles,omitempty"`
+	ValidationErrors []string                           `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexBundleDiff struct {
+	Bundle          string                               `json:"bundle"`
+	ArtifactChanges []snapshotLifecycleIndexArtifactDiff `json:"artifact_changes,omitempty"`
+	DecisionChanged bool                                 `json:"decision_changed,omitempty"`
+	OldDecision     string                               `json:"old_decision,omitempty"`
+	NewDecision     string                               `json:"new_decision,omitempty"`
+}
+
+type snapshotLifecycleIndexArtifactDiff struct {
+	Kind      string `json:"kind"`
+	Path      string `json:"path"`
+	Change    string `json:"change"`
+	OldBytes  int64  `json:"old_bytes,omitempty"`
+	NewBytes  int64  `json:"new_bytes,omitempty"`
+	OldSHA256 string `json:"old_sha256,omitempty"`
+	NewSHA256 string `json:"new_sha256,omitempty"`
 }
 
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
@@ -1115,6 +1172,182 @@ func buildSnapshotLifecycleIndex(path string, opts snapshotLifecycleIndexOptions
 	index.Bundles = report.Bundles
 	addSnapshotLifecycleIndexHashes(index.Bundles)
 	return index, nil
+}
+
+func diffSnapshotLifecycleIndexes(oldPath, newPath string) (snapshotLifecycleIndexDiffReport, error) {
+	oldPath = strings.TrimSpace(oldPath)
+	newPath = strings.TrimSpace(newPath)
+	report := snapshotLifecycleIndexDiffReport{
+		OldIndex: oldPath,
+		NewIndex: newPath,
+	}
+	if oldPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--old is required")
+	}
+	if newPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--new is required")
+	}
+	if len(report.ValidationErrors) > 0 {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	oldIndex, err := readSnapshotLifecycleIndex(oldPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read old lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	newIndex, err := readSnapshotLifecycleIndex(newPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read new lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.OldBundles = len(oldIndex.Bundles)
+	report.NewBundles = len(newIndex.Bundles)
+	if oldIndex.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported old index schema_version %d", oldIndex.SchemaVersion))
+	}
+	if newIndex.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported new index schema_version %d", newIndex.SchemaVersion))
+	}
+
+	oldBundles := snapshotLifecycleBundleMap(oldIndex.Bundles)
+	newBundles := snapshotLifecycleBundleMap(newIndex.Bundles)
+	for _, key := range sortedStringKeys(newBundles) {
+		if _, ok := oldBundles[key]; !ok {
+			report.AddedBundles = append(report.AddedBundles, key)
+		}
+	}
+	for _, key := range sortedStringKeys(oldBundles) {
+		oldBundle := oldBundles[key]
+		newBundle, ok := newBundles[key]
+		if !ok {
+			report.RemovedBundles = append(report.RemovedBundles, key)
+			continue
+		}
+		if diff, changed := diffSnapshotLifecycleIndexBundle(key, oldBundle, newBundle); changed {
+			report.ChangedBundles = append(report.ChangedBundles, diff)
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0 &&
+		len(report.AddedBundles) == 0 &&
+		len(report.RemovedBundles) == 0 &&
+		len(report.ChangedBundles) == 0
+	if !report.OK {
+		parts := append([]string{}, report.ValidationErrors...)
+		if len(report.AddedBundles) > 0 {
+			parts = append(parts, fmt.Sprintf("%d added bundle(s)", len(report.AddedBundles)))
+		}
+		if len(report.RemovedBundles) > 0 {
+			parts = append(parts, fmt.Sprintf("%d removed bundle(s)", len(report.RemovedBundles)))
+		}
+		if len(report.ChangedBundles) > 0 {
+			parts = append(parts, fmt.Sprintf("%d changed bundle(s)", len(report.ChangedBundles)))
+		}
+		return report, fmt.Errorf("lifecycle index diff found changes: %s", strings.Join(parts, "; "))
+	}
+	return report, nil
+}
+
+func readSnapshotLifecycleIndex(path string) (snapshotLifecycleIndex, error) {
+	var index snapshotLifecycleIndex
+	data, err := os.ReadFile(strings.TrimSpace(path))
+	if err != nil {
+		return index, err
+	}
+	if err := json.Unmarshal(data, &index); err != nil {
+		return index, fmt.Errorf("decode lifecycle index: %w", err)
+	}
+	return index, nil
+}
+
+func snapshotLifecycleBundleMap(bundles []snapshotLifecycleRetentionBundle) map[string]snapshotLifecycleRetentionBundle {
+	out := make(map[string]snapshotLifecycleRetentionBundle, len(bundles))
+	for _, bundle := range bundles {
+		out[snapshotLifecycleBundleKey(bundle)] = bundle
+	}
+	return out
+}
+
+func snapshotLifecycleBundleKey(bundle snapshotLifecycleRetentionBundle) string {
+	parts := []string{
+		strings.TrimSpace(bundle.Namespace),
+		strings.TrimSpace(bundle.CreatedAt),
+		filepath.Base(strings.TrimSpace(bundle.Summary)),
+	}
+	key := strings.Join(parts, "|")
+	if strings.Trim(key, "|") != "" {
+		return key
+	}
+	return strings.TrimSpace(bundle.Summary)
+}
+
+func diffSnapshotLifecycleIndexBundle(key string, oldBundle, newBundle snapshotLifecycleRetentionBundle) (snapshotLifecycleIndexBundleDiff, bool) {
+	diff := snapshotLifecycleIndexBundleDiff{Bundle: key}
+	if oldBundle.Decision != newBundle.Decision {
+		diff.DecisionChanged = true
+		diff.OldDecision = oldBundle.Decision
+		diff.NewDecision = newBundle.Decision
+	}
+	oldArtifacts := snapshotLifecycleArtifactMap(oldBundle.Artifacts)
+	newArtifacts := snapshotLifecycleArtifactMap(newBundle.Artifacts)
+	for _, artifactKey := range sortedStringKeys(newArtifacts) {
+		newArtifact := newArtifacts[artifactKey]
+		oldArtifact, ok := oldArtifacts[artifactKey]
+		if !ok {
+			diff.ArtifactChanges = append(diff.ArtifactChanges, snapshotLifecycleArtifactChange(newArtifact, "added", snapshotLifecycleRetentionArtifact{}))
+			continue
+		}
+		if oldArtifact.Bytes != newArtifact.Bytes || !strings.EqualFold(oldArtifact.ChecksumSHA256, newArtifact.ChecksumSHA256) {
+			diff.ArtifactChanges = append(diff.ArtifactChanges, snapshotLifecycleArtifactChange(newArtifact, "changed", oldArtifact))
+		}
+	}
+	for _, artifactKey := range sortedStringKeys(oldArtifacts) {
+		if _, ok := newArtifacts[artifactKey]; !ok {
+			diff.ArtifactChanges = append(diff.ArtifactChanges, snapshotLifecycleArtifactChange(oldArtifacts[artifactKey], "removed", snapshotLifecycleRetentionArtifact{}))
+		}
+	}
+	return diff, diff.DecisionChanged || len(diff.ArtifactChanges) > 0
+}
+
+func snapshotLifecycleArtifactMap(artifacts []snapshotLifecycleRetentionArtifact) map[string]snapshotLifecycleRetentionArtifact {
+	out := make(map[string]snapshotLifecycleRetentionArtifact, len(artifacts))
+	for _, artifact := range artifacts {
+		out[snapshotLifecycleArtifactKey(artifact)] = artifact
+	}
+	return out
+}
+
+func snapshotLifecycleArtifactKey(artifact snapshotLifecycleRetentionArtifact) string {
+	return strings.TrimSpace(artifact.Kind) + "|" + filepath.Base(strings.TrimSpace(artifact.Path))
+}
+
+func snapshotLifecycleArtifactChange(artifact snapshotLifecycleRetentionArtifact, change string, oldArtifact snapshotLifecycleRetentionArtifact) snapshotLifecycleIndexArtifactDiff {
+	diff := snapshotLifecycleIndexArtifactDiff{
+		Kind:      artifact.Kind,
+		Path:      filepath.Base(strings.TrimSpace(artifact.Path)),
+		Change:    change,
+		NewBytes:  artifact.Bytes,
+		NewSHA256: artifact.ChecksumSHA256,
+	}
+	if change == "changed" {
+		diff.OldBytes = oldArtifact.Bytes
+		diff.OldSHA256 = oldArtifact.ChecksumSHA256
+	}
+	if change == "removed" {
+		diff.OldBytes = artifact.Bytes
+		diff.OldSHA256 = artifact.ChecksumSHA256
+		diff.NewBytes = 0
+		diff.NewSHA256 = ""
+	}
+	return diff
+}
+
+func sortedStringKeys[V any](values map[string]V) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func verifySnapshotLifecycleIndex(path string) (snapshotLifecycleIndexVerifyReport, error) {

@@ -205,6 +205,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Backup index verification | Implemented | `contextdb snapshot lifecycle index verify --in PATH --report` re-checks indexed artifact paths, byte sizes, and SHA-256 hashes |
 
+## Completed In v0.34.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Backup index summary diff | Implemented | `contextdb snapshot lifecycle index diff --old PATH --new PATH --report` compares backup catalogs for bundle membership, retention decision, and artifact size or SHA-256 deltas |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -245,6 +251,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup retention delete plan | Converts retention review into shell commands without deleting files | Completed in v0.31.0 with `contextdb snapshot lifecycle retention --emit-delete-script` |
 | Backup lifecycle manifest index | Gives operators one portable catalog of lifecycle bundles | Completed in v0.32.0 with `contextdb snapshot lifecycle index --dir --out --report` |
 | Backup index verification | Proves a saved lifecycle catalog still matches files on disk | Completed in v0.33.0 with `contextdb snapshot lifecycle index verify --in --report` |
+| Backup index summary diff | Shows whether two saved lifecycle catalogs still agree across runs or hosts | Completed in v0.34.0 with `contextdb snapshot lifecycle index diff --old --new --report` |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -511,7 +518,17 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Backup index summary diff | Index verification proves one catalog; operators may need to compare two backup catalogs across hosts | Add `contextdb snapshot lifecycle index diff --old A --new B --report` for bundle and artifact deltas |
+| Backup index summary diff | Index verification proves one catalog; operators may need to compare two backup catalogs across hosts | Completed in v0.34.0 with `contextdb snapshot lifecycle index diff --old --new --report` |
+| Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
+| Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.34.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Backup index publish to Norn | Index diffs can prove backup state; the hosted mini could expose the current backup catalog to ops tooling | Add dry-run-first publication of latest index metadata to Norn once an authenticated write endpoint exists |
 | Norn manifest publish | Drift detection can find stale registration, but publishing is still manual | Add dry-run-first `contextdb norn publish` once Norn exposes an authenticated write endpoint |
 | Review escalation rules | Filters make queues easier to focus; aging and severity should now drive escalation | Add escalation metadata for assigned, snoozed, and high-severity source anomaly items that exceed age thresholds |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |

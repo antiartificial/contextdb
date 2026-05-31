@@ -712,6 +712,106 @@ func TestVerifySnapshotLifecycleIndexRejectsChecksumMismatch(t *testing.T) {
 	is.True(len(report.ValidationErrors) > 0)
 }
 
+func TestDiffSnapshotLifecycleIndexesMatches(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	oldPath := filepath.Join(dir, "old.index.json")
+	newPath := filepath.Join(dir, "new.index.json")
+	_, err := writeSnapshotLifecycleIndex(oldPath, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	_, err = writeSnapshotLifecycleIndex(newPath, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	report, err := diffSnapshotLifecycleIndexes(oldPath, newPath)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.OldBundles, 1)
+	is.Equal(report.NewBundles, 1)
+	is.Equal(len(report.ChangedBundles), 0)
+}
+
+func TestDiffSnapshotLifecycleIndexesDetectsAddedBundle(t *testing.T) {
+	is := is.New(t)
+	oldDir := t.TempDir()
+	newDir := t.TempDir()
+	writeLifecycleFixture(t, oldDir, "prod", "2026-05-30T23:30:00Z", false)
+	writeLifecycleFixture(t, newDir, "prod", "2026-05-30T23:30:00Z", false)
+	writeLifecycleFixture(t, newDir, "prod", "2026-05-31T23:30:00Z", false)
+	oldPath := filepath.Join(oldDir, "contextdb-backups.index.json")
+	newPath := filepath.Join(newDir, "contextdb-backups.index.json")
+	_, err := writeSnapshotLifecycleIndex(oldPath, snapshotLifecycleIndexOptions{
+		Dir:       oldDir,
+		Namespace: "prod",
+		Keep:      2,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	_, err = writeSnapshotLifecycleIndex(newPath, snapshotLifecycleIndexOptions{
+		Dir:       newDir,
+		Namespace: "prod",
+		Keep:      2,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	report, err := diffSnapshotLifecycleIndexes(oldPath, newPath)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.Equal(len(report.AddedBundles), 1)
+	is.True(strings.Contains(report.AddedBundles[0], "2026-05-31T23:30:00Z"))
+}
+
+func TestDiffSnapshotLifecycleIndexesDetectsArtifactHashChange(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	oldPath := filepath.Join(dir, "old.index.json")
+	newPath := filepath.Join(dir, "new.index.json")
+	oldIndex, err := writeSnapshotLifecycleIndex(oldPath, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	var backupPath string
+	for _, artifact := range oldIndex.Bundles[0].Artifacts {
+		if artifact.Kind == "backup" {
+			backupPath = artifact.Path
+			break
+		}
+	}
+	is.NoErr(os.WriteFile(backupPath, []byte("{\"changed\":true}\n"), 0o644))
+	_, err = writeSnapshotLifecycleIndex(newPath, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	report, err := diffSnapshotLifecycleIndexes(oldPath, newPath)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.Equal(len(report.ChangedBundles), 1)
+	is.Equal(len(report.ChangedBundles[0].ArtifactChanges), 1)
+	is.Equal(report.ChangedBundles[0].ArtifactChanges[0].Change, "changed")
+}
+
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
 	t.Helper()
 	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])
