@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.76.0 | Passed | Passed | Ranking baseline manifest coverage added | Corpus coverage present | CLI ranking retention manifest tests added | Adds JSON artifact inventory output for ranking baseline retention |
 | v0.75.0 | Passed | Passed | Corpus coverage present | KV derived repair hint coverage added | CLI doctor derived KV hint tests added | Adds dry-run repair command hints to derived KV freshness failures |
 | v0.74.0 | Passed | Passed | Corpus coverage present | Published backup repair receipt coverage added | CLI publish receipt tests added | Adds optional JSON receipts for executed backup catalog publish repairs |
 | v0.73.0 | Passed | Passed | Corpus coverage present | Retry fatigue preset discovery docs added | Docs build coverage | Adds a compact preset table for retry fatigue dashboards and handoffs |

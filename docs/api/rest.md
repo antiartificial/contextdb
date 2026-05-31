@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.75.0",
+  "version": "0.76.0",
   "api_version": "v1",
-  "docs_version": "0.75.0",
+  "docs_version": "0.76.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -638,6 +638,12 @@ curl http://localhost:7701/v1/version
       "description": "Docs include keep-count and CI artifact recipes for ranking baseline retention."
     },
     {
+      "name": "ranking-eval-baseline-artifact-manifest",
+      "status": "stable",
+      "since": "v0.76.0",
+      "description": "CLI ranking eval retention can write a JSON artifact inventory with bytes and hashes."
+    },
+    {
       "name": "review-handoff-retry-fatigue-preset-discovery-docs",
       "status": "stable",
       "since": "v0.73.0",
@@ -667,7 +673,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.75.0"
+  "release_notes_path": "/contextdb/releases/v0.76.0"
 }
 ```
 

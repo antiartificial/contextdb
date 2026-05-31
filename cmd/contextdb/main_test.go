@@ -1363,6 +1363,49 @@ func TestBuildRankingEvalBaselineRetentionReport(t *testing.T) {
 	is.True(strings.Contains(report.DeleteCommands[1], "ranking-eval-v0.61.0"))
 }
 
+func TestBuildRankingEvalBaselineArtifactManifest(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	files := map[string]string{
+		"ranking-eval-v0.61.0.json": `{"version":"0.61.0"}`,
+		"ranking-eval-v0.61.0.md":   "# v0.61.0\n",
+		"ranking-eval-v0.62.0.json": `{"version":"0.62.0"}`,
+	}
+	for name, content := range files {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+	report, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+
+	manifest, err := buildRankingEvalBaselineArtifactManifest(report, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+
+	is.NoErr(err)
+	is.Equal(manifest.Kind, "contextdb.ranking.baseline.artifact_manifest")
+	is.Equal(manifest.SchemaVersion, 1)
+	is.Equal(manifest.GeneratedAt, "2026-06-01T12:00:00Z")
+	is.Equal(manifest.Dir, dir)
+	is.Equal(manifest.Keep, 1)
+	is.Equal(manifest.TotalVersions, 2)
+	is.Equal(len(manifest.Artifacts), 4)
+	var existingJSON rankingEvalBaselineArtifactManifestItem
+	var missingMarkdown rankingEvalBaselineArtifactManifestItem
+	for _, artifact := range manifest.Artifacts {
+		if artifact.Version == "v0.62.0" && artifact.Kind == "json" {
+			existingJSON = artifact
+		}
+		if artifact.Version == "v0.62.0" && artifact.Kind == "markdown" {
+			missingMarkdown = artifact
+		}
+	}
+	is.True(existingJSON.Exists)
+	is.True(existingJSON.Bytes > 0)
+	is.True(existingJSON.SHA256 != "")
+	is.True(existingJSON.Current)
+	is.Equal(existingJSON.Status, "retain")
+	is.True(missingMarkdown.Missing)
+	is.True(!missingMarkdown.Exists)
+}
+
 func TestBuildRankingEvalBaselineDeleteScript(t *testing.T) {
 	is := is.New(t)
 

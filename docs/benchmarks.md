@@ -44,6 +44,9 @@ contextdb eval ranking --baseline-retention-dir .contextdb/ranking-baselines --b
 
 # Emit a reviewable shell script for pruneable baseline artifacts
 contextdb eval ranking --baseline-retention-dir .contextdb/ranking-baselines --baseline-retention-keep 5 --emit-delete-script
+
+# Write a machine-readable artifact inventory with bytes and hashes
+contextdb eval ranking --baseline-retention-dir .contextdb/ranking-baselines --baseline-retention-keep 5 --baseline-manifest-out ranking-baseline-manifest.json
 ```
 
 ## Ranking Eval Snapshots
@@ -56,7 +59,7 @@ Use `--compare` with a previous JSON snapshot when you want a historical diff. A
 
 Use `--baseline-dir` when you want release-friendly baseline artifacts. The command writes both `ranking-eval-vX.Y.Z.json` and `ranking-eval-vX.Y.Z.md` for the current contextdb version. Use `--compare-baseline-dir` to resolve the latest previous `ranking-eval-vX.Y.Z.json` in that directory and compare the current ranking run against it. This keeps release ranking reviews consistent without hand-picking a baseline filename each time.
 
-Use `--baseline-retention-dir` when you want a read-only retention report for versioned ranking baselines. The report marks the newest baseline as current, retains the newest `--baseline-retention-keep` versions, and lists older versions as pruneable without deleting files. Add `--emit-delete-script` to print a shell script containing only `rm -- ...` commands for existing pruneable JSON and Markdown artifacts; review the script before running it. See the [ranking baseline retention cookbook](/deployment/ranking-baseline-retention-cookbook) for keep-count and CI artifact recipes.
+Use `--baseline-retention-dir` when you want a read-only retention report for versioned ranking baselines. The report marks the newest baseline as current, retains the newest `--baseline-retention-keep` versions, and lists older versions as pruneable without deleting files. Add `--emit-delete-script` to print a shell script containing only `rm -- ...` commands for existing pruneable JSON and Markdown artifacts; review the script before running it. Add `--baseline-manifest-out` to write a JSON artifact inventory with bytes and SHA-256 hashes for CI retention evidence. See the [ranking baseline retention cookbook](/deployment/ranking-baseline-retention-cookbook) for keep-count and CI artifact recipes.
 
 ## MTEB retrieval quality
 

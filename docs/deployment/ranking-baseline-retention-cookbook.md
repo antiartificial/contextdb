@@ -39,6 +39,17 @@ contextdb eval ranking \
 
 Upload `.contextdb/ranking-baselines/ranking-eval-v*.json` and `.contextdb/ranking-baselines/ranking-eval-v*.md` as CI artifacts for tagged releases. Keep the directory out of transient build caches so baseline history survives runner cleanup.
 
+Write a machine-readable artifact inventory when CI needs durable evidence of what was retained:
+
+```bash
+contextdb eval ranking \
+  --baseline-retention-dir .contextdb/ranking-baselines \
+  --baseline-retention-keep 5 \
+  --baseline-manifest-out ranking-baseline-manifest.json
+```
+
+The manifest records each JSON and Markdown baseline artifact with its version, retention status, path, existence, byte size, and SHA-256 hash. Missing counterpart artifacts are included with `missing: true` so release jobs can spot incomplete baseline pairs.
+
 ## Review Retention
 
 Inspect retained and pruneable baseline versions before deleting anything:

@@ -155,6 +155,7 @@ func runEvalRanking(args []string) {
 	baselineRetentionDir := fs.String("baseline-retention-dir", "", "directory containing versioned ranking eval baselines to inspect")
 	baselineRetentionKeep := fs.Int("baseline-retention-keep", 5, "number of newest ranking eval baseline versions to retain")
 	emitDeleteScript := fs.Bool("emit-delete-script", false, "print a shell script for pruneable ranking eval baselines without deleting files")
+	baselineManifestOut := fs.String("baseline-manifest-out", "", "write a JSON manifest for ranking eval baseline artifacts")
 	diffOutPath := fs.String("diff-out", "", "JSON ranking eval diff to write")
 	diffMarkdownOutPath := fs.String("diff-markdown-out", "", "Markdown ranking eval diff to write")
 	reportOut := fs.Bool("report", false, "print the JSON ranking eval snapshot")
@@ -166,6 +167,14 @@ func runEvalRanking(args []string) {
 
 	if strings.TrimSpace(*baselineRetentionDir) != "" {
 		report, err := buildRankingEvalBaselineRetentionReport(*baselineRetentionDir, *baselineRetentionKeep)
+		if err == nil && strings.TrimSpace(*baselineManifestOut) != "" {
+			manifest, manifestErr := buildRankingEvalBaselineArtifactManifest(report, time.Now())
+			if manifestErr != nil {
+				err = manifestErr
+			} else if writeErr := writeJSONFile(*baselineManifestOut, manifest); writeErr != nil {
+				err = writeErr
+			}
+		}
 		if *emitDeleteScript {
 			fmt.Print(buildRankingEvalBaselineDeleteScript(report))
 		} else {
@@ -1322,6 +1331,31 @@ type rankingEvalBaselineRetentionItem struct {
 	JSONPath     string   `json:"json_path,omitempty"`
 	MarkdownPath string   `json:"markdown_path,omitempty"`
 	Missing      []string `json:"missing,omitempty"`
+}
+
+type rankingEvalBaselineArtifactManifest struct {
+	Kind              string                                    `json:"kind"`
+	SchemaVersion     int                                       `json:"schema_version"`
+	GeneratedAt       string                                    `json:"generated_at"`
+	ContextDBVersion  string                                    `json:"contextdb_version"`
+	Dir               string                                    `json:"dir"`
+	Keep              int                                       `json:"keep"`
+	TotalVersions     int                                       `json:"total_versions"`
+	RetainedVersions  int                                       `json:"retained_versions"`
+	PruneableVersions int                                       `json:"pruneable_versions"`
+	Artifacts         []rankingEvalBaselineArtifactManifestItem `json:"artifacts"`
+}
+
+type rankingEvalBaselineArtifactManifestItem struct {
+	Version string `json:"version"`
+	Status  string `json:"status"`
+	Current bool   `json:"current"`
+	Kind    string `json:"kind"`
+	Path    string `json:"path"`
+	Exists  bool   `json:"exists"`
+	Bytes   int64  `json:"bytes,omitempty"`
+	SHA256  string `json:"sha256,omitempty"`
+	Missing bool   `json:"missing,omitempty"`
 }
 
 type rankingEvalBaselineVersion struct {
@@ -2640,6 +2674,69 @@ func buildRankingEvalBaselineRetentionReport(dir string, keep int) (rankingEvalB
 	report.DeleteCommands = buildRankingEvalBaselineDeleteCommands(report.Baselines)
 	report.OK = true
 	return report, nil
+}
+
+func buildRankingEvalBaselineArtifactManifest(report rankingEvalBaselineRetentionReport, generatedAt time.Time) (rankingEvalBaselineArtifactManifest, error) {
+	if generatedAt.IsZero() {
+		generatedAt = time.Now()
+	}
+	manifest := rankingEvalBaselineArtifactManifest{
+		Kind:              "contextdb.ranking.baseline.artifact_manifest",
+		SchemaVersion:     1,
+		GeneratedAt:       generatedAt.UTC().Format(time.RFC3339),
+		ContextDBVersion:  buildinfo.Version,
+		Dir:               report.Dir,
+		Keep:              report.Keep,
+		TotalVersions:     report.TotalVersions,
+		RetainedVersions:  report.RetainedVersions,
+		PruneableVersions: report.PruneableVersions,
+	}
+	for _, baseline := range report.Baselines {
+		for _, artifact := range []struct {
+			kind string
+			path string
+		}{
+			{kind: "json", path: baseline.JSONPath},
+			{kind: "markdown", path: baseline.MarkdownPath},
+		} {
+			item := rankingEvalBaselineArtifactManifestItem{
+				Version: baseline.Version,
+				Status:  baseline.Status,
+				Current: baseline.Current,
+				Kind:    artifact.kind,
+				Path:    artifact.path,
+			}
+			if strings.TrimSpace(artifact.path) == "" {
+				item.Missing = true
+				manifest.Artifacts = append(manifest.Artifacts, item)
+				continue
+			}
+			info, err := os.Stat(artifact.path)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					item.Missing = true
+					manifest.Artifacts = append(manifest.Artifacts, item)
+					continue
+				}
+				return manifest, fmt.Errorf("stat ranking baseline artifact %s: %w", artifact.path, err)
+			}
+			if info.IsDir() {
+				item.Missing = true
+				manifest.Artifacts = append(manifest.Artifacts, item)
+				continue
+			}
+			data, err := os.ReadFile(artifact.path)
+			if err != nil {
+				return manifest, fmt.Errorf("read ranking baseline artifact %s: %w", artifact.path, err)
+			}
+			sum := sha256.Sum256(data)
+			item.Exists = true
+			item.Bytes = int64(len(data))
+			item.SHA256 = hex.EncodeToString(sum[:])
+			manifest.Artifacts = append(manifest.Artifacts, item)
+		}
+	}
+	return manifest, nil
 }
 
 func buildRankingEvalBaselineDeleteCommands(baselines []rankingEvalBaselineRetentionItem) []string {
