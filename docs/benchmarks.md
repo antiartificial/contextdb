@@ -32,6 +32,12 @@ contextdb eval ranking --markdown-out ranking-eval.md
 
 # Release-to-release ranking diff
 contextdb eval ranking --compare previous-ranking-eval.json --diff-markdown
+
+# Write versioned JSON and Markdown ranking baselines
+contextdb eval ranking --baseline-dir .contextdb/ranking-baselines
+
+# Compare against the latest previous baseline in that directory
+contextdb eval ranking --compare-baseline-dir .contextdb/ranking-baselines --diff-markdown
 ```
 
 ## Ranking Eval Snapshots
@@ -41,6 +47,8 @@ contextdb eval ranking --compare previous-ranking-eval.json --diff-markdown
 Use `--markdown` or `--markdown-out` when you want a compact release-review recap with pass/fail totals, MRR, failure details, top results, and score breakdowns.
 
 Use `--compare` with a previous JSON snapshot when you want a historical diff. Add `--diff-report`, `--diff-out`, `--diff-markdown`, or `--diff-markdown-out` to capture MRR deltas, pass-count changes, pass flips, largest rank movements, and largest top-score movements.
+
+Use `--baseline-dir` when you want release-friendly baseline artifacts. The command writes both `ranking-eval-vX.Y.Z.json` and `ranking-eval-vX.Y.Z.md` for the current contextdb version. Use `--compare-baseline-dir` to resolve the latest previous `ranking-eval-vX.Y.Z.json` in that directory and compare the current ranking run against it. This keeps release ranking reviews consistent without hand-picking a baseline filename each time.
 
 ## MTEB retrieval quality
 

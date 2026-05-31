@@ -367,6 +367,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Retry fatigue owner filter | Implemented | REST `retry-fatigue?owner=&escalation_level=`, GraphQL `reviewHandoffRetryFatigue(owner:, escalationLevel:)`, and Go SDK `ReviewHandoffRetryFatigueFiltered` scope endpoint fatigue handoffs |
 
+## Completed In v0.61.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking diff baseline policy | Implemented | `contextdb eval ranking --baseline-dir DIR` writes versioned JSON and Markdown baselines; `--compare-baseline-dir DIR` resolves the latest previous baseline for diff reports |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -874,7 +880,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Completed in v0.57.0 with `published_backup_freshness` inside `contextdb doctor` |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
-| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
+| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Completed in v0.61.0 with --baseline-dir and --compare-baseline-dir versioned ranking artifacts |
 
 ## Fresh Brainstorm After v0.57.0
 
@@ -882,7 +888,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 |:--------|:---------------|:-------------------|
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Completed in v0.58.0 with owner and escalation counts in JSON, GraphQL, and Markdown |
-| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
+| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Completed in v0.61.0 with --baseline-dir and --compare-baseline-dir versioned ranking artifacts |
 | Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
 
 ## Fresh Brainstorm After v0.58.0
@@ -890,7 +896,7 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Completed in v0.59.0 with dry-run-first `contextdb repair kv-cache` reviewed value writes |
-| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
+| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Completed in v0.61.0 with --baseline-dir and --compare-baseline-dir versioned ranking artifacts |
 | Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 
@@ -898,16 +904,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
+| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Completed in v0.61.0 with --baseline-dir and --compare-baseline-dir versioned ranking artifacts |
 | Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Add a reviewed derived type for recent-node session context keys |
 
-## Fresh Brainstorm After v0.60.0
+## Fresh Brainstorm After v0.61.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |
 | Doctor published backup drift | Freshness checks age, but operators may also want doctor to compare local and published catalog content | Add an optional doctor drift check that reuses lifecycle index publish drift reporting |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Add a reviewed derived type for recent-node session context keys |
 | Retry fatigue escalation filter docs | Owner and escalation filters exist, but operators may need examples for common handoff lanes | Add cookbook examples for `owner` and `escalation_level` combinations |
+| Ranking baseline retention report | Versioned ranking baselines will accumulate after repeated releases | Add an optional read-only report that lists retained, current, and pruneable baseline artifacts |

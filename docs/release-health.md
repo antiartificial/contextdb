@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.61.0 | Passed | Passed | Baseline policy coverage added | Corpus coverage present | CLI ranking baseline tests added | Adds versioned ranking baseline artifacts and previous-baseline resolution |
 | v0.60.0 | Passed | Passed | Corpus coverage present | Retry fatigue filter coverage added | Go SDK, REST, and GraphQL fatigue filter tests added | Adds owner and escalation filters for retry fatigue handoffs |
 | v0.59.0 | Passed | Passed | Corpus coverage present | KV refresh repair coverage added | CLI KV cache repair tests added | Adds dry-run-first reviewed KV hot-key refresh execution |
 | v0.58.0 | Passed | Passed | Corpus coverage present | Retry fatigue owner grouping coverage added | Go SDK, REST, and GraphQL fatigue grouping tests added | Adds owner and escalation breakdowns to retry fatigue handoffs |

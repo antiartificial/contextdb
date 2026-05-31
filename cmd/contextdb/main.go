@@ -150,6 +150,8 @@ func runEvalRanking(args []string) {
 	outPath := fs.String("out", "", "JSON ranking eval snapshot to write")
 	markdownOutPath := fs.String("markdown-out", "", "Markdown ranking eval recap to write")
 	comparePath := fs.String("compare", "", "previous JSON ranking eval snapshot to compare")
+	baselineDir := fs.String("baseline-dir", "", "directory for versioned ranking eval baseline artifacts")
+	compareBaselineDir := fs.String("compare-baseline-dir", "", "directory containing previous versioned ranking eval baselines")
 	diffOutPath := fs.String("diff-out", "", "JSON ranking eval diff to write")
 	diffMarkdownOutPath := fs.String("diff-markdown-out", "", "Markdown ranking eval diff to write")
 	reportOut := fs.Bool("report", false, "print the JSON ranking eval snapshot")
@@ -179,13 +181,33 @@ func runEvalRanking(args []string) {
 			os.Exit(1)
 		}
 	}
+	if strings.TrimSpace(*baselineDir) != "" {
+		if _, err := writeRankingEvalBaselineArtifacts(*baselineDir, report); err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	if *markdownReportOut {
 		fmt.Print(buildRankingEvalMarkdown(report))
 	}
 
-	diffRequested := strings.TrimSpace(*comparePath) != ""
+	resolvedComparePath := strings.TrimSpace(*comparePath)
+	resolvedCompareBaselineDir := strings.TrimSpace(*compareBaselineDir)
+	if resolvedComparePath != "" && resolvedCompareBaselineDir != "" {
+		fmt.Fprintln(os.Stderr, "contextdb eval ranking: --compare and --compare-baseline-dir are mutually exclusive")
+		os.Exit(2)
+	}
+	if resolvedComparePath == "" && resolvedCompareBaselineDir != "" {
+		resolved, err := resolveRankingEvalBaselineComparePath(resolvedCompareBaselineDir, buildinfo.Version)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+			os.Exit(1)
+		}
+		resolvedComparePath = resolved
+	}
+	diffRequested := resolvedComparePath != ""
 	if diffRequested {
-		previous, err := readRankingEvalSnapshotReport(*comparePath)
+		previous, err := readRankingEvalSnapshotReport(resolvedComparePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
 			os.Exit(1)
@@ -206,11 +228,11 @@ func runEvalRanking(args []string) {
 		if *diffMarkdownReportOut {
 			fmt.Print(buildRankingEvalDiffMarkdown(diff))
 		}
-		if *diffReportOut || (strings.TrimSpace(*outPath) == "" && !*reportOut && strings.TrimSpace(*markdownOutPath) == "" && !*markdownReportOut && strings.TrimSpace(*diffOutPath) == "" && strings.TrimSpace(*diffMarkdownOutPath) == "" && !*diffMarkdownReportOut) {
+		if *diffReportOut || (strings.TrimSpace(*outPath) == "" && !*reportOut && strings.TrimSpace(*markdownOutPath) == "" && strings.TrimSpace(*baselineDir) == "" && !*markdownReportOut && strings.TrimSpace(*diffOutPath) == "" && strings.TrimSpace(*diffMarkdownOutPath) == "" && !*diffMarkdownReportOut) {
 			writeIndentedJSON(diff)
 		}
 	}
-	if *reportOut || (!diffRequested && strings.TrimSpace(*outPath) == "" && strings.TrimSpace(*markdownOutPath) == "" && !*markdownReportOut) {
+	if *reportOut || (!diffRequested && strings.TrimSpace(*outPath) == "" && strings.TrimSpace(*markdownOutPath) == "" && strings.TrimSpace(*baselineDir) == "" && !*markdownReportOut) {
 		writeIndentedJSON(report)
 	}
 }
@@ -1225,6 +1247,20 @@ type rankingEvalDiffQuery struct {
 	CurrentTopScore        float64 `json:"current_top_score"`
 	TopScoreDelta          float64 `json:"top_score_delta"`
 	TopResultChanged       bool    `json:"top_result_changed"`
+}
+
+type rankingEvalBaselineArtifacts struct {
+	Version      string `json:"version"`
+	Dir          string `json:"dir"`
+	JSONPath     string `json:"json_path"`
+	MarkdownPath string `json:"markdown_path"`
+}
+
+type rankingEvalBaselineVersion struct {
+	Path  string
+	Major int
+	Minor int
+	Patch int
 }
 
 type kvRefreshOptions struct {
@@ -2323,6 +2359,118 @@ func buildRankingEvalDiffMarkdown(diff rankingEvalDiffReport) string {
 	writeRankingEvalDiffTable(&b, "Largest Rank Movements", diff.LargestRankMovements)
 	writeRankingEvalDiffTable(&b, "Largest Score Movements", diff.LargestScoreMovements)
 	return b.String()
+}
+
+func writeRankingEvalBaselineArtifacts(dir string, report rankingEvalSnapshotReport) (rankingEvalBaselineArtifacts, error) {
+	paths, err := rankingEvalBaselineArtifactPaths(dir, report.ContextDBVersion)
+	if err != nil {
+		return paths, err
+	}
+	if err := os.MkdirAll(paths.Dir, 0o755); err != nil {
+		return paths, fmt.Errorf("create ranking eval baseline dir: %w", err)
+	}
+	if err := writeJSONFile(paths.JSONPath, report); err != nil {
+		return paths, err
+	}
+	if err := writeTextFile(paths.MarkdownPath, buildRankingEvalMarkdown(report)); err != nil {
+		return paths, err
+	}
+	return paths, nil
+}
+
+func rankingEvalBaselineArtifactPaths(dir, version string) (rankingEvalBaselineArtifacts, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return rankingEvalBaselineArtifacts{}, errors.New("baseline dir is required")
+	}
+	version = rankingEvalBaselineVersionLabel(version)
+	return rankingEvalBaselineArtifacts{
+		Version:      version,
+		Dir:          dir,
+		JSONPath:     filepath.Join(dir, "ranking-eval-"+version+".json"),
+		MarkdownPath: filepath.Join(dir, "ranking-eval-"+version+".md"),
+	}, nil
+}
+
+func resolveRankingEvalBaselineComparePath(dir, currentVersion string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", errors.New("compare baseline dir is required")
+	}
+	current, ok := parseRankingEvalBaselineVersion(rankingEvalBaselineVersionLabel(currentVersion))
+	if !ok {
+		return "", fmt.Errorf("current version %q is not a semantic version", currentVersion)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("read ranking eval baseline dir: %w", err)
+	}
+	var candidates []rankingEvalBaselineVersion
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, "ranking-eval-") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		versionLabel := strings.TrimSuffix(strings.TrimPrefix(name, "ranking-eval-"), ".json")
+		version, ok := parseRankingEvalBaselineVersion(versionLabel)
+		if !ok || compareRankingEvalBaselineVersion(version, current) >= 0 {
+			continue
+		}
+		version.Path = filepath.Join(dir, name)
+		candidates = append(candidates, version)
+	}
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no previous ranking eval baseline found in %s", dir)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return compareRankingEvalBaselineVersion(candidates[i], candidates[j]) > 0
+	})
+	return candidates[0].Path, nil
+}
+
+func rankingEvalBaselineVersionLabel(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = buildinfo.Version
+	}
+	if !strings.HasPrefix(version, "v") {
+		version = "v" + version
+	}
+	return version
+}
+
+func parseRankingEvalBaselineVersion(version string) (rankingEvalBaselineVersion, bool) {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return rankingEvalBaselineVersion{}, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return rankingEvalBaselineVersion{}, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return rankingEvalBaselineVersion{}, false
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return rankingEvalBaselineVersion{}, false
+	}
+	return rankingEvalBaselineVersion{Major: major, Minor: minor, Patch: patch}, true
+}
+
+func compareRankingEvalBaselineVersion(left, right rankingEvalBaselineVersion) int {
+	if left.Major != right.Major {
+		return left.Major - right.Major
+	}
+	if left.Minor != right.Minor {
+		return left.Minor - right.Minor
+	}
+	return left.Patch - right.Patch
 }
 
 func writeRankingEvalDiffTable(b *strings.Builder, title string, queries []rankingEvalDiffQuery) {

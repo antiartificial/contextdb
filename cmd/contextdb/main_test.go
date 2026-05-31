@@ -1147,6 +1147,51 @@ func TestBuildRankingEvalDiffReport(t *testing.T) {
 	is.True(strings.Contains(markdown, "+0.200"))
 }
 
+func TestRankingEvalBaselineArtifactPaths(t *testing.T) {
+	is := is.New(t)
+
+	dir := filepath.Join(t.TempDir(), "ranking-baselines")
+	paths, err := rankingEvalBaselineArtifactPaths(dir, "0.61.0")
+
+	is.NoErr(err)
+	is.Equal(paths.Version, "v0.61.0")
+	is.Equal(paths.Dir, dir)
+	is.Equal(paths.JSONPath, filepath.Join(dir, "ranking-eval-v0.61.0.json"))
+	is.Equal(paths.MarkdownPath, filepath.Join(dir, "ranking-eval-v0.61.0.md"))
+}
+
+func TestResolveRankingEvalBaselineComparePath(t *testing.T) {
+	is := is.New(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{
+		"ranking-eval-v0.59.0.json",
+		"ranking-eval-v0.60.0.json",
+		"ranking-eval-v0.61.0.json",
+		"ranking-eval-v0.60.0.md",
+		"ranking-eval-not-semver.json",
+	} {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0o644))
+	}
+
+	path, err := resolveRankingEvalBaselineComparePath(dir, "v0.61.0")
+
+	is.NoErr(err)
+	is.Equal(path, filepath.Join(dir, "ranking-eval-v0.60.0.json"))
+}
+
+func TestResolveRankingEvalBaselineComparePathRequiresPrevious(t *testing.T) {
+	is := is.New(t)
+
+	dir := t.TempDir()
+	is.NoErr(os.WriteFile(filepath.Join(dir, "ranking-eval-v0.61.0.json"), []byte("{}\n"), 0o644))
+
+	_, err := resolveRankingEvalBaselineComparePath(dir, "v0.61.0")
+
+	is.True(err != nil)
+	is.True(strings.Contains(err.Error(), "no previous ranking eval baseline"))
+}
+
 func copyRankingEvalSnapshotReport(report rankingEvalSnapshotReport) rankingEvalSnapshotReport {
 	report.Queries = append([]rankingEvalSnapshotQuery(nil), report.Queries...)
 	for i := range report.Queries {
