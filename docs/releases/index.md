@@ -8,6 +8,7 @@ Release notes are the high-level map of what changed, why it matters, and which 
 
 | Release | Date | Theme |
 |:--------|:-----|:------|
+| [v0.45.0](v0.45.0) | 2026-05-31 | Review handoff retry execution |
 | [v0.44.0](v0.44.0) | 2026-05-31 | Review handoff retry candidates |
 | [v0.43.0](v0.43.0) | 2026-05-31 | Review handoff delivery receipts |
 | [v0.42.0](v0.42.0) | 2026-05-31 | Review handoff webhook execution |
@@ -63,9 +64,9 @@ The docs are currently versioned by release notes and feature tags rather than a
 Use the Git tags for exact historical source:
 
 ```bash
-git checkout v0.44.0
+git checkout v0.45.0
 npm ci
 npm run docs:build
 ```
 
-Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.44.0 is intentionally non-breaking, so tagged release notes are the clearer tool.
+Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.45.0 is intentionally non-breaking, so tagged release notes are the clearer tool.

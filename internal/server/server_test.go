@@ -410,9 +410,15 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(receipt["status_code"], float64(http.StatusAccepted))
 	is.True(receipt["payload_sha256"].(string) != "")
 	is.True(receipt["response_sha256"].(string) != "")
+	failRESTWebhook := true
 	failedWebhookTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte("try later"))
+		if failRESTWebhook {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte("try later"))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("retry accepted"))
 	}))
 	defer failedWebhookTarget.Close()
 	failedDeliverBody, _ := json.Marshal(map[string]any{
@@ -441,6 +447,25 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(candidate["attempts"], float64(1))
 	is.Equal(candidate["last_status_code"], float64(http.StatusBadGateway))
 	is.True(candidate["last_error"].(string) != "")
+	failRESTWebhook = false
+	retryBody, _ := json.Marshal(map[string]any{
+		"digest_event_id": candidate["digest_event_id"],
+		"target_url":      failedWebhookTarget.URL,
+		"secret":          "test-secret",
+		"execute":         true,
+		"timeout_ms":      1000,
+	})
+	reqRetryWebhook := httptest.NewRequest("POST", "/v1/namespaces/channel:general/review/handoff-webhooks/retry", bytes.NewReader(retryBody))
+	reqRetryWebhook.Header.Set("Content-Type", "application/json")
+	wRetryWebhook := httptest.NewRecorder()
+	handler.ServeHTTP(wRetryWebhook, reqRetryWebhook)
+	is.Equal(wRetryWebhook.Code, http.StatusOK)
+	var retryResp map[string]any
+	is.NoErr(json.Unmarshal(wRetryWebhook.Body.Bytes(), &retryResp))
+	retryDelivery := retryResp["delivery"].(map[string]any)
+	is.Equal(retryDelivery["executed"], true)
+	is.Equal(retryDelivery["status_code"], float64(http.StatusAccepted))
+	is.Equal(retryDelivery["response_body"], "retry accepted")
 
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
@@ -822,6 +847,112 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(graphQLExecutedDelivery["statusCode"], float64(http.StatusAccepted))
 	is.Equal(graphQLExecutedDelivery["responseBody"], "accepted")
 
+	failGraphQLWebhook := true
+	graphQLRetryTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Header.Get("X-ContextDB-Delivery-Mode"), "execute")
+		if failGraphQLWebhook {
+			http.Error(w, "retry later", http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("retry accepted"))
+	}))
+	defer graphQLRetryTarget.Close()
+	failedWebhookBody, _ := json.Marshal(map[string]any{
+		"query": `mutation($target: String!) {
+			deliverReviewHandoffWebhook(
+				namespace: "graphql-test"
+				owner: "alice"
+				escalationLevel: "review_overdue"
+				targetUrl: $target
+				secret: "test-secret"
+				execute: true
+				timeoutMs: 1000
+			) {
+				statusCode
+				error
+			}
+		}`,
+		"variables": map[string]any{"target": graphQLRetryTarget.URL},
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(failedWebhookBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql failed handoff webhook errors: %v", errs)
+	}
+	failedDeliveries := resp["data"].(map[string]any)["deliverReviewHandoffWebhook"].([]any)
+	is.Equal(failedDeliveries[0].(map[string]any)["statusCode"], float64(http.StatusBadGateway))
+
+	retryCandidatesBody, _ := json.Marshal(map[string]any{
+		"query": `query {
+			reviewHandoffRetryCandidates(namespace: "graphql-test") {
+				digestEventId
+				targetUrl
+				attempts
+				lastStatusCode
+			}
+		}`,
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(retryCandidatesBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql retry candidate errors: %v", errs)
+	}
+	retryCandidates := resp["data"].(map[string]any)["reviewHandoffRetryCandidates"].([]any)
+	is.Equal(len(retryCandidates), 1)
+	retryCandidate := retryCandidates[0].(map[string]any)
+	is.Equal(retryCandidate["targetUrl"], graphQLRetryTarget.URL)
+	is.Equal(retryCandidate["attempts"], float64(1))
+	is.Equal(retryCandidate["lastStatusCode"], float64(http.StatusBadGateway))
+	failGraphQLWebhook = false
+
+	retryWebhookBody, _ := json.Marshal(map[string]any{
+		"query": `mutation($digestEventId: ID!, $target: String!) {
+			retryReviewHandoffWebhook(
+				namespace: "graphql-test"
+				digestEventId: $digestEventId
+				targetUrl: $target
+				secret: "test-secret"
+				execute: true
+				timeoutMs: 1000
+			) {
+				targetUrl
+				executed
+				statusCode
+				responseBody
+			}
+		}`,
+		"variables": map[string]any{
+			"digestEventId": retryCandidate["digestEventId"],
+			"target":        graphQLRetryTarget.URL,
+		},
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(retryWebhookBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql retry handoff webhook errors: %v", errs)
+	}
+	retryDelivery := resp["data"].(map[string]any)["retryReviewHandoffWebhook"].(map[string]any)
+	is.Equal(retryDelivery["targetUrl"], graphQLRetryTarget.URL)
+	is.Equal(retryDelivery["executed"], true)
+	is.Equal(retryDelivery["statusCode"], float64(http.StatusAccepted))
+	is.Equal(retryDelivery["responseBody"], "retry accepted")
+
 	time.Sleep(5 * time.Millisecond)
 	queryBody, _ = json.Marshal(map[string]any{
 		"query": `query($id: ID!, $otherID: ID!) {
@@ -1011,8 +1142,16 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.True(strings.HasPrefix(graphQLDelivery["signature"].(string), "sha256="))
 	is.Equal(graphQLDelivery["maxAttempts"], float64(3))
 	graphQLReceipts := data["reviewHandoffDeliveryReceipts"].([]any)
-	is.Equal(len(graphQLReceipts), 1)
-	graphQLReceipt := graphQLReceipts[0].(map[string]any)
+	is.Equal(len(graphQLReceipts), 3)
+	var graphQLReceipt map[string]any
+	for _, raw := range graphQLReceipts {
+		receipt := raw.(map[string]any)
+		if receipt["targetUrl"] == graphQLWebhookTarget.URL {
+			graphQLReceipt = receipt
+			break
+		}
+	}
+	is.True(graphQLReceipt != nil)
 	is.Equal(graphQLReceipt["targetUrl"], graphQLWebhookTarget.URL)
 	is.Equal(graphQLReceipt["success"], true)
 	is.Equal(graphQLReceipt["statusCode"], float64(http.StatusAccepted))

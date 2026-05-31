@@ -355,6 +355,29 @@ query {
 }
 ```
 
+Retry one unresolved failed delivery explicitly:
+
+```graphql
+mutation {
+  retryReviewHandoffWebhook(
+    namespace: "my-app"
+    digestEventId: "550e8400-e29b-41d4-a716-446655440000"
+    targetUrl: "https://ops.example.test/contextdb/handoffs"
+    secret: "webhook-signing-secret"
+    execute: true
+    timeoutMs: 5000
+  ) {
+    targetUrl
+    executed
+    statusCode
+    responseBody
+    error
+  }
+}
+```
+
+Retry execution uses the digest event ID and target URL from `reviewHandoffRetryCandidates`, requires `execute: true`, and records a new delivery receipt.
+
 Record and inspect review workflow state with:
 
 ```graphql

@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.45.0 | Passed | Passed | Corpus coverage present | Review handoff retry execution coverage added | Go SDK, REST, and GraphQL retry execution tests added | Adds explicit operator-triggered resend for unresolved failed handoff deliveries |
 | v0.44.0 | Passed | Passed | Corpus coverage present | Review handoff retry candidate coverage added | Go SDK, REST, and GraphQL retry candidate tests added | Adds read-only retry candidates for unresolved failed handoff deliveries |
 | v0.43.0 | Passed | Passed | Corpus coverage present | Review handoff delivery receipt coverage added | Go SDK, REST, and GraphQL receipt tests added | Adds append-only webhook delivery receipts with payload and response hashes |
 | v0.42.0 | Passed | Passed | Corpus coverage present | Review handoff webhook execution coverage added | Go SDK, REST, and GraphQL execution tests added | Adds explicit synchronous webhook delivery with timeout and response capture |

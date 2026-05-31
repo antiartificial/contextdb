@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.44.0"
+	Version = "0.45.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.44.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.45.0",
 	}
 }
 
@@ -96,6 +96,7 @@ func Features() []Feature {
 		{Name: "review-handoff-webhook-execution", Status: "stable", Since: "v0.42.0", Description: "Review handoff webhook execution sends opt-in handoff deliveries with timeout and response capture."},
 		{Name: "review-handoff-delivery-receipts", Status: "stable", Since: "v0.43.0", Description: "Review handoff delivery receipts record append-only webhook delivery audit events."},
 		{Name: "review-handoff-retry-candidates", Status: "stable", Since: "v0.44.0", Description: "Review handoff retry candidates group unresolved failed webhook delivery receipts without sending retries."},
+		{Name: "review-handoff-retry-execution", Status: "stable", Since: "v0.45.0", Description: "Review handoff retry execution resends unresolved failed handoff deliveries with explicit operator control."},
 	}
 }
 

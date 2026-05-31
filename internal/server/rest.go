@@ -56,6 +56,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoffs", s.handleReviewHandoffs)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/plan", s.handleReviewHandoffWebhookPlan)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/deliver", s.handleReviewHandoffWebhookDeliver)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/retry", s.handleReviewHandoffWebhookRetry)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoff-webhooks/receipts", s.handleReviewHandoffWebhookReceipts)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoff-webhooks/retry-candidates", s.handleReviewHandoffWebhookRetryCandidates)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalation-digests", s.handleReviewEscalationDigests)
@@ -276,8 +277,23 @@ type reviewHandoffWebhookPlanRequest struct {
 	TimeoutMS       int    `json:"timeout_ms,omitempty"`
 }
 
+type reviewHandoffWebhookRetryRequest struct {
+	Mode          string `json:"mode"`
+	After         string `json:"after,omitempty"`
+	DigestEventID string `json:"digest_event_id"`
+	TargetURL     string `json:"target_url"`
+	Secret        string `json:"secret,omitempty"`
+	MaxAttempts   int    `json:"max_attempts,omitempty"`
+	Execute       bool   `json:"execute,omitempty"`
+	TimeoutMS     int    `json:"timeout_ms,omitempty"`
+}
+
 type reviewHandoffWebhookPlanResponse struct {
 	Deliveries []client.ReviewHandoffWebhookDelivery `json:"deliveries"`
+}
+
+type reviewHandoffWebhookRetryResponse struct {
+	Delivery client.ReviewHandoffWebhookDelivery `json:"delivery"`
 }
 
 type reviewHandoffDeliveryReceiptsResponse struct {
@@ -901,6 +917,35 @@ func (s *RESTServer) handleReviewHandoffWebhookDeliver(w http.ResponseWriter, r 
 	writeJSON(w, http.StatusOK, reviewHandoffWebhookPlanResponse{Deliveries: deliveries})
 }
 
+func (s *RESTServer) handleReviewHandoffWebhookRetry(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	var body reviewHandoffWebhookRetryRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	req, err := reviewHandoffRetryRequestFromBody(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	mode := body.Mode
+	if mode == "" {
+		mode = r.URL.Query().Get("mode")
+	}
+	h := s.db.Namespace(ns, resolveMode(mode))
+	delivery, err := h.ReviewHandoffWebhookRetry(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewHandoffWebhookRetryResponse{Delivery: delivery})
+}
+
 func (s *RESTServer) handleReviewHandoffWebhookReceipts(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
 	tenant := TenantFromContext(r.Context())
@@ -1066,6 +1111,30 @@ func reviewHandoffWebhookRequestFromBody(body reviewHandoffWebhookPlanRequest) (
 		MaxAttempts: body.MaxAttempts,
 		Execute:     body.Execute,
 		Timeout:     time.Duration(body.TimeoutMS) * time.Millisecond,
+	}, nil
+}
+
+func reviewHandoffRetryRequestFromBody(body reviewHandoffWebhookRetryRequest) (client.ReviewHandoffRetryRequest, error) {
+	var after time.Time
+	if strings.TrimSpace(body.After) != "" {
+		parsed, err := time.Parse(time.RFC3339, body.After)
+		if err != nil {
+			return client.ReviewHandoffRetryRequest{}, fmt.Errorf("invalid after timestamp: %w", err)
+		}
+		after = parsed
+	}
+	digestID, err := uuid.Parse(strings.TrimSpace(body.DigestEventID))
+	if err != nil {
+		return client.ReviewHandoffRetryRequest{}, fmt.Errorf("invalid digest_event_id: %w", err)
+	}
+	return client.ReviewHandoffRetryRequest{
+		After:         after,
+		DigestEventID: digestID,
+		TargetURL:     strings.TrimSpace(body.TargetURL),
+		Secret:        body.Secret,
+		MaxAttempts:   body.MaxAttempts,
+		Execute:       body.Execute,
+		Timeout:       time.Duration(body.TimeoutMS) * time.Millisecond,
 	}, nil
 }
 

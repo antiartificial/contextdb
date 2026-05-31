@@ -66,10 +66,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff webhook execution | Implemented | v0.42 | `review`, `operations` | Explicit webhook delivery sends synchronous POSTs with timeout, status, body, and error capture |
 | Review handoff delivery receipts | Implemented | v0.43 | `review`, `operations`, `audit` | Executed handoff webhooks append durable receipts with target URL, status, payload hash, response hash, and errors |
 | Review handoff retry candidates | Implemented | v0.44 | `review`, `operations`, `audit` | Failed handoff receipts are grouped by digest and target URL for retry review without sending retries |
+| Review handoff retry execution | Implemented | v0.45 | `review`, `operations`, `audit` | Failed handoff candidates can be resent explicitly by digest event ID and target URL with a new receipt recorded |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Review handoff retry execution for teams that want explicit resend controls after candidate review.
+2. Backup publish drift watch for operators comparing live published backup catalog metadata with local lifecycle indexes.
 3. Deeper doctor store/index consistency checks.

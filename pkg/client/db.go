@@ -742,6 +742,19 @@ type ReviewHandoffWebhookRequest struct {
 	HTTPClient  *http.Client
 }
 
+// ReviewHandoffRetryRequest configures explicit retry execution for one failed handoff delivery.
+type ReviewHandoffRetryRequest struct {
+	After         time.Time
+	DigestEventID uuid.UUID
+	TargetURL     string
+	Secret        string
+	MaxAttempts   int
+	Now           time.Time
+	Execute       bool
+	Timeout       time.Duration
+	HTTPClient    *http.Client
+}
+
 // ReviewHandoffWebhookDelivery describes one dry-run webhook delivery that would be sent.
 type ReviewHandoffWebhookDelivery struct {
 	TargetURL       string                  `json:"target_url"`
@@ -1836,7 +1849,87 @@ func (h *NamespaceHandle) ReviewHandoffWebhookDeliver(ctx context.Context, req R
 	return h.reviewHandoffWebhookDeliveries(ctx, req, true)
 }
 
+// ReviewHandoffWebhookRetry resends one unresolved failed handoff delivery candidate.
+func (h *NamespaceHandle) ReviewHandoffWebhookRetry(ctx context.Context, req ReviewHandoffRetryRequest) (ReviewHandoffWebhookDelivery, error) {
+	if !req.Execute {
+		return ReviewHandoffWebhookDelivery{}, fmt.Errorf("review handoff retry: execute must be true")
+	}
+	if req.DigestEventID == uuid.Nil {
+		return ReviewHandoffWebhookDelivery{}, fmt.Errorf("review handoff retry: digest event id is required")
+	}
+	target := strings.TrimSpace(req.TargetURL)
+	if target == "" {
+		return ReviewHandoffWebhookDelivery{}, fmt.Errorf("review handoff retry: target URL is required")
+	}
+	candidates, err := h.ReviewHandoffRetryCandidates(ctx, req.After)
+	if err != nil {
+		return ReviewHandoffWebhookDelivery{}, err
+	}
+	var candidate ReviewHandoffRetryCandidate
+	found := false
+	for _, item := range candidates {
+		if item.DigestEventID == req.DigestEventID && item.TargetURL == target {
+			candidate = item
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ReviewHandoffWebhookDelivery{}, fmt.Errorf("review handoff retry: candidate not found")
+	}
+	digests, err := h.ReviewEscalationDigests(ctx, req.After)
+	if err != nil {
+		return ReviewHandoffWebhookDelivery{}, err
+	}
+	for _, digest := range digests {
+		if digest.EventID != req.DigestEventID {
+			continue
+		}
+		filtered := digest
+		if candidate.Owner != "" || candidate.EscalationLevel != "" {
+			filtered.Groups = matchingEscalationGroups(digest.Groups, candidate.Owner, candidate.EscalationLevel)
+			total := 0
+			for _, group := range filtered.Groups {
+				total += group.Count
+			}
+			filtered.TotalEscalated = total
+		}
+		if len(filtered.Groups) == 0 {
+			return ReviewHandoffWebhookDelivery{}, fmt.Errorf("review handoff retry: candidate groups not found")
+		}
+		deliveries, err := h.reviewHandoffWebhookDeliveriesForDigests(ctx, []ReviewEscalationDigest{filtered}, ReviewHandoffWebhookRequest{
+			ReviewHandoffRequest: ReviewHandoffRequest{
+				Owner:           candidate.Owner,
+				EscalationLevel: candidate.EscalationLevel,
+			},
+			TargetURL:   target,
+			Secret:      req.Secret,
+			MaxAttempts: req.MaxAttempts,
+			Now:         req.Now,
+			Execute:     req.Execute,
+			Timeout:     req.Timeout,
+			HTTPClient:  req.HTTPClient,
+		}, true)
+		if err != nil {
+			return ReviewHandoffWebhookDelivery{}, err
+		}
+		if len(deliveries) == 0 {
+			return ReviewHandoffWebhookDelivery{}, fmt.Errorf("review handoff retry: no delivery produced")
+		}
+		return deliveries[0], nil
+	}
+	return ReviewHandoffWebhookDelivery{}, fmt.Errorf("review handoff retry: digest not found")
+}
+
 func (h *NamespaceHandle) reviewHandoffWebhookDeliveries(ctx context.Context, req ReviewHandoffWebhookRequest, execute bool) ([]ReviewHandoffWebhookDelivery, error) {
+	handoffs, err := h.ReviewHandoffs(ctx, req.ReviewHandoffRequest)
+	if err != nil {
+		return nil, err
+	}
+	return h.reviewHandoffWebhookDeliveriesForDigests(ctx, handoffs, req, execute)
+}
+
+func (h *NamespaceHandle) reviewHandoffWebhookDeliveriesForDigests(ctx context.Context, handoffs []ReviewEscalationDigest, req ReviewHandoffWebhookRequest, execute bool) ([]ReviewHandoffWebhookDelivery, error) {
 	target := strings.TrimSpace(req.TargetURL)
 	if target == "" {
 		return nil, fmt.Errorf("review handoff webhook: target URL is required")
@@ -1855,10 +1948,6 @@ func (h *NamespaceHandle) reviewHandoffWebhookDeliveries(ctx context.Context, re
 	maxAttempts := req.MaxAttempts
 	if maxAttempts <= 0 {
 		maxAttempts = 3
-	}
-	handoffs, err := h.ReviewHandoffs(ctx, req.ReviewHandoffRequest)
-	if err != nil {
-		return nil, err
 	}
 	mode := "dry-run"
 	if execute {

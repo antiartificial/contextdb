@@ -26,6 +26,7 @@ contextdb exposes a REST API on port **7701**.
 | `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/deliver` | Execute opted-in review handoff webhook deliveries |
 | `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/receipts` | List review handoff webhook delivery receipts |
 | `GET` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry-candidates` | List unresolved failed handoff webhook deliveries |
+| `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/retry` | Retry one unresolved failed handoff webhook delivery |
 | `GET` | `/v1/namespaces/{ns}/review/decisions` | Review workflow decision history |
 | `POST` | `/v1/namespaces/{ns}/review/decisions` | Record review assignment, snooze, or resolution |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/validate` | Validate a claim |
@@ -208,9 +209,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.44.0",
+  "version": "0.45.0",
   "api_version": "v1",
-  "docs_version": "0.44.0",
+  "docs_version": "0.45.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -471,6 +472,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.44.0",
       "description": "Review handoff retry candidates group unresolved failed webhook delivery receipts without sending retries."
+    },
+    {
+      "name": "review-handoff-retry-execution",
+      "status": "stable",
+      "since": "v0.45.0",
+      "description": "Review handoff retry execution resends unresolved failed handoff deliveries with explicit operator control."
     }
   ],
   "migrations": [
@@ -478,7 +485,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.44.0"
+  "release_notes_path": "/contextdb/releases/v0.45.0"
 }
 ```
 
@@ -839,6 +846,22 @@ curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-c
 ```
 
 Retry candidates group failed receipts by digest event and target URL, omit groups with a later success, and expose the last status, error, attempt count, and payload hash.
+
+Retry one unresolved failed delivery explicitly:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "digest_event_id": "550e8400-e29b-41d4-a716-446655440000",
+    "target_url": "https://ops.example.test/contextdb/handoffs",
+    "secret": "webhook-signing-secret",
+    "execute": true,
+    "timeout_ms": 5000
+  }'
+```
+
+Retries require the digest event ID and target URL from a retry candidate. The resend is synchronous, requires `execute: true`, and records a new delivery receipt so later retry candidate queries drop the group after success.
 
 Record workflow state for a derived review item with:
 

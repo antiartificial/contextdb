@@ -1490,6 +1490,21 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveDeliverReviewHandoffWebhook,
 			},
+			"retryReviewHandoffWebhook": &graphql.Field{
+				Type: graphql.NewNonNull(reviewHandoffWebhookDeliveryType),
+				Args: graphql.FieldConfigArgument{
+					"namespace":     &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":          &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":         &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"digestEventId": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.ID)},
+					"targetUrl":     &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"secret":        &graphql.ArgumentConfig{Type: graphql.String},
+					"maxAttempts":   &graphql.ArgumentConfig{Type: graphql.Int},
+					"execute":       &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
+					"timeoutMs":     &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveRetryReviewHandoffWebhook,
+			},
 			"validateClaim": &graphql.Field{
 				Type:    graphql.NewNonNull(feedbackResultType),
 				Args:    feedbackArgs,
@@ -1846,6 +1861,35 @@ func (s *GraphQLServer) resolveDeliverReviewHandoffWebhook(p graphql.ResolvePara
 		MaxAttempts: maxAttempts,
 		Execute:     execute,
 		Timeout:     time.Duration(timeoutMS) * time.Millisecond,
+	})
+}
+
+func (s *GraphQLServer) resolveRetryReviewHandoffWebhook(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	rawDigestID, _ := p.Args["digestEventId"].(string)
+	digestID, err := uuid.Parse(rawDigestID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid digestEventId: %w", err)
+	}
+	targetURL, _ := p.Args["targetUrl"].(string)
+	secret, _ := p.Args["secret"].(string)
+	maxAttempts, _ := p.Args["maxAttempts"].(int)
+	execute, _ := p.Args["execute"].(bool)
+	timeoutMS, _ := p.Args["timeoutMs"].(int)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewHandoffWebhookRetry(p.Context, client.ReviewHandoffRetryRequest{
+		After:         after,
+		DigestEventID: digestID,
+		TargetURL:     targetURL,
+		Secret:        secret,
+		MaxAttempts:   maxAttempts,
+		Execute:       execute,
+		Timeout:       time.Duration(timeoutMS) * time.Millisecond,
 	})
 }
 

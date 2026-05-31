@@ -514,9 +514,15 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.True(receipts[0].ResponseSHA256 != "")
 	is.Equal(receipts[0].Owner, "alice")
 	is.Equal(receipts[0].EscalationLevel, "review_overdue")
+	failDelivery := true
 	failingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte("try later"))
+		if failDelivery {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte("try later"))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("retry accepted"))
 	}))
 	defer failingServer.Close()
 	failed, err := ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhookRequest{
@@ -543,6 +549,22 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(retryCandidates[0].LastStatusCode, http.StatusBadGateway)
 	is.Equal(retryCandidates[0].PayloadSHA256, failed[0].PayloadSHA256)
 	is.True(retryCandidates[0].LastError != "")
+	failDelivery = false
+	retry, err := ns.ReviewHandoffWebhookRetry(ctx, client.ReviewHandoffRetryRequest{
+		After:         start,
+		DigestEventID: recordedDigest.EventID,
+		TargetURL:     failingServer.URL,
+		Secret:        "test-secret",
+		Execute:       true,
+		Timeout:       time.Second,
+	})
+	is.NoErr(err)
+	is.True(retry.Executed)
+	is.Equal(retry.StatusCode, http.StatusAccepted)
+	is.Equal(retry.ResponseBody, "retry accepted")
+	retryCandidates, err = ns.ReviewHandoffRetryCandidates(ctx, start)
+	is.NoErr(err)
+	is.Equal(len(retryCandidates), 0)
 	_, err = ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhookRequest{TargetURL: webhookServer.URL})
 	is.True(err != nil)
 
