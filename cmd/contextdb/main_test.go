@@ -1097,6 +1097,33 @@ func TestBuildStoreConsistencyCheckFindsVectorRebuildCandidate(t *testing.T) {
 	is.True(strings.Contains(check.Detail, "vector rebuild candidate"))
 }
 
+func TestBuildKVConsistencyCheck(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+	is.NoErr(kv.Set(ctx, "context:prod:hot", []byte("cached"), 0))
+
+	check := buildKVConsistencyCheck(ctx, kv, []string{"context:prod:hot", "context:prod:hot"})
+
+	is.True(check.OK)
+	is.Equal(check.Name, "kv_consistency")
+	is.True(strings.Contains(check.Detail, "keys=1"))
+	is.True(strings.Contains(check.Detail, "present=1"))
+	is.True(strings.Contains(check.Detail, "missing=0"))
+}
+
+func TestBuildKVConsistencyCheckFindsRefreshCandidate(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	kv := memstore.NewKVStore()
+
+	check := buildKVConsistencyCheck(ctx, kv, []string{"context:prod:missing"})
+
+	is.True(!check.OK)
+	is.True(strings.Contains(check.Detail, "refresh_candidates=1"))
+	is.True(strings.Contains(check.Detail, "kv refresh candidate"))
+}
+
 func TestBuildVectorIndexRepairReportDryRun(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

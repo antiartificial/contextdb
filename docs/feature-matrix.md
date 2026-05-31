@@ -34,6 +34,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb doctor --sample-write` | Implemented, opt-in mutating probe | v0.4.1 | `operations`, `durability` | CLI writes a deduplicated probe node and verifies vector retrieval sees it |
 | `contextdb doctor --backup-marker` | Implemented, opt-in readiness check | v0.10 | `operations`, `backup`, `durability` | CLI verifies a backup marker file exists and is newer than `--max-backup-age` |
 | `contextdb doctor --store-consistency` | Implemented, opt-in local check | v0.49 | `operations`, `durability` | CLI samples valid graph nodes, checks fingerprint lookup, and reports vector rebuild candidates |
+| `contextdb doctor --kv-key` | Implemented, opt-in local check | v0.54 | `operations`, `durability` | CLI samples expected KV hot keys and reports missing cache refresh candidates |
 | `contextdb repair vector-index` | Implemented, dry-run first | v0.50 | `operations`, `durability` | CLI reports vector rebuild candidates and reindexes reviewed graph-node vectors only with `--execute` |
 | Snapshot backup/restore | Implemented | v0.17 | `operations`, `backup`, `durability` | Go client and `contextdb snapshot export/import` provide NDJSON backup, seeded export filters, namespace override, and import dry-run validation |
 | Snapshot restore reports | Implemented | v0.18 | `operations`, `backup`, `inspectability` | Go client report helpers and `contextdb snapshot import --report` summarize lines, records, vectors, and namespace overrides |
@@ -80,5 +81,5 @@ This matrix is the implementation contract for the current codebase. "Introduced
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. KV consistency sampling and refresh plans.
+2. KV refresh plan execution for reviewed missing hot keys.
 3. Ranking eval markdown recap for release review notes.

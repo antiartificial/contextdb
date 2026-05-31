@@ -2053,6 +2053,48 @@ func buildStoreConsistencyCheck(ctx context.Context, graph store.GraphStore, vec
 	return doctor.CheckResult{Name: "store_consistency", OK: true, Detail: detail}
 }
 
+func buildKVConsistencyCheck(ctx context.Context, kv store.KVStore, keys []string) doctor.CheckResult {
+	var normalized []string
+	seen := map[string]struct{}{}
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, key)
+	}
+	if len(normalized) == 0 {
+		return doctor.CheckResult{Name: "kv_consistency", OK: true, Detail: "keys=0 present=0 missing=0 refresh_candidates=0"}
+	}
+	if kv == nil {
+		return doctor.CheckResult{Name: "kv_consistency", OK: false, Detail: fmt.Sprintf("keys=%d present=0 missing=%d refresh_candidates=%d: kv store unavailable", len(normalized), len(normalized), len(normalized))}
+	}
+	present := 0
+	var issues []string
+	for _, key := range normalized {
+		value, err := kv.Get(ctx, key)
+		if err != nil {
+			issues = append(issues, fmt.Sprintf("kv lookup failed for %q: %v", key, err))
+			continue
+		}
+		if len(value) == 0 {
+			issues = append(issues, fmt.Sprintf("kv refresh candidate %q", key))
+			continue
+		}
+		present++
+	}
+	missing := len(normalized) - present
+	detail := fmt.Sprintf("keys=%d present=%d missing=%d refresh_candidates=%d", len(normalized), present, missing, len(issues))
+	if len(issues) > 0 {
+		return doctor.CheckResult{Name: "kv_consistency", OK: false, Detail: detail + ": " + strings.Join(issues, "; ")}
+	}
+	return doctor.CheckResult{Name: "kv_consistency", OK: true, Detail: detail}
+}
+
 func buildVectorIndexRepairReport(ctx context.Context, graph store.GraphStore, vecs store.VectorIndex, namespace string, sampleLimit int, execute bool) (vectorIndexRepairReport, error) {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
@@ -3040,6 +3082,8 @@ func runDoctor(args []string) {
 	storeConsistency := fs.Bool("store-consistency", false, "check local graph, vector, and fingerprint consistency")
 	storeNamespace := fs.String("store-namespace", "default", "namespace to check with --store-consistency")
 	storeSample := fs.Int("store-sample", 100, "maximum valid graph nodes to sample with --store-consistency")
+	var kvKeys repeatedStringFlag
+	fs.Var(&kvKeys, "kv-key", "expected KV hot key to check; repeat for multiple keys")
 	_ = fs.Parse(args)
 
 	report, err := doctor.Run(context.Background(), doctor.Options{
@@ -3053,11 +3097,16 @@ func runDoctor(args []string) {
 		fmt.Fprintf(os.Stderr, "contextdb doctor: %v\n", err)
 		os.Exit(2)
 	}
-	if *storeConsistency {
+	if *storeConsistency || len(kvKeys) > 0 {
 		db := openSnapshotDB()
 		defer db.Close()
 		graph, vecs, kv, _ := db.Stores()
-		report.Checks = append(report.Checks, buildStoreConsistencyCheck(context.Background(), graph, vecs, kv, *storeNamespace, *storeSample))
+		if *storeConsistency {
+			report.Checks = append(report.Checks, buildStoreConsistencyCheck(context.Background(), graph, vecs, kv, *storeNamespace, *storeSample))
+		}
+		if len(kvKeys) > 0 {
+			report.Checks = append(report.Checks, buildKVConsistencyCheck(context.Background(), kv, kvKeys))
+		}
 		report.OK = true
 		for _, check := range report.Checks {
 			if !check.OK {
@@ -3070,6 +3119,19 @@ func runDoctor(args []string) {
 	if !report.OK {
 		os.Exit(1)
 	}
+}
+
+type repeatedStringFlag []string
+
+func (f *repeatedStringFlag) String() string {
+	return strings.Join(*f, ",")
+}
+
+func (f *repeatedStringFlag) Set(value string) error {
+	for _, part := range splitComma(value) {
+		*f = append(*f, part)
+	}
+	return nil
 }
 
 func getenv(key, fallback string) string {

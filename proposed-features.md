@@ -325,6 +325,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Retry fatigue markdown export | Implemented | Go SDK `ReviewHandoffRetryFatigueMarkdown` and REST `retry-fatigue?format=markdown` render endpoint fatigue handoff notes |
 
+## Completed In v0.54.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| KV consistency sampling | First slice implemented | `contextdb doctor --kv-key KEY` samples expected hot keys and reports missing cache refresh candidates without mutating KV |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -382,7 +388,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Review handoff retry backoff policy | Helps operators pace repeated retries without adding background scheduling | Completed in v0.46.0 with read-only recommendations from receipt history |
 | Review handoff retry fatigue | Helps operators spot repeatedly failing webhook endpoints | Completed in v0.51.0 with endpoint-level retry pressure summaries |
 | Review handoff retry fatigue Markdown | Helps incident handoffs include retry context without JSON tooling | Completed in v0.53.0 with Go SDK and REST Markdown export |
-| Store repair/index rebuild | Helps recover from vector index or KV drift | Doctor consistency slice completed in v0.49.0; dry-run-first vector repair execution completed in v0.50.0; KV drift repair remains |
+| Store repair/index rebuild | Helps recover from vector index or KV drift | Doctor consistency slice completed in v0.49.0; dry-run-first vector repair execution completed in v0.50.0; KV hot-key sampling completed in v0.54.0; KV refresh execution remains |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
 ## Test Investments
@@ -803,7 +809,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | Add doctor sampling for expected hot keys and a dry-run cache refresh plan |
+| KV consistency sampling | Vector repair now has a reviewed execution path, but KV drift is still only implicitly covered | First slice completed in v0.54.0 with doctor sampling for expected hot keys |
+| Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
+| Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+
+## Fresh Brainstorm After v0.54.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
 | Ranking eval markdown recap | JSON snapshots exist, but release reviewers need a compact human summary | Emit Markdown from the snapshot with MRR, failures, and largest score movements |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |

@@ -68,6 +68,15 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
 
 The check samples valid graph nodes, verifies content fingerprint lookup for fingerprinted nodes, and uses vector search to confirm vector-bearing graph nodes are visible in the vector index. Missing vector hits are reported as rebuild candidates. The check is read-only and opt-in.
 
+Add one or more `--kv-key` flags to sample expected hot cache keys during the same local doctor run:
+
+```bash
+CONTEXTDB_DATA_DIR=/var/lib/contextdb \
+  contextdb doctor --kv-key context:my-app:active --kv-key context:my-app:summary
+```
+
+Missing keys are reported as refresh candidates in a `kv_consistency` check. The check only reads the configured keys and does not refresh or mutate the cache.
+
 Use `contextdb repair vector-index` after reviewing candidates and choosing a maintenance window. The command is dry-run by default and only mutates the vector index with `--execute`:
 
 ```bash
