@@ -571,6 +571,22 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
 				return delivery.MaxAttempts, nil
 			}},
+			"executed": &graphql.Field{Type: graphql.NewNonNull(graphql.Boolean), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.Executed, nil
+			}},
+			"statusCode": &graphql.Field{Type: graphql.Int, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.StatusCode, nil
+			}},
+			"responseBody": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.ResponseBody, nil
+			}},
+			"error": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
+				return delivery.Error, nil
+			}},
 			"groups": &graphql.Field{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewEscalationGroupType))), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				delivery, _ := p.Source.(client.ReviewHandoffWebhookDelivery)
 				return delivery.Groups, nil
@@ -1343,6 +1359,23 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveRecordReviewEscalationDigest,
 			},
+			"deliverReviewHandoffWebhook": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffWebhookDeliveryType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace":       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"owner":           &graphql.ArgumentConfig{Type: graphql.String},
+					"escalationLevel": &graphql.ArgumentConfig{Type: graphql.String},
+					"limit":           &graphql.ArgumentConfig{Type: graphql.Int},
+					"targetUrl":       &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"secret":          &graphql.ArgumentConfig{Type: graphql.String},
+					"maxAttempts":     &graphql.ArgumentConfig{Type: graphql.Int},
+					"execute":         &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.Boolean)},
+					"timeoutMs":       &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveDeliverReviewHandoffWebhook,
+			},
 			"validateClaim": &graphql.Field{
 				Type:    graphql.NewNonNull(feedbackResultType),
 				Args:    feedbackArgs,
@@ -1646,6 +1679,37 @@ func (s *GraphQLServer) resolveReviewHandoffWebhookPlan(p graphql.ResolveParams)
 		TargetURL:   targetURL,
 		Secret:      secret,
 		MaxAttempts: maxAttempts,
+	})
+}
+
+func (s *GraphQLServer) resolveDeliverReviewHandoffWebhook(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	owner, _ := p.Args["owner"].(string)
+	level, _ := p.Args["escalationLevel"].(string)
+	limit, _ := p.Args["limit"].(int)
+	targetURL, _ := p.Args["targetUrl"].(string)
+	secret, _ := p.Args["secret"].(string)
+	maxAttempts, _ := p.Args["maxAttempts"].(int)
+	execute, _ := p.Args["execute"].(bool)
+	timeoutMS, _ := p.Args["timeoutMs"].(int)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewHandoffWebhookDeliver(p.Context, client.ReviewHandoffWebhookRequest{
+		ReviewHandoffRequest: client.ReviewHandoffRequest{
+			After:           after,
+			Owner:           owner,
+			EscalationLevel: level,
+			Limit:           limit,
+		},
+		TargetURL:   targetURL,
+		Secret:      secret,
+		MaxAttempts: maxAttempts,
+		Execute:     execute,
+		Timeout:     time.Duration(timeoutMS) * time.Millisecond,
 	})
 }
 

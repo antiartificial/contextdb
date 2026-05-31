@@ -27,7 +27,7 @@ features:
 ---
 
 ::: tip Current release
-contextdb is currently `v0.41.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
+contextdb is currently `v0.42.0`: usable for serious demos and early integrations, but intentionally pre-1.0 while the public API, deployment modes, and SDK contracts continue to settle.
 :::
 
 <div class="stat-row">

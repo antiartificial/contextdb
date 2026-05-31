@@ -365,6 +365,38 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(delivery["total_escalated"], float64(1))
 	is.True(strings.HasPrefix(delivery["signature"].(string), "sha256="))
 
+	receivedWebhook := 0
+	webhookTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedWebhook++
+		is.Equal(r.Header.Get("X-ContextDB-Delivery-Mode"), "execute")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("accepted"))
+	}))
+	defer webhookTarget.Close()
+	deliverBody, _ := json.Marshal(map[string]any{
+		"owner":            "alice",
+		"escalation_level": "review_overdue",
+		"target_url":       webhookTarget.URL,
+		"secret":           "test-secret",
+		"execute":          true,
+		"timeout_ms":       1000,
+	})
+	reqWebhookDeliver := httptest.NewRequest("POST", "/v1/namespaces/channel:general/review/handoff-webhooks/deliver", bytes.NewReader(deliverBody))
+	reqWebhookDeliver.Header.Set("Content-Type", "application/json")
+	wWebhookDeliver := httptest.NewRecorder()
+	handler.ServeHTTP(wWebhookDeliver, reqWebhookDeliver)
+	is.Equal(wWebhookDeliver.Code, http.StatusOK)
+	var webhookDeliverResp map[string]any
+	is.NoErr(json.Unmarshal(wWebhookDeliver.Body.Bytes(), &webhookDeliverResp))
+	executedDeliveries := webhookDeliverResp["deliveries"].([]any)
+	is.Equal(len(executedDeliveries), 1)
+	executedDelivery := executedDeliveries[0].(map[string]any)
+	is.Equal(receivedWebhook, 1)
+	is.Equal(executedDelivery["dry_run"], false)
+	is.Equal(executedDelivery["executed"], true)
+	is.Equal(executedDelivery["status_code"], float64(http.StatusAccepted))
+	is.Equal(executedDelivery["response_body"], "accepted")
+
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
 	reqRefute.Header.Set("Content-Type", "application/json")
@@ -696,6 +728,54 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	}
 	recordDigest := resp["data"].(map[string]any)["recordReviewEscalationDigest"].(map[string]any)
 	is.Equal(recordDigest["totalEscalated"], float64(1))
+
+	graphQLWebhookCalls := 0
+	graphQLWebhookTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		graphQLWebhookCalls++
+		is.Equal(r.Header.Get("X-ContextDB-Delivery-Mode"), "execute")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("accepted"))
+	}))
+	defer graphQLWebhookTarget.Close()
+	deliverWebhookBody, _ := json.Marshal(map[string]any{
+		"query": `mutation($target: String!) {
+			deliverReviewHandoffWebhook(
+				namespace: "graphql-test"
+				owner: "alice"
+				escalationLevel: "review_overdue"
+				targetUrl: $target
+				secret: "test-secret"
+				execute: true
+				timeoutMs: 1000
+			) {
+				targetUrl
+				dryRun
+				executed
+				statusCode
+				responseBody
+				error
+			}
+		}`,
+		"variables": map[string]any{"target": graphQLWebhookTarget.URL},
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(deliverWebhookBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql deliver handoff webhook errors: %v", errs)
+	}
+	graphQLDeliveries := resp["data"].(map[string]any)["deliverReviewHandoffWebhook"].([]any)
+	is.Equal(len(graphQLDeliveries), 1)
+	graphQLExecutedDelivery := graphQLDeliveries[0].(map[string]any)
+	is.Equal(graphQLWebhookCalls, 1)
+	is.Equal(graphQLExecutedDelivery["dryRun"], false)
+	is.Equal(graphQLExecutedDelivery["executed"], true)
+	is.Equal(graphQLExecutedDelivery["statusCode"], float64(http.StatusAccepted))
+	is.Equal(graphQLExecutedDelivery["responseBody"], "accepted")
 
 	time.Sleep(5 * time.Millisecond)
 	queryBody, _ = json.Marshal(map[string]any{

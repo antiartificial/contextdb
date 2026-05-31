@@ -343,13 +343,24 @@ deliveries, err := ns.ReviewHandoffWebhookPlan(ctx, client.ReviewHandoffWebhookR
     TargetURL: "https://ops.example.test/contextdb/handoffs",
     Secret: "webhook-signing-secret",
 })
+executed, err := ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhookRequest{
+    ReviewHandoffRequest: client.ReviewHandoffRequest{
+        Owner: "alice",
+        EscalationLevel: "review_overdue",
+    },
+    TargetURL: "https://ops.example.test/contextdb/handoffs",
+    Secret: "webhook-signing-secret",
+    Execute: true,
+    Timeout: 5 * time.Second,
+})
 _ = saved
 _ = digests
 _ = handoffs
 _ = deliveries
+_ = executed
 ```
 
-`ReviewHandoffWebhookPlan` is dry-run only. It returns the payload, SHA-256 digest, optional HMAC signature, headers, and retry metadata for each saved handoff snapshot without sending outbound requests.
+`ReviewHandoffWebhookPlan` is dry-run only. `ReviewHandoffWebhookDeliver` requires `Execute: true`, sends synchronous `POST` requests, captures status/body/error, and does not schedule background retries.
 
 Review decisions persist workflow state without making queue generation stateful:
 

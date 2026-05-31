@@ -23,6 +23,7 @@ contextdb exposes a REST API on port **7701**.
 | `GET` | `/v1/namespaces/{ns}/review/escalation-digests` | List durable escalation digest snapshots |
 | `GET` | `/v1/namespaces/{ns}/review/handoffs` | Poll filtered review handoff snapshots |
 | `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/plan` | Plan signed dry-run review handoff webhook deliveries |
+| `POST` | `/v1/namespaces/{ns}/review/handoff-webhooks/deliver` | Execute opted-in review handoff webhook deliveries |
 | `GET` | `/v1/namespaces/{ns}/review/decisions` | Review workflow decision history |
 | `POST` | `/v1/namespaces/{ns}/review/decisions` | Record review assignment, snooze, or resolution |
 | `POST` | `/v1/namespaces/{ns}/nodes/{id}/validate` | Validate a claim |
@@ -205,9 +206,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.41.0",
+  "version": "0.42.0",
   "api_version": "v1",
-  "docs_version": "0.41.0",
+  "docs_version": "0.42.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -450,6 +451,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.41.0",
       "description": "Review handoff webhook plans produce signed dry-run delivery payloads for saved escalation handoffs."
+    },
+    {
+      "name": "review-handoff-webhook-execution",
+      "status": "stable",
+      "since": "v0.42.0",
+      "description": "Review handoff webhook execution sends opt-in handoff deliveries with timeout and response capture."
     }
   ],
   "migrations": [
@@ -457,7 +464,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.41.0"
+  "release_notes_path": "/contextdb/releases/v0.42.0"
 }
 ```
 
@@ -785,6 +792,23 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/
 ```
 
 The response includes `dry_run: true`, the JSON payload that would be posted, `payload_sha256`, a `sha256=` HMAC signature when `secret` is provided, and retry metadata. The endpoint does not send outbound requests.
+
+Execute webhook deliveries with an explicit `execute: true` flag:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/deliver \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "owner": "alice",
+    "escalation_level": "review_overdue",
+    "target_url": "https://ops.example.test/contextdb/handoffs",
+    "secret": "webhook-signing-secret",
+    "execute": true,
+    "timeout_ms": 5000
+  }'
+```
+
+Execution sends one synchronous `POST` per matching saved handoff, captures `status_code`, `response_body`, and `error`, and does not schedule background retries.
 
 Record workflow state for a derived review item with:
 

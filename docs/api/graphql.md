@@ -299,6 +299,31 @@ query {
 
 `reviewHandoffWebhookPlan` is dry-run only: it prepares signed delivery payloads and retry metadata without sending outbound webhooks.
 
+Execute a handoff webhook with an explicit mutation:
+
+```graphql
+mutation {
+  deliverReviewHandoffWebhook(
+    namespace: "my-app"
+    owner: "alice"
+    escalationLevel: "review_overdue"
+    targetUrl: "https://ops.example.test/contextdb/handoffs"
+    secret: "webhook-signing-secret"
+    execute: true
+    timeoutMs: 5000
+  ) {
+    targetUrl
+    dryRun
+    executed
+    statusCode
+    responseBody
+    error
+  }
+}
+```
+
+`execute: true` is required. Delivery is synchronous and captures the response without scheduling background retries.
+
 Record and inspect review workflow state with:
 
 ```graphql

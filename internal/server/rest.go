@@ -55,6 +55,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalations", s.handleReviewEscalations)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoffs", s.handleReviewHandoffs)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/plan", s.handleReviewHandoffWebhookPlan)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/review/handoff-webhooks/deliver", s.handleReviewHandoffWebhookDeliver)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalation-digests", s.handleReviewEscalationDigests)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/escalation-digests", s.handleRecordReviewEscalationDigest)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
@@ -269,6 +270,8 @@ type reviewHandoffWebhookPlanRequest struct {
 	TargetURL       string `json:"target_url"`
 	Secret          string `json:"secret,omitempty"`
 	MaxAttempts     int    `json:"max_attempts,omitempty"`
+	Execute         bool   `json:"execute,omitempty"`
+	TimeoutMS       int    `json:"timeout_ms,omitempty"`
 }
 
 type reviewHandoffWebhookPlanResponse struct {
@@ -859,6 +862,35 @@ func (s *RESTServer) handleReviewHandoffWebhookPlan(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, reviewHandoffWebhookPlanResponse{Deliveries: deliveries})
 }
 
+func (s *RESTServer) handleReviewHandoffWebhookDeliver(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	var body reviewHandoffWebhookPlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	req, err := reviewHandoffWebhookRequestFromBody(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	mode := body.Mode
+	if mode == "" {
+		mode = r.URL.Query().Get("mode")
+	}
+	h := s.db.Namespace(ns, resolveMode(mode))
+	deliveries, err := h.ReviewHandoffWebhookDeliver(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewHandoffWebhookPlanResponse{Deliveries: deliveries})
+}
+
 func (s *RESTServer) handleRecordReviewEscalationDigest(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
 	tenant := TenantFromContext(r.Context())
@@ -974,6 +1006,8 @@ func reviewHandoffWebhookRequestFromBody(body reviewHandoffWebhookPlanRequest) (
 		TargetURL:   strings.TrimSpace(body.TargetURL),
 		Secret:      body.Secret,
 		MaxAttempts: body.MaxAttempts,
+		Execute:     body.Execute,
+		Timeout:     time.Duration(body.TimeoutMS) * time.Millisecond,
 	}, nil
 }
 

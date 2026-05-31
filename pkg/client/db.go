@@ -31,6 +31,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -39,6 +40,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -735,6 +737,9 @@ type ReviewHandoffWebhookRequest struct {
 	Secret      string
 	MaxAttempts int
 	Now         time.Time
+	Execute     bool
+	Timeout     time.Duration
+	HTTPClient  *http.Client
 }
 
 // ReviewHandoffWebhookDelivery describes one dry-run webhook delivery that would be sent.
@@ -757,6 +762,10 @@ type ReviewHandoffWebhookDelivery struct {
 	Attempt         int                     `json:"attempt"`
 	MaxAttempts     int                     `json:"max_attempts"`
 	NextRetryAfter  time.Duration           `json:"next_retry_after,omitempty"`
+	Executed        bool                    `json:"executed,omitempty"`
+	StatusCode      int                     `json:"status_code,omitempty"`
+	ResponseBody    string                  `json:"response_body,omitempty"`
+	Error           string                  `json:"error,omitempty"`
 }
 
 // GapRequest configures knowledge-gap detection for a namespace.
@@ -1786,6 +1795,18 @@ func matchingEscalationGroups(groups []ReviewEscalationGroup, owner, level strin
 
 // ReviewHandoffWebhookPlan returns signed dry-run webhook deliveries for saved handoff snapshots.
 func (h *NamespaceHandle) ReviewHandoffWebhookPlan(ctx context.Context, req ReviewHandoffWebhookRequest) ([]ReviewHandoffWebhookDelivery, error) {
+	return h.reviewHandoffWebhookDeliveries(ctx, req, false)
+}
+
+// ReviewHandoffWebhookDeliver sends handoff webhook payloads when Execute is explicitly true.
+func (h *NamespaceHandle) ReviewHandoffWebhookDeliver(ctx context.Context, req ReviewHandoffWebhookRequest) ([]ReviewHandoffWebhookDelivery, error) {
+	if !req.Execute {
+		return nil, fmt.Errorf("review handoff webhook: execute must be true")
+	}
+	return h.reviewHandoffWebhookDeliveries(ctx, req, true)
+}
+
+func (h *NamespaceHandle) reviewHandoffWebhookDeliveries(ctx context.Context, req ReviewHandoffWebhookRequest, execute bool) ([]ReviewHandoffWebhookDelivery, error) {
 	target := strings.TrimSpace(req.TargetURL)
 	if target == "" {
 		return nil, fmt.Errorf("review handoff webhook: target URL is required")
@@ -1809,6 +1830,10 @@ func (h *NamespaceHandle) ReviewHandoffWebhookPlan(ctx context.Context, req Revi
 	if err != nil {
 		return nil, err
 	}
+	mode := "dry-run"
+	if execute {
+		mode = "execute"
+	}
 	out := make([]ReviewHandoffWebhookDelivery, 0, len(handoffs))
 	for _, digest := range handoffs {
 		payload, err := json.Marshal(digest)
@@ -1819,7 +1844,7 @@ func (h *NamespaceHandle) ReviewHandoffWebhookPlan(ctx context.Context, req Revi
 		payloadSHA := hex.EncodeToString(sum[:])
 		headers := map[string]string{
 			"Content-Type":                 "application/json",
-			"X-ContextDB-Delivery-Mode":    "dry-run",
+			"X-ContextDB-Delivery-Mode":    mode,
 			"X-ContextDB-Handoff-Event-ID": digest.EventID.String(),
 			"X-ContextDB-Payload-SHA256":   payloadSHA,
 		}
@@ -1830,10 +1855,10 @@ func (h *NamespaceHandle) ReviewHandoffWebhookPlan(ctx context.Context, req Revi
 			signature = "sha256=" + hex.EncodeToString(mac.Sum(nil))
 			headers["X-ContextDB-Signature"] = signature
 		}
-		out = append(out, ReviewHandoffWebhookDelivery{
+		delivery := ReviewHandoffWebhookDelivery{
 			TargetURL:       target,
 			Method:          "POST",
-			DryRun:          true,
+			DryRun:          !execute,
 			EventID:         digest.EventID,
 			Namespace:       digest.Namespace,
 			GeneratedAt:     digest.GeneratedAt,
@@ -1849,9 +1874,53 @@ func (h *NamespaceHandle) ReviewHandoffWebhookPlan(ctx context.Context, req Revi
 			Attempt:         1,
 			MaxAttempts:     maxAttempts,
 			NextRetryAfter:  time.Minute,
-		})
+		}
+		if execute {
+			delivery = executeReviewHandoffWebhook(ctx, req, delivery)
+		}
+		out = append(out, delivery)
 	}
 	return out, nil
+}
+
+func executeReviewHandoffWebhook(ctx context.Context, req ReviewHandoffWebhookRequest, delivery ReviewHandoffWebhookDelivery) ReviewHandoffWebhookDelivery {
+	timeout := req.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	client := req.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: timeout}
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(callCtx, delivery.Method, delivery.TargetURL, bytes.NewReader(delivery.Payload))
+	if err != nil {
+		delivery.Executed = true
+		delivery.Error = err.Error()
+		return delivery
+	}
+	for key, value := range delivery.Headers {
+		httpReq.Header.Set(key, value)
+	}
+	resp, err := client.Do(httpReq)
+	delivery.Executed = true
+	if err != nil {
+		delivery.Error = err.Error()
+		return delivery
+	}
+	defer resp.Body.Close()
+	delivery.StatusCode = resp.StatusCode
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		delivery.Error = err.Error()
+		return delivery
+	}
+	delivery.ResponseBody = string(body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		delivery.Error = fmt.Sprintf("webhook returned status %d", resp.StatusCode)
+	}
+	return delivery
 }
 
 // Explain returns a narrative report explaining what is known about a node.

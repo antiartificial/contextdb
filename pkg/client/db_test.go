@@ -3,6 +3,9 @@ package client_test
 import (
 	"bytes"
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -467,6 +470,41 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(webhooks[0].Headers["X-ContextDB-Delivery-Mode"], "dry-run")
 	is.Equal(webhooks[0].MaxAttempts, 3)
 	is.True(len(webhooks[0].Payload) > 0)
+	received := 0
+	webhookServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received++
+		is.Equal(r.Method, "POST")
+		is.Equal(r.Header.Get("X-ContextDB-Delivery-Mode"), "execute")
+		is.True(strings.HasPrefix(r.Header.Get("X-ContextDB-Signature"), "sha256="))
+		body, err := io.ReadAll(r.Body)
+		is.NoErr(err)
+		is.True(len(body) > 0)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("accepted"))
+	}))
+	defer webhookServer.Close()
+	executed, err := ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhookRequest{
+		ReviewHandoffRequest: client.ReviewHandoffRequest{
+			After:           start,
+			Owner:           "alice",
+			EscalationLevel: "review_overdue",
+		},
+		TargetURL: webhookServer.URL,
+		Secret:    "test-secret",
+		Execute:   true,
+		Timeout:   time.Second,
+	})
+	is.NoErr(err)
+	is.Equal(received, 1)
+	is.Equal(len(executed), 1)
+	is.Equal(executed[0].EventID, recordedDigest.EventID)
+	is.True(executed[0].Executed)
+	is.True(!executed[0].DryRun)
+	is.Equal(executed[0].StatusCode, http.StatusAccepted)
+	is.Equal(executed[0].ResponseBody, "accepted")
+	is.Equal(executed[0].Headers["X-ContextDB-Delivery-Mode"], "execute")
+	_, err = ns.ReviewHandoffWebhookDeliver(ctx, client.ReviewHandoffWebhookRequest{TargetURL: webhookServer.URL})
+	is.True(err != nil)
 
 	filtered, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
 		LowConfidenceThreshold: 0.35,
