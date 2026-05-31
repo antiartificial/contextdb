@@ -305,6 +305,33 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(group["count"], float64(1))
 	is.Equal(group["escalation_level"], "review_overdue")
 
+	digestBody, _ := json.Marshal(map[string]any{
+		"low_confidence_threshold": 0.99,
+		"status":                   "assigned",
+		"owner":                    "alice",
+		"escalation_after_hours":   0.000000001,
+		"note":                     "weekly handoff",
+	})
+	reqRecordDigest := httptest.NewRequest("POST", "/v1/namespaces/channel:general/review/escalation-digests", bytes.NewReader(digestBody))
+	reqRecordDigest.Header.Set("Content-Type", "application/json")
+	wRecordDigest := httptest.NewRecorder()
+	handler.ServeHTTP(wRecordDigest, reqRecordDigest)
+	is.Equal(wRecordDigest.Code, http.StatusOK)
+	var recordDigestResp map[string]any
+	is.NoErr(json.Unmarshal(wRecordDigest.Body.Bytes(), &recordDigestResp))
+	is.Equal(recordDigestResp["note"], "weekly handoff")
+	is.Equal(recordDigestResp["total_escalated"], float64(1))
+
+	reqSavedDigests := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/escalation-digests", nil)
+	wSavedDigests := httptest.NewRecorder()
+	handler.ServeHTTP(wSavedDigests, reqSavedDigests)
+	is.Equal(wSavedDigests.Code, http.StatusOK)
+	var savedDigestsResp map[string]any
+	is.NoErr(json.Unmarshal(wSavedDigests.Body.Bytes(), &savedDigestsResp))
+	savedDigests := savedDigestsResp["digests"].([]any)
+	is.Equal(len(savedDigests), 1)
+	is.Equal(savedDigests[0].(map[string]any)["note"], "weekly handoff")
+
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
 	reqRefute.Header.Set("Content-Type", "application/json")
@@ -609,6 +636,34 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	refuteMutation := resp["data"].(map[string]any)["refuteClaim"].(map[string]any)
 	is.Equal(refuteMutation["action"], "refuted")
 
+	recordDigestBody, _ := json.Marshal(map[string]any{
+		"query": `mutation {
+			recordReviewEscalationDigest(
+				namespace: "graphql-test"
+				lowConfidenceThreshold: 0.99
+				status: "assigned"
+				owner: "alice"
+				escalationAfterHours: 0.000000001
+				note: "graphql handoff"
+			) {
+				totalEscalated
+				groups { owner count escalationLevel }
+			}
+		}`,
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(recordDigestBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql record escalation digest errors: %v", errs)
+	}
+	recordDigest := resp["data"].(map[string]any)["recordReviewEscalationDigest"].(map[string]any)
+	is.Equal(recordDigest["totalEscalated"], float64(1))
+
 	time.Sleep(5 * time.Millisecond)
 	queryBody, _ = json.Marshal(map[string]any{
 		"query": `query($id: ID!, $otherID: ID!) {
@@ -666,6 +721,10 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 					count
 					reviewIds
 				}
+			}
+			reviewEscalationDigests(namespace: "graphql-test") {
+				note
+				totalEscalated
 			}
 			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
 				id
@@ -749,6 +808,9 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(group["type"], "low_confidence")
 	is.Equal(group["escalationLevel"], "review_overdue")
 	is.Equal(group["count"], float64(1))
+	savedGraphQLDigests := data["reviewEscalationDigests"].([]any)
+	is.Equal(len(savedGraphQLDigests), 1)
+	is.Equal(savedGraphQLDigests[0].(map[string]any)["note"], "graphql handoff")
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)

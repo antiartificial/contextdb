@@ -421,6 +421,21 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(digest.Groups[0].Count, 1)
 	is.Equal(digest.Groups[0].ReviewIDs[0], reviewID)
 
+	recordedDigest, err := ns.RecordReviewEscalationDigest(ctx, client.ReviewQueueRequest{
+		LowConfidenceThreshold: 0.35,
+		EscalationAfter:        time.Hour,
+		Now:                    decision.TxTime.Add(2 * time.Hour),
+	}, "weekly handoff")
+	is.NoErr(err)
+	is.True(recordedDigest.EventID != uuid.Nil)
+	is.Equal(recordedDigest.Note, "weekly handoff")
+	savedDigests, err := ns.ReviewEscalationDigests(ctx, start)
+	is.NoErr(err)
+	is.Equal(len(savedDigests), 1)
+	is.Equal(savedDigests[0].EventID, recordedDigest.EventID)
+	is.Equal(savedDigests[0].TotalEscalated, 1)
+	is.Equal(savedDigests[0].Note, "weekly handoff")
+
 	filtered, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
 		LowConfidenceThreshold: 0.35,
 		Types:                  []string{"low_confidence"},

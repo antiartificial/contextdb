@@ -158,13 +158,14 @@ type EventLog interface {
 type EventType string
 
 const (
-	EventNodeUpsert     EventType = "node_upsert"
-	EventEdgeUpsert     EventType = "edge_upsert"
-	EventEdgeInvalidate EventType = "edge_invalidate"
-	EventNodeRetract    EventType = "node_retract"
-	EventSourceUpdate   EventType = "source_update"
-	EventFeedback       EventType = "feedback"
-	EventReviewDecision EventType = "review_decision"
+	EventNodeUpsert             EventType = "node_upsert"
+	EventEdgeUpsert             EventType = "edge_upsert"
+	EventEdgeInvalidate         EventType = "edge_invalidate"
+	EventNodeRetract            EventType = "node_retract"
+	EventSourceUpdate           EventType = "source_update"
+	EventFeedback               EventType = "feedback"
+	EventReviewDecision         EventType = "review_decision"
+	EventReviewEscalationDigest EventType = "review_escalation_digest"
 )
 
 // Event is a single append-only log record.

@@ -200,9 +200,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.38.0",
+  "version": "0.39.0",
   "api_version": "v1",
-  "docs_version": "0.38.0",
+  "docs_version": "0.39.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -427,6 +427,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.38.0",
       "description": "Review escalation digests summarize escalated queue items by owner, source, item type, and escalation level."
+    },
+    {
+      "name": "review-escalation-digest-export",
+      "status": "stable",
+      "since": "v0.39.0",
+      "description": "Review escalation digest export records durable digest snapshots for review handoffs."
     }
   ],
   "migrations": [
@@ -434,7 +440,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.38.0"
+  "release_notes_path": "/contextdb/releases/v0.39.0"
 }
 ```
 
@@ -721,6 +727,23 @@ The digest uses the same query parameters as the queue endpoint and groups escal
     ]
   }
 }
+```
+
+Record a durable digest snapshot for handoffs:
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/review/escalation-digests \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "escalation_after_hours": 72,
+    "note": "weekly review handoff"
+  }'
+```
+
+List saved digest snapshots with:
+
+```bash
+curl "http://localhost:7701/v1/namespaces/my-app/review/escalation-digests"
 ```
 
 Record workflow state for a derived review item with:

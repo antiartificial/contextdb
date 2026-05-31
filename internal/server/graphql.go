@@ -513,6 +513,10 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				digest, _ := p.Source.(client.ReviewEscalationDigest)
 				return digest.GeneratedAt, nil
 			}},
+			"note": &graphql.Field{Type: graphql.String, Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+				digest, _ := p.Source.(client.ReviewEscalationDigest)
+				return digest.Note, nil
+			}},
 			"totalEscalated": &graphql.Field{Type: graphql.NewNonNull(graphql.Int), Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 				digest, _ := p.Source.(client.ReviewEscalationDigest)
 				return digest.TotalEscalated, nil
@@ -1196,6 +1200,15 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewEscalationDigest,
 			},
+			"reviewEscalationDigests": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewEscalationDigestType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+				},
+				Resolve: s.resolveReviewEscalationDigests,
+			},
 			"reviewDecisions": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
 				Args: graphql.FieldConfigArgument{
@@ -1231,6 +1244,27 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 					"recheckAt": &graphql.ArgumentConfig{Type: graphql.DateTime},
 				},
 				Resolve: s.resolveRecordReviewDecision,
+			},
+			"recordReviewEscalationDigest": &graphql.Field{
+				Type: graphql.NewNonNull(reviewEscalationDigestType),
+				Args: graphql.FieldConfigArgument{
+					"namespace":                       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":                            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"note":                            &graphql.ArgumentConfig{Type: graphql.String},
+					"after":                           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"lowConfidenceThreshold":          &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustThreshold":            &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceTrustDropThreshold":        &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceRefutationThreshold":       &graphql.ArgumentConfig{Type: graphql.Int},
+					"escalationAfterHours":            &graphql.ArgumentConfig{Type: graphql.Float},
+					"sourceAnomalyEscalationPriority": &graphql.ArgumentConfig{Type: graphql.Float},
+					"types":                           &graphql.ArgumentConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+					"sourceId":                        &graphql.ArgumentConfig{Type: graphql.String},
+					"status":                          &graphql.ArgumentConfig{Type: graphql.String},
+					"owner":                           &graphql.ArgumentConfig{Type: graphql.String},
+					"limit":                           &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveRecordReviewEscalationDigest,
 			},
 			"validateClaim": &graphql.Field{
 				Type:    graphql.NewNonNull(feedbackResultType),
@@ -1481,6 +1515,17 @@ func (s *GraphQLServer) resolveReviewDecisions(p graphql.ResolveParams) (interfa
 	return h.ReviewDecisions(p.Context, after)
 }
 
+func (s *GraphQLServer) resolveReviewEscalationDigests(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewEscalationDigests(p.Context, after)
+}
+
 func (s *GraphQLServer) resolveRecordReviewDecision(p graphql.ResolveParams) (interface{}, error) {
 	ns, _ := p.Args["namespace"].(string)
 	if ns == "" {
@@ -1502,6 +1547,13 @@ func (s *GraphQLServer) resolveRecordReviewDecision(p graphql.ResolveParams) (in
 		Note:      note,
 		RecheckAt: recheckAt,
 	})
+}
+
+func (s *GraphQLServer) resolveRecordReviewEscalationDigest(p graphql.ResolveParams) (interface{}, error) {
+	ns, mode, req := reviewQueueRequestFromGraphQL(p)
+	note, _ := p.Args["note"].(string)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.RecordReviewEscalationDigest(p.Context, req, note)
 }
 
 func (s *GraphQLServer) resolveFeedbackMutation(action string) graphql.FieldResolveFn {

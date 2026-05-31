@@ -53,6 +53,8 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/sources/{sourceID}/trust", s.handleSourceTrustTimeline)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/queue", s.handleReviewQueue)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalations", s.handleReviewEscalations)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalation-digests", s.handleReviewEscalationDigests)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/review/escalation-digests", s.handleRecordReviewEscalationDigest)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/decisions", s.handleRecordReviewDecision)
 
@@ -208,6 +210,23 @@ type reviewDecisionRequest struct {
 	RecheckAt *time.Time `json:"recheck_at,omitempty"`
 }
 
+type reviewEscalationDigestRequest struct {
+	Mode                            string   `json:"mode"`
+	Note                            string   `json:"note,omitempty"`
+	After                           string   `json:"after,omitempty"`
+	LowConfidenceThreshold          float64  `json:"low_confidence_threshold,omitempty"`
+	SourceTrustThreshold            float64  `json:"source_trust_threshold,omitempty"`
+	SourceTrustDropThreshold        float64  `json:"source_trust_drop_threshold,omitempty"`
+	SourceRefutationThreshold       int      `json:"source_refutation_threshold,omitempty"`
+	EscalationAfterHours            float64  `json:"escalation_after_hours,omitempty"`
+	SourceAnomalyEscalationPriority float64  `json:"source_anomaly_escalation_priority,omitempty"`
+	Types                           []string `json:"types,omitempty"`
+	SourceID                        string   `json:"source_id,omitempty"`
+	Status                          string   `json:"status,omitempty"`
+	Owner                           string   `json:"owner,omitempty"`
+	Limit                           int      `json:"limit,omitempty"`
+}
+
 type gapRequest struct {
 	Mode       string  `json:"mode"`
 	TopK       int     `json:"top_k,omitempty"`
@@ -229,6 +248,10 @@ type reviewQueueResponse struct {
 
 type reviewEscalationDigestResponse struct {
 	Digest client.ReviewEscalationDigest `json:"digest"`
+}
+
+type reviewEscalationDigestsResponse struct {
+	Digests []client.ReviewEscalationDigest `json:"digests"`
 }
 
 type reviewDecisionsResponse struct {
@@ -742,6 +765,55 @@ func (s *RESTServer) handleReviewEscalations(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, reviewEscalationDigestResponse{Digest: digest})
 }
 
+func (s *RESTServer) handleReviewEscalationDigests(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	var after time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid after timestamp: %w", err))
+			return
+		}
+		after = t
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	digests, err := h.ReviewEscalationDigests(r.Context(), after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewEscalationDigestsResponse{Digests: digests})
+}
+
+func (s *RESTServer) handleRecordReviewEscalationDigest(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	var body reviewEscalationDigestRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	req, err := reviewQueueRequestFromDigestBody(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	h := s.db.Namespace(ns, resolveMode(body.Mode))
+	digest, err := h.RecordReviewEscalationDigest(r.Context(), req, body.Note)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, digest)
+}
+
 func parseReviewQueueRequest(r *http.Request) (client.ReviewQueueRequest, error) {
 	var req client.ReviewQueueRequest
 	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
@@ -790,6 +862,31 @@ func parseReviewQueueRequest(r *http.Request) (client.ReviewQueueRequest, error)
 	req.Status = strings.TrimSpace(r.URL.Query().Get("status"))
 	req.Owner = strings.TrimSpace(r.URL.Query().Get("owner"))
 	return req, nil
+}
+
+func reviewQueueRequestFromDigestBody(body reviewEscalationDigestRequest) (client.ReviewQueueRequest, error) {
+	var after time.Time
+	if strings.TrimSpace(body.After) != "" {
+		parsed, err := time.Parse(time.RFC3339, body.After)
+		if err != nil {
+			return client.ReviewQueueRequest{}, fmt.Errorf("invalid after timestamp: %w", err)
+		}
+		after = parsed
+	}
+	return client.ReviewQueueRequest{
+		After:                           after,
+		LowConfidenceThreshold:          body.LowConfidenceThreshold,
+		SourceTrustThreshold:            body.SourceTrustThreshold,
+		SourceTrustDropThreshold:        body.SourceTrustDropThreshold,
+		SourceRefutationThreshold:       body.SourceRefutationThreshold,
+		EscalationAfter:                 time.Duration(body.EscalationAfterHours * float64(time.Hour)),
+		SourceAnomalyEscalationPriority: body.SourceAnomalyEscalationPriority,
+		Types:                           body.Types,
+		SourceID:                        body.SourceID,
+		Status:                          body.Status,
+		Owner:                           body.Owner,
+		Limit:                           body.Limit,
+	}, nil
 }
 
 func parseOptionalFloatQuery(r *http.Request, name string) (float64, error) {

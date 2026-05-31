@@ -258,6 +258,25 @@ query {
 }
 ```
 
+Record and list durable escalation digest snapshots for handoffs:
+
+```graphql
+mutation {
+  recordReviewEscalationDigest(namespace: "my-app", escalationAfterHours: 72, note: "weekly review handoff") {
+    totalEscalated
+    note
+  }
+}
+
+query {
+  reviewEscalationDigests(namespace: "my-app") {
+    note
+    totalEscalated
+    groups { owner count escalationLevel }
+  }
+}
+```
+
 Record and inspect review workflow state with:
 
 ```graphql

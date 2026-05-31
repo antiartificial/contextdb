@@ -695,8 +695,11 @@ type ReviewItem struct {
 
 // ReviewEscalationDigest summarizes escalated review queue items for dashboards.
 type ReviewEscalationDigest struct {
+	EventID         uuid.UUID               `json:"event_id,omitempty"`
+	Namespace       string                  `json:"namespace,omitempty"`
 	GeneratedAt     time.Time               `json:"generated_at"`
 	EscalationAfter time.Duration           `json:"escalation_after,omitempty"`
+	Note            string                  `json:"note,omitempty"`
 	TotalEscalated  int                     `json:"total_escalated"`
 	Groups          []ReviewEscalationGroup `json:"groups"`
 }
@@ -1581,6 +1584,7 @@ func (h *NamespaceHandle) ReviewEscalationDigest(ctx context.Context, req Review
 		return ReviewEscalationDigest{}, err
 	}
 	digest := ReviewEscalationDigest{
+		Namespace:       h.cfg.ID,
 		GeneratedAt:     now,
 		EscalationAfter: req.EscalationAfter,
 		Groups:          []ReviewEscalationGroup{},
@@ -1635,6 +1639,59 @@ func (h *NamespaceHandle) ReviewEscalationDigest(ctx context.Context, req Review
 			strings.Join([]string{right.Owner, right.SourceID, right.Type, right.EscalationLevel}, "\x00")
 	})
 	return digest, nil
+}
+
+// RecordReviewEscalationDigest appends a durable digest snapshot for handoffs.
+func (h *NamespaceHandle) RecordReviewEscalationDigest(ctx context.Context, req ReviewQueueRequest, note string) (ReviewEscalationDigest, error) {
+	digest, err := h.ReviewEscalationDigest(ctx, req)
+	if err != nil {
+		return ReviewEscalationDigest{}, err
+	}
+	digest.EventID = uuid.New()
+	digest.Namespace = h.cfg.ID
+	digest.Note = strings.TrimSpace(note)
+	payload, err := json.Marshal(digest)
+	if err != nil {
+		return ReviewEscalationDigest{}, fmt.Errorf("review escalation digest: marshal: %w", err)
+	}
+	event := store.Event{
+		ID:        digest.EventID,
+		Namespace: h.cfg.ID,
+		Type:      store.EventReviewEscalationDigest,
+		Payload:   payload,
+		TxTime:    digest.GeneratedAt,
+	}
+	if err := h.db.log.Append(ctx, event); err != nil {
+		return ReviewEscalationDigest{}, fmt.Errorf("review escalation digest: append event: %w", err)
+	}
+	return digest, nil
+}
+
+// ReviewEscalationDigests returns durable escalation digest snapshots after the given time.
+func (h *NamespaceHandle) ReviewEscalationDigests(ctx context.Context, after time.Time) ([]ReviewEscalationDigest, error) {
+	events, err := h.db.log.SinceAll(ctx, h.cfg.ID, after)
+	if err != nil {
+		return nil, fmt.Errorf("review escalation digests: %w", err)
+	}
+	out := make([]ReviewEscalationDigest, 0, len(events))
+	for _, event := range events {
+		if event.Type != store.EventReviewEscalationDigest {
+			continue
+		}
+		var digest ReviewEscalationDigest
+		if err := json.Unmarshal(event.Payload, &digest); err != nil {
+			return nil, fmt.Errorf("review escalation digests: decode %s: %w", event.ID, err)
+		}
+		digest.EventID = event.ID
+		if digest.Namespace == "" {
+			digest.Namespace = event.Namespace
+		}
+		if digest.GeneratedAt.IsZero() {
+			digest.GeneratedAt = event.TxTime
+		}
+		out = append(out, digest)
+	}
+	return out, nil
 }
 
 // Explain returns a narrative report explaining what is known about a node.

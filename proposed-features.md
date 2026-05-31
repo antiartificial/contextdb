@@ -235,6 +235,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Review escalation digest | Implemented | Go SDK, REST, and GraphQL expose grouped escalation summaries by owner, source, item type, and escalation level |
 
+## Completed In v0.39.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Review escalation digest export | Implemented | Go SDK, REST, and GraphQL can record and list durable escalation digest snapshots for handoffs |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -280,6 +286,7 @@ This is the working backlog for features that would make contextdb more useful, 
 | Backup index publish to Norn | Shares backup catalog state with ops tooling without moving backup contents | Completed in v0.36.0 with dry-run-first lifecycle index metadata publishing |
 | Review escalation rules | Highlights assigned, due snoozed, and high-priority source anomaly tasks that have aged past thresholds | Completed in v0.37.0 with review queue escalation metadata |
 | Review escalation digest | Summarizes escalated review work for dashboards and handoffs | Completed in v0.38.0 with grouped digest APIs |
+| Review escalation digest export | Preserves escalation handoff snapshots for later audit | Completed in v0.39.0 with durable digest events |
 | Store repair/index rebuild | Helps recover from vector index or KV drift | Especially useful for embedded Badger deployments |
 | Soak/race test lane | Catches concurrency and long-running drift | Run `go test -race ./...` plus concurrent writers/readers/feedback loops |
 
@@ -593,7 +600,16 @@ The current docs should stay latest-first, with release recap pages and feature 
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Review escalation digest export | Digests are queryable, but weekly review handoffs may need durable snapshots | Add optional JSON file output or saved digest events for escalation handoffs |
+| Review escalation digest export | Digests are queryable, but weekly review handoffs may need durable snapshots | Completed in v0.39.0 with saved digest events and list APIs |
+| Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
+| Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
+| Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
+
+## Fresh Brainstorm After v0.39.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| Review handoff subscriptions | Durable digest snapshots exist, but owners still need timely delivery | Add webhook or polling-friendly handoff feed filtered by owner and escalation level |
 | Backup publish drift watch | Index metadata can now be published, but operators still need scheduled comparison against the live published payload | Add a dry-run report that fetches the published backup catalog metadata and compares it to the local lifecycle index |
 | Ranking eval snapshots | Ranking changes continue to be important as review signals expand | Emit JSON score-drift reports for the representative corpus |
 | Store repair/index rebuild | Backup/restore confidence is better, but live stores still need deeper consistency checks | Add a doctor check that compares graph nodes, vector entries, and KV fingerprints, then report rebuild candidates |
