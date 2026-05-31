@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.74.0"
+	Version = "0.75.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.74.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.75.0",
 	}
 }
 
@@ -126,6 +126,7 @@ func Features() []Feature {
 		{Name: "doctor-published-backup-repair-hint", Status: "stable", Since: "v0.66.0", Description: "Published backup drift reports include a dry-run publish command hint."},
 		{Name: "published-backup-repair-guard", Status: "stable", Since: "v0.70.0", Description: "Docs include safety checks before executing published backup catalog replacement."},
 		{Name: "published-backup-repair-receipt", Status: "stable", Since: "v0.74.0", Description: "Executed lifecycle index publish writes can record a JSON repair receipt."},
+		{Name: "doctor-kv-derived-repair-hint", Status: "stable", Since: "v0.75.0", Description: "Derived KV freshness failures include a dry-run repair kv-cache command hint."},
 	}
 }
 

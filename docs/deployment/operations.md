@@ -94,7 +94,7 @@ CONTEXTDB_DATA_DIR=/var/lib/contextdb \
   contextdb doctor --kv-derived-key context:prod:support:recent-nodes --max-kv-derived-age 2h
 ```
 
-The `kv_derived_freshness` check reads the cached JSON metadata, validates the `kind` and `generated_at` fields, and reports stale, missing, or malformed derived values without rewriting the cache.
+The `kv_derived_freshness` check reads the cached JSON metadata, validates the `kind` and `generated_at` fields, and reports stale, missing, or malformed derived values without rewriting the cache. When the check fails, the detail includes a dry-run `recommended_repair_command` shaped like `contextdb repair kv-cache --key ... --derive recent-nodes --derive-namespace ... --report`.
 
 Use `contextdb repair kv-cache` after reviewing missing hot keys and choosing the exact cache value to restore. The command is dry-run by default and only writes with `--execute`:
 

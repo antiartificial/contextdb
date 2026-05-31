@@ -1402,6 +1402,7 @@ type kvRefreshPlanItem struct {
 
 type kvDerivedFreshnessValue struct {
 	Kind        string `json:"kind"`
+	Namespace   string `json:"namespace,omitempty"`
 	GeneratedAt string `json:"generated_at"`
 }
 
@@ -3025,6 +3026,7 @@ func buildKVDerivedFreshnessCheck(ctx context.Context, kv store.KVStore, keys []
 	missing := 0
 	invalid := 0
 	var issues []string
+	var derivedNamespaces []string
 	for _, key := range normalized {
 		data, err := kv.Get(ctx, key)
 		if err != nil {
@@ -3048,6 +3050,9 @@ func buildKVDerivedFreshnessCheck(ctx context.Context, kv store.KVStore, keys []
 			issues = append(issues, fmt.Sprintf("derived kv value %q has unsupported kind %q", key, value.Kind))
 			continue
 		}
+		if strings.TrimSpace(value.Namespace) != "" {
+			derivedNamespaces = append(derivedNamespaces, strings.TrimSpace(value.Namespace))
+		}
 		generatedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(value.GeneratedAt))
 		if err != nil {
 			invalid++
@@ -3067,9 +3072,37 @@ func buildKVDerivedFreshnessCheck(ctx context.Context, kv store.KVStore, keys []
 	}
 	detail := fmt.Sprintf("keys=%d fresh=%d stale=%d missing=%d invalid=%d max_age_seconds=%d", len(normalized), fresh, stale, missing, invalid, int(maxAge.Seconds()))
 	if len(issues) > 0 {
+		detail += "; recommended_repair_command=" + recommendedKVDerivedFreshnessRepairCommand(normalized, derivedNamespaces)
 		return doctor.CheckResult{Name: "kv_derived_freshness", OK: false, Detail: detail + ": " + strings.Join(issues, "; ")}
 	}
 	return doctor.CheckResult{Name: "kv_derived_freshness", OK: true, Detail: detail}
+}
+
+func recommendedKVDerivedFreshnessRepairCommand(keys, namespaces []string) string {
+	command := "contextdb repair kv-cache"
+	for _, key := range keys {
+		command += " --key " + shellQuote(key)
+	}
+	command += " --derive recent-nodes --derive-namespace " + shellQuote(preferredKVDerivedFreshnessNamespace(keys, namespaces)) + " --report"
+	return command
+}
+
+func preferredKVDerivedFreshnessNamespace(keys, namespaces []string) string {
+	for _, namespace := range namespaces {
+		if strings.TrimSpace(namespace) != "" {
+			return strings.TrimSpace(namespace)
+		}
+	}
+	for _, key := range keys {
+		parts := strings.Split(strings.TrimSpace(key), ":")
+		if len(parts) >= 4 && strings.TrimSpace(parts[2]) != "" {
+			return strings.TrimSpace(parts[2])
+		}
+		if len(parts) >= 3 && strings.TrimSpace(parts[1]) != "" {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	return "default"
 }
 
 func buildKVRefreshReport(ctx context.Context, kv store.KVStore, opts kvRefreshOptions) (kvRefreshReport, error) {

@@ -1532,6 +1532,11 @@ func TestBuildKVDerivedFreshnessCheckFindsStaleValue(t *testing.T) {
 	is.True(!check.OK)
 	is.True(strings.Contains(check.Detail, "stale=1"))
 	is.True(strings.Contains(check.Detail, "exceeds max age"))
+	is.True(strings.Contains(check.Detail, "recommended_repair_command=contextdb repair kv-cache"))
+	is.True(strings.Contains(check.Detail, "--key 'context:prod:recent-nodes'"))
+	is.True(strings.Contains(check.Detail, "--derive recent-nodes"))
+	is.True(strings.Contains(check.Detail, "--derive-namespace 'prod'"))
+	is.True(strings.Contains(check.Detail, "--report"))
 }
 
 func TestBuildKVDerivedFreshnessCheckRejectsInvalidValue(t *testing.T) {
@@ -1546,6 +1551,8 @@ func TestBuildKVDerivedFreshnessCheckRejectsInvalidValue(t *testing.T) {
 	is.True(strings.Contains(check.Detail, "missing=1"))
 	is.True(strings.Contains(check.Detail, "invalid=1"))
 	is.True(strings.Contains(check.Detail, "unsupported kind"))
+	is.True(strings.Contains(check.Detail, "recommended_repair_command=contextdb repair kv-cache"))
+	is.True(strings.Contains(check.Detail, "--derive recent-nodes"))
 }
 
 func TestBuildKVRefreshReportDryRun(t *testing.T) {

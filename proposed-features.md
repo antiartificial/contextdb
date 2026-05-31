@@ -451,6 +451,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Published backup repair receipt | Implemented | `contextdb snapshot lifecycle index publish --execute --receipt-out PATH` records durable publish repair evidence |
 
+## Completed In v0.75.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| KV derivation freshness repair hint | Implemented | `kv_derived_freshness` doctor failures include a dry-run `contextdb repair kv-cache --derive recent-nodes` command |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -987,11 +993,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.74.0
+## Fresh Brainstorm After v0.75.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV derivation freshness repair hint | Doctor can detect stale derived values, but operators may want the exact refresh command | Add a recommended `repair kv-cache --derive recent-nodes` command in stale derived KV doctor details |
 | Ranking baseline artifact manifest | Cookbook covers policy, but CI may want a machine-readable artifact inventory | Add a JSON manifest option for baseline retention reports with artifact bytes and hashes |
 | Retry fatigue preset examples endpoint | Preset docs cover humans, but dashboards may want sample URLs without assembling query strings | Add a response metadata field with example REST and GraphQL filters for each preset |
 | Published backup receipt verifier | Receipts record repairs, but operators may want to verify them later | Add `snapshot lifecycle index publish receipt verify --receipt PATH --in INDEX` to compare payload hashes and catalog metadata |
+| KV derivation repair execution recipe | Doctor now suggests a dry-run command, but teams may want a guarded execute checklist | Add docs for reviewing and executing stale derived KV refreshes safely |
