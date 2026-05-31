@@ -643,6 +643,10 @@ func runSnapshotLifecycleIndex(args []string) {
 }
 
 func runSnapshotLifecycleIndexPublish(args []string) {
+	if len(args) > 0 && args[0] == "receipt" {
+		runSnapshotLifecycleIndexPublishReceipt(args[1:])
+		return
+	}
 	if len(args) > 0 && args[0] == "drift" {
 		runSnapshotLifecycleIndexPublishDrift(args[1:])
 		return
@@ -686,6 +690,40 @@ func runSnapshotLifecycleIndexPublish(args []string) {
 		fmt.Fprintln(os.Stdout, "dry-run ok")
 	} else {
 		fmt.Fprintln(os.Stdout, "published")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishReceipt(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle index publish receipt: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runSnapshotLifecycleIndexPublishReceiptVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish receipt: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotLifecycleIndexPublishReceiptVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish receipt verify", flag.ExitOnError)
+	receiptPath := fs.String("receipt", "", "JSON lifecycle index publish receipt to verify")
+	inPath := fs.String("in", "", "JSON lifecycle index to compare against the receipt")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle index publish receipt verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotLifecycleIndexPublishReceipt(*receiptPath, *inPath)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish receipt verify: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
 
@@ -1161,6 +1199,21 @@ type snapshotLifecycleIndexPublishReceipt struct {
 	Response      string                               `json:"response,omitempty"`
 	PayloadSHA256 string                               `json:"payload_sha256"`
 	Payload       snapshotLifecycleIndexPublishPayload `json:"payload"`
+}
+
+type snapshotLifecycleIndexPublishReceiptVerifyReport struct {
+	OK                    bool                                 `json:"ok"`
+	ReceiptFile           string                               `json:"receipt_file"`
+	IndexFile             string                               `json:"index_file"`
+	ReceiptKind           string                               `json:"receipt_kind"`
+	ReceiptGeneratedAt    string                               `json:"receipt_generated_at,omitempty"`
+	ReceiptIndexFile      string                               `json:"receipt_index_file,omitempty"`
+	ReceiptStatus         string                               `json:"receipt_status,omitempty"`
+	ReceiptPayloadSHA256  string                               `json:"receipt_payload_sha256,omitempty"`
+	ExpectedPayloadSHA256 string                               `json:"expected_payload_sha256,omitempty"`
+	ReceiptPayload        snapshotLifecycleIndexPublishPayload `json:"receipt_payload"`
+	ExpectedPayload       snapshotLifecycleIndexPublishPayload `json:"expected_payload"`
+	ValidationErrors      []string                             `json:"validation_errors,omitempty"`
 }
 
 type snapshotLifecycleIndexPublishDriftReport struct {
@@ -2011,11 +2064,10 @@ func buildSnapshotLifecycleIndexPublishReport(ctx context.Context, client *http.
 }
 
 func buildSnapshotLifecycleIndexPublishReceipt(report snapshotLifecycleIndexPublishReport) (snapshotLifecycleIndexPublishReceipt, error) {
-	data, err := json.Marshal(report.Payload)
+	payloadSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(report.Payload)
 	if err != nil {
 		return snapshotLifecycleIndexPublishReceipt{}, fmt.Errorf("encode publish receipt payload hash: %w", err)
 	}
-	sum := sha256.Sum256(data)
 	return snapshotLifecycleIndexPublishReceipt{
 		Kind:          "contextdb.lifecycle.index.publish.receipt",
 		SchemaVersion: 1,
@@ -2025,9 +2077,91 @@ func buildSnapshotLifecycleIndexPublishReceipt(report snapshotLifecycleIndexPubl
 		Method:        report.Method,
 		Status:        report.Status,
 		Response:      report.Response,
-		PayloadSHA256: hex.EncodeToString(sum[:]),
+		PayloadSHA256: payloadSHA,
 		Payload:       report.Payload,
 	}, nil
+}
+
+func verifySnapshotLifecycleIndexPublishReceipt(receiptPath, indexPath string) (snapshotLifecycleIndexPublishReceiptVerifyReport, error) {
+	receiptPath = strings.TrimSpace(receiptPath)
+	indexPath = strings.TrimSpace(indexPath)
+	report := snapshotLifecycleIndexPublishReceiptVerifyReport{
+		ReceiptFile: receiptPath,
+		IndexFile:   indexPath,
+	}
+	if receiptPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--receipt is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if indexPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--in is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	receiptData, err := os.ReadFile(receiptPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read publish receipt: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	var receipt snapshotLifecycleIndexPublishReceipt
+	if err := json.Unmarshal(receiptData, &receipt); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode publish receipt: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	index, err := readSnapshotLifecycleIndex(indexPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	expectedPayload := buildSnapshotLifecycleIndexPublishPayload(index)
+	expectedSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(expectedPayload)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	receiptSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(receipt.Payload)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.ReceiptKind = receipt.Kind
+	report.ReceiptGeneratedAt = receipt.GeneratedAt
+	report.ReceiptIndexFile = receipt.IndexFile
+	report.ReceiptStatus = receipt.Status
+	report.ReceiptPayloadSHA256 = strings.TrimSpace(receipt.PayloadSHA256)
+	report.ExpectedPayloadSHA256 = expectedSHA
+	report.ReceiptPayload = receipt.Payload
+	report.ExpectedPayload = expectedPayload
+	if receipt.Kind != "contextdb.lifecycle.index.publish.receipt" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported receipt kind %q", receipt.Kind))
+	}
+	if receipt.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported receipt schema_version %d", receipt.SchemaVersion))
+	}
+	if strings.TrimSpace(receipt.PayloadSHA256) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt payload_sha256 is empty")
+	} else if !strings.EqualFold(strings.TrimSpace(receipt.PayloadSHA256), receiptSHA) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt payload_sha256 does not match receipt payload")
+	}
+	if !strings.EqualFold(receiptSHA, expectedSHA) || !reflect.DeepEqual(receipt.Payload, expectedPayload) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt payload does not match lifecycle index publish payload")
+	}
+	if filepath.Base(strings.TrimSpace(receipt.IndexFile)) != filepath.Base(indexPath) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt index_file does not match lifecycle index")
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("publish receipt verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func snapshotLifecycleIndexPublishPayloadSHA256(payload snapshotLifecycleIndexPublishPayload) (string, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode publish payload hash: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func buildSnapshotLifecycleIndexPublishPayload(index snapshotLifecycleIndex) snapshotLifecycleIndexPublishPayload {

@@ -954,6 +954,85 @@ func TestBuildSnapshotLifecycleIndexPublishReportRejectsReceiptDryRun(t *testing
 	is.True(os.IsNotExist(statErr))
 }
 
+func TestVerifySnapshotLifecycleIndexPublishReceipt(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	payload := buildSnapshotLifecycleIndexPublishPayload(index)
+	payloadSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(payload)
+	is.NoErr(err)
+	receiptPath := filepath.Join(dir, "published-backup-repair.receipt.json")
+	receipt := snapshotLifecycleIndexPublishReceipt{
+		Kind:          "contextdb.lifecycle.index.publish.receipt",
+		SchemaVersion: 1,
+		GeneratedAt:   "2026-06-01T12:01:00Z",
+		IndexFile:     out,
+		PublishURL:    "https://ops.example.test/contextdb/backups",
+		Method:        http.MethodPost,
+		Status:        "202 Accepted",
+		PayloadSHA256: payloadSHA,
+		Payload:       payload,
+	}
+	data, err := json.Marshal(receipt)
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(receiptPath, data, 0o644))
+
+	report, err := verifySnapshotLifecycleIndexPublishReceipt(receiptPath, out)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.ReceiptFile, receiptPath)
+	is.Equal(report.IndexFile, out)
+	is.Equal(report.ReceiptPayloadSHA256, payloadSHA)
+	is.Equal(report.ExpectedPayloadSHA256, payloadSHA)
+	is.Equal(report.ReceiptPayload.TotalBundles, 1)
+	is.Equal(report.ExpectedPayload.TotalBundles, 1)
+}
+
+func TestVerifySnapshotLifecycleIndexPublishReceiptDetectsPayloadDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	payload := buildSnapshotLifecycleIndexPublishPayload(index)
+	payload.TotalBundles = 99
+	payloadSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(payload)
+	is.NoErr(err)
+	receiptPath := filepath.Join(dir, "published-backup-repair.receipt.json")
+	data, err := json.Marshal(snapshotLifecycleIndexPublishReceipt{
+		Kind:          "contextdb.lifecycle.index.publish.receipt",
+		SchemaVersion: 1,
+		GeneratedAt:   "2026-06-01T12:01:00Z",
+		IndexFile:     out,
+		Status:        "202 Accepted",
+		PayloadSHA256: payloadSHA,
+		Payload:       payload,
+	})
+	is.NoErr(err)
+	is.NoErr(os.WriteFile(receiptPath, data, 0o644))
+
+	report, err := verifySnapshotLifecycleIndexPublishReceipt(receiptPath, out)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(report.ValidationErrors[0], "receipt payload does not match lifecycle index publish payload"))
+}
+
 func TestBuildSnapshotLifecycleIndexPublishReportRequiresPublishURLWhenExecuting(t *testing.T) {
 	is := is.New(t)
 	dir := t.TempDir()

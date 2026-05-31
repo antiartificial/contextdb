@@ -469,6 +469,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Retry fatigue preset examples endpoint | Implemented | Retry fatigue preset metadata includes `example_rest_query` and `example_graphql` snippets for dashboard filters |
 
+## Completed In v0.78.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Published backup receipt verifier | Implemented | `contextdb snapshot lifecycle index publish receipt verify --receipt PATH --in INDEX` compares receipt payload hashes and catalog metadata with the local lifecycle index |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1005,11 +1011,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.77.0
+## Fresh Brainstorm After v0.78.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Published backup receipt verifier | Receipts record repairs, but operators may want to verify them later | Add `snapshot lifecycle index publish receipt verify --receipt PATH --in INDEX` to compare payload hashes and catalog metadata |
 | KV derivation repair execution recipe | Doctor now suggests a dry-run command, but teams may want a guarded execute checklist | Add docs for reviewing and executing stale derived KV refreshes safely |
 | Ranking baseline manifest verifier | Manifest records bytes and hashes, but CI may want a later integrity check | Add a command to verify artifact inventory paths, byte sizes, and SHA-256 hashes |
 | Retry fatigue preset example docs test | Preset examples now ship in metadata, but docs could drift from SDK values | Add a small test that cookbook preset rows match `ReviewHandoffRetryFatiguePresets()` |
+| Published backup receipt verification doctor | Receipt verification exists, but operators may want it inside combined health checks | Add a doctor option that verifies publish receipts beside drift and freshness checks |

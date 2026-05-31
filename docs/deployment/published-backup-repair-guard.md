@@ -57,6 +57,17 @@ contextdb snapshot lifecycle index publish \
 
 `--receipt-out` is only valid with `--execute`. The receipt records the source lifecycle index path, publish endpoint, HTTP method, response status/body, publish payload hash, and the catalog metadata payload that was written. Store it beside the verified lifecycle index or with the incident record for the repair.
 
+Verify the receipt against the local lifecycle index before closing the repair:
+
+```bash
+contextdb snapshot lifecycle index publish receipt verify \
+  --receipt "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json" \
+  --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --report
+```
+
+The verifier compares the stored receipt payload hash, receipt payload, schema/kind, and index filename with the publish payload derived from the current local lifecycle index.
+
 ## Confirm The Repair
 
 After execution, rerun drift and freshness checks:
