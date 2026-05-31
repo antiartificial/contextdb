@@ -87,7 +87,56 @@ func TestAdminDashboardIncludesDebugger(t *testing.T) {
 
 	is.Equal(w.Code, http.StatusOK)
 	is.True(strings.Contains(w.Body.String(), "Belief Debugger"))
+	is.True(strings.Contains(w.Body.String(), "/admin/api/search"))
 	is.True(strings.Contains(w.Body.String(), "/admin/api/belief"))
+}
+
+func TestAdminSearchAPI(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+	graph, _, _, _ := db.Stores()
+	ns := "search-test"
+	now := time.Now().UTC()
+	matchID := uuid.New()
+	is.NoErr(graph.UpsertNode(ctx, core.Node{
+		ID:        matchID,
+		Namespace: ns,
+		Labels:    []string{"Claim"},
+		Properties: map[string]any{
+			"text":      "ranking manifests need bundle verification",
+			"source_id": "release-notes",
+		},
+		Confidence: 0.91,
+		ValidFrom:  now,
+		TxTime:     now,
+	}))
+	is.NoErr(graph.UpsertNode(ctx, core.Node{
+		ID:         uuid.New(),
+		Namespace:  ns,
+		Labels:     []string{"Claim"},
+		Properties: map[string]any{"text": "unrelated node"},
+		Confidence: 0.4,
+		ValidFrom:  now,
+		TxTime:     now.Add(-time.Minute),
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/search?ns="+ns+"&q=bundle&limit=5", nil)
+	w := httptest.NewRecorder()
+	New(db).ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	var body struct {
+		Namespace string         `json:"namespace"`
+		Count     int            `json:"count"`
+		Results   []searchResult `json:"results"`
+	}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &body))
+	is.Equal(body.Namespace, ns)
+	is.Equal(body.Count, 1)
+	is.Equal(body.Results[0].ID, matchID)
+	is.Equal(body.Results[0].MatchReason, "text")
 }
 
 func TestAdminBeliefDebuggerAPIRejectsBadRequest(t *testing.T) {

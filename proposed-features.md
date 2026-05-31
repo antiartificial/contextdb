@@ -536,11 +536,17 @@ This is the working backlog for features that would make contextdb more useful, 
 | Admin dashboard and belief debugger | Implemented | Observe server mounts `/admin/`, and `/admin/api/belief?ns=NS&id=UUID` returns source, support, contradiction, provenance, and confidence evidence |
 | Ranking baseline bundle index metadata | Implemented | Verification bundles include `ranking-baseline-manifest-verification-index.json` with artifact paths, byte sizes, SHA-256 hashes, status, and generated time |
 
+## Completed In v0.89.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking/debugger search integration | Implemented | `/admin/api/search?ns=NS&q=QUERY&limit=N` finds recent valid graph nodes by text, source, label, or ID and the admin UI can open results in the belief debugger |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
-| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; next step is search/explain-rank integration |
+| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; debugger search completed in v0.89.0; next step is explain-rank integration |
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Snapshot foundation completed in v0.48.0; next step is dashboard/UI |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
@@ -1072,12 +1078,12 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.88.0
+## Fresh Brainstorm After v0.89.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Ranking/debugger search integration | The debugger can inspect a known UUID, but operators need to find candidate nodes quickly | Add an admin search panel that calls retrieve and lets users open a result in the belief debugger |
+| Ranking baseline bundle index verifier | Bundle indexes now point to report artifacts, but downstream jobs may want integrity checks | Add a verifier that re-hashes the bundle files and confirms the index status matches the JSON report |
 | Retry fatigue preset API schema fixture | Preset docs now have drift coverage, but API examples could use a small schema fixture | Add a test fixture for retry fatigue preset JSON fields across SDK and REST |
 | Doctor backup receipt runbook lane | Receipt verification is in doctor, but teams may want a full incident checklist | Add a deployment recipe combining freshness, drift, receipt verify, and repair closure |
 | KV derived refresh receipt verifier | Refresh receipts now exist, but incident review may need later integrity checks | Add a verifier that recomputes report/value hash and checks written-key doctor commands |
-| Ranking baseline bundle index verifier | Bundle indexes now point to report artifacts, but downstream jobs may want integrity checks | Add a verifier that re-hashes the bundle files and confirms the index status matches the JSON report |
+| Debugger explain-rank compare | Search can find nodes, but ranking questions need side-by-side comparison | Add a UI flow that selects two search results and calls explain-rank |

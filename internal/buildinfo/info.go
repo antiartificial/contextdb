@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.88.0"
+	Version = "0.89.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.88.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.89.0",
 	}
 }
 
@@ -142,6 +142,7 @@ func Features() []Feature {
 		{Name: "ranking-baseline-bundle-index-metadata", Status: "stable", Since: "v0.88.0", Description: "Ranking baseline verification bundles include an index JSON with artifact paths, byte sizes, hashes, and status."},
 		{Name: "admin-observe-dashboard", Status: "stable", Since: "v0.88.0", Description: "The observe port serves the built-in admin dashboard at /admin/."},
 		{Name: "admin-belief-debugger", Status: "stable", Since: "v0.88.0", Description: "The admin dashboard includes a belief debugger API and UI for source, support, contradiction, provenance, and confidence evidence."},
+		{Name: "admin-debugger-search", Status: "stable", Since: "v0.89.0", Description: "The admin debugger can search recent valid nodes by text, label, source, or ID before opening an audit."},
 	}
 }
 

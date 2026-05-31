@@ -9,11 +9,14 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/observe"
 	"github.com/antiartificial/contextdb/internal/store"
 	"github.com/antiartificial/contextdb/pkg/client"
@@ -41,6 +44,7 @@ func New(db *client.DB) http.Handler {
 	h.mux.HandleFunc("GET /admin/debugger", h.handleIndex)
 	h.mux.HandleFunc("GET /admin/api/stats", h.handleStats)
 	h.mux.HandleFunc("GET /admin/api/belief", h.handleBeliefAudit)
+	h.mux.HandleFunc("GET /admin/api/search", h.handleSearch)
 	h.mux.HandleFunc("GET /admin/api/timetravel", h.handleTimeTravel)
 	h.mux.HandleFunc("GET /admin/api/diff", h.handleDiff)
 
@@ -107,6 +111,125 @@ func (h *adminHandler) handleBeliefAudit(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(audit)
+}
+
+type searchResult struct {
+	ID          uuid.UUID `json:"id"`
+	Labels      []string  `json:"labels,omitempty"`
+	Text        string    `json:"text,omitempty"`
+	SourceID    string    `json:"source_id,omitempty"`
+	Confidence  float64   `json:"confidence,omitempty"`
+	Version     uint64    `json:"version,omitempty"`
+	ValidFrom   string    `json:"valid_from,omitempty"`
+	MatchReason string    `json:"match_reason"`
+}
+
+// handleSearch returns recent valid nodes matching text, labels, or source.
+// Query params:
+//   - ns: namespace (required)
+//   - q: case-insensitive content/source query (optional)
+//   - labels: comma-separated label filter (optional)
+//   - limit: max results, default 10, max 50
+func (h *adminHandler) handleSearch(w http.ResponseWriter, r *http.Request) {
+	ns := strings.TrimSpace(r.URL.Query().Get("ns"))
+	if ns == "" {
+		http.Error(w, "missing ns parameter", http.StatusBadRequest)
+		return
+	}
+	limit := 10
+	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 {
+			http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+			return
+		}
+		limit = parsed
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	var labels []string
+	if rawLabels := strings.TrimSpace(r.URL.Query().Get("labels")); rawLabels != "" {
+		for _, label := range strings.Split(rawLabels, ",") {
+			if label = strings.TrimSpace(label); label != "" {
+				labels = append(labels, label)
+			}
+		}
+	}
+	nodes, err := h.graph.ValidAt(r.Context(), ns, time.Now(), labels)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sort.SliceStable(nodes, func(i, j int) bool {
+		if nodes[i].TxTime.Equal(nodes[j].TxTime) {
+			return nodes[i].ID.String() < nodes[j].ID.String()
+		}
+		return nodes[i].TxTime.After(nodes[j].TxTime)
+	})
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	results := make([]searchResult, 0, min(limit, len(nodes)))
+	for _, node := range nodes {
+		result, ok := buildSearchResult(node, query)
+		if !ok {
+			continue
+		}
+		results = append(results, result)
+		if len(results) >= limit {
+			break
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"namespace": ns,
+		"query":     strings.TrimSpace(r.URL.Query().Get("q")),
+		"count":     len(results),
+		"results":   results,
+	})
+}
+
+func buildSearchResult(node core.Node, query string) (searchResult, bool) {
+	text := core.NodeText(node)
+	sourceID := nodeSourceID(node)
+	haystack := strings.ToLower(strings.Join([]string{
+		text,
+		sourceID,
+		strings.Join(node.Labels, " "),
+		node.ID.String(),
+	}, " "))
+	if query != "" && !strings.Contains(haystack, query) {
+		return searchResult{}, false
+	}
+	reason := "recent"
+	if query != "" {
+		switch {
+		case strings.Contains(strings.ToLower(text), query):
+			reason = "text"
+		case strings.Contains(strings.ToLower(sourceID), query):
+			reason = "source"
+		case strings.Contains(strings.ToLower(strings.Join(node.Labels, " ")), query):
+			reason = "label"
+		case strings.Contains(strings.ToLower(node.ID.String()), query):
+			reason = "id"
+		}
+	}
+	return searchResult{
+		ID:          node.ID,
+		Labels:      node.Labels,
+		Text:        text,
+		SourceID:    sourceID,
+		Confidence:  node.Confidence,
+		Version:     node.Version,
+		ValidFrom:   node.ValidFrom.Format(time.RFC3339),
+		MatchReason: reason,
+	}, true
+}
+
+func nodeSourceID(node core.Node) string {
+	if sourceID, ok := node.Properties["source_id"].(string); ok {
+		return sourceID
+	}
+	return ""
 }
 
 // handleTimeTravel returns all nodes valid at a given point in time.
@@ -227,13 +350,21 @@ const indexHTML = `<!DOCTYPE html>
   .links a:hover { text-decoration: underline; }
   .tool { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; margin-bottom: 2rem; }
   .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: end; }
+  .search-row { display: grid; grid-template-columns: 1fr 1fr 7rem auto; gap: 0.75rem; align-items: end; margin-bottom: 0.75rem; }
   label { display: block; font-size: 0.8rem; color: #8b949e; margin-bottom: 0.25rem; }
   input { width: 100%; background: #0f1117; color: #e1e4e8; border: 1px solid #30363d; border-radius: 4px; padding: 0.55rem; }
   button { background: #238636; color: white; border: 0; border-radius: 4px; padding: 0.62rem 0.9rem; cursor: pointer; }
   button:hover { background: #2ea043; }
+  .results { border: 1px solid #30363d; border-radius: 6px; overflow: hidden; margin-bottom: 0.75rem; }
+  .result { display: grid; grid-template-columns: 1fr auto; gap: 1rem; padding: 0.75rem; border-bottom: 1px solid #30363d; background: #0f1117; }
+  .result:last-child { border-bottom: 0; }
+  .result strong { display: block; color: #e1e4e8; overflow-wrap: anywhere; }
+  .meta { color: #8b949e; font-size: 0.78rem; overflow-wrap: anywhere; }
+  .ghost { background: #21262d; }
+  .ghost:hover { background: #30363d; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0f1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; max-height: 28rem; overflow: auto; }
   .footer { margin-top: 2rem; font-size: 0.8rem; color: #484f58; }
-  @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) { .row, .search-row, .result { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -270,6 +401,22 @@ const indexHTML = `<!DOCTYPE html>
 
   <h2>Belief Debugger</h2>
   <div class="tool">
+    <div class="search-row">
+      <div>
+        <label for="search-ns">Namespace</label>
+        <input id="search-ns" value="default" autocomplete="off">
+      </div>
+      <div>
+        <label for="search-q">Search</label>
+        <input id="search-q" placeholder="text, source, label, or UUID" autocomplete="off">
+      </div>
+      <div>
+        <label for="search-limit">Limit</label>
+        <input id="search-limit" value="10" inputmode="numeric" autocomplete="off">
+      </div>
+      <button id="search-run" type="button">Search</button>
+    </div>
+    <div id="search-results" class="results" hidden></div>
     <div class="row">
       <div>
         <label for="debug-ns">Namespace</label>
@@ -297,6 +444,51 @@ const indexHTML = `<!DOCTYPE html>
 </div>
 <script>
 const output = document.getElementById('debug-output');
+const searchResults = document.getElementById('search-results');
+function setDebuggerTarget(ns, id) {
+  document.getElementById('debug-ns').value = ns;
+  document.getElementById('debug-id').value = id;
+}
+document.getElementById('search-run').addEventListener('click', async () => {
+  const ns = document.getElementById('search-ns').value.trim();
+  const q = document.getElementById('search-q').value.trim();
+  const limit = document.getElementById('search-limit').value.trim();
+  searchResults.hidden = false;
+  searchResults.textContent = 'Searching...';
+  try {
+    const res = await fetch('/admin/api/search?ns=' + encodeURIComponent(ns) + '&q=' + encodeURIComponent(q) + '&limit=' + encodeURIComponent(limit));
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || res.statusText);
+    const data = JSON.parse(text);
+    searchResults.innerHTML = '';
+    if (!data.results || data.results.length === 0) {
+      searchResults.textContent = 'No matching nodes.';
+      return;
+    }
+    for (const result of data.results) {
+      const item = document.createElement('div');
+      item.className = 'result';
+      const detail = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = result.text || result.id;
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = result.id + ' | ' + (result.source_id || 'unknown source') + ' | confidence ' + (result.confidence || 0).toFixed(2) + ' | ' + result.match_reason;
+      detail.appendChild(title);
+      detail.appendChild(meta);
+      const button = document.createElement('button');
+      button.className = 'ghost';
+      button.type = 'button';
+      button.textContent = 'Inspect';
+      button.addEventListener('click', () => setDebuggerTarget(ns, result.id));
+      item.appendChild(detail);
+      item.appendChild(button);
+      searchResults.appendChild(item);
+    }
+  } catch (err) {
+    searchResults.textContent = String(err.message || err);
+  }
+});
 document.getElementById('debug-run').addEventListener('click', async () => {
   const ns = document.getElementById('debug-ns').value.trim();
   const id = document.getElementById('debug-id').value.trim();
