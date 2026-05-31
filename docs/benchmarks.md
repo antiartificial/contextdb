@@ -29,6 +29,9 @@ contextdb eval ranking --out ranking-eval.json --report
 
 # Human-readable ranking release recap
 contextdb eval ranking --markdown-out ranking-eval.md
+
+# Release-to-release ranking diff
+contextdb eval ranking --compare previous-ranking-eval.json --diff-markdown
 ```
 
 ## Ranking Eval Snapshots
@@ -36,6 +39,8 @@ contextdb eval ranking --markdown-out ranking-eval.md
 `contextdb eval ranking` emits a JSON snapshot for the representative corpus in `testdata/corpus.go`. The report includes top-k results for each labelled query, expected rank, reciprocal rank, MRR, raw score components, weighted score breakdowns, and retrieval source. Use it before and after ranking changes to review score drift even when the golden corpus still passes.
 
 Use `--markdown` or `--markdown-out` when you want a compact release-review recap with pass/fail totals, MRR, failure details, top results, and score breakdowns.
+
+Use `--compare` with a previous JSON snapshot when you want a historical diff. Add `--diff-report`, `--diff-out`, `--diff-markdown`, or `--diff-markdown-out` to capture MRR deltas, pass-count changes, pass flips, largest rank movements, and largest top-score movements.
 
 ## MTEB retrieval quality
 

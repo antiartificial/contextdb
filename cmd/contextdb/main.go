@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -148,8 +149,13 @@ func runEvalRanking(args []string) {
 	fs := flag.NewFlagSet("contextdb eval ranking", flag.ExitOnError)
 	outPath := fs.String("out", "", "JSON ranking eval snapshot to write")
 	markdownOutPath := fs.String("markdown-out", "", "Markdown ranking eval recap to write")
+	comparePath := fs.String("compare", "", "previous JSON ranking eval snapshot to compare")
+	diffOutPath := fs.String("diff-out", "", "JSON ranking eval diff to write")
+	diffMarkdownOutPath := fs.String("diff-markdown-out", "", "Markdown ranking eval diff to write")
 	reportOut := fs.Bool("report", false, "print the JSON ranking eval snapshot")
 	markdownReportOut := fs.Bool("markdown", false, "print the Markdown ranking eval recap")
+	diffReportOut := fs.Bool("diff-report", false, "print the JSON ranking eval diff")
+	diffMarkdownReportOut := fs.Bool("diff-markdown", false, "print the Markdown ranking eval diff")
 	topK := fs.Int("top-k", 5, "number of ranked results to include per query")
 	_ = fs.Parse(args)
 
@@ -176,7 +182,35 @@ func runEvalRanking(args []string) {
 	if *markdownReportOut {
 		fmt.Print(buildRankingEvalMarkdown(report))
 	}
-	if *reportOut || (strings.TrimSpace(*outPath) == "" && strings.TrimSpace(*markdownOutPath) == "" && !*markdownReportOut) {
+
+	diffRequested := strings.TrimSpace(*comparePath) != ""
+	if diffRequested {
+		previous, err := readRankingEvalSnapshotReport(*comparePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+			os.Exit(1)
+		}
+		diff := buildRankingEvalDiffReport(previous, report)
+		if strings.TrimSpace(*diffOutPath) != "" {
+			if err := writeJSONFile(*diffOutPath, diff); err != nil {
+				fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		if strings.TrimSpace(*diffMarkdownOutPath) != "" {
+			if err := writeTextFile(*diffMarkdownOutPath, buildRankingEvalDiffMarkdown(diff)); err != nil {
+				fmt.Fprintf(os.Stderr, "contextdb eval ranking: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		if *diffMarkdownReportOut {
+			fmt.Print(buildRankingEvalDiffMarkdown(diff))
+		}
+		if *diffReportOut || (strings.TrimSpace(*outPath) == "" && !*reportOut && strings.TrimSpace(*markdownOutPath) == "" && !*markdownReportOut && strings.TrimSpace(*diffOutPath) == "" && strings.TrimSpace(*diffMarkdownOutPath) == "" && !*diffMarkdownReportOut) {
+			writeIndentedJSON(diff)
+		}
+	}
+	if *reportOut || (!diffRequested && strings.TrimSpace(*outPath) == "" && strings.TrimSpace(*markdownOutPath) == "" && !*markdownReportOut) {
 		writeIndentedJSON(report)
 	}
 }
@@ -1106,6 +1140,50 @@ type rankingEvalSnapshotResult struct {
 	RetrievalSource string              `json:"retrieval_source,omitempty"`
 }
 
+type rankingEvalDiffReport struct {
+	SchemaVersion          int                    `json:"schema_version"`
+	ContextDBVersion       string                 `json:"contextdb_version"`
+	PreviousGeneratedAt    string                 `json:"previous_generated_at"`
+	CurrentGeneratedAt     string                 `json:"current_generated_at"`
+	Corpus                 string                 `json:"corpus"`
+	TopK                   int                    `json:"top_k"`
+	TotalQueries           int                    `json:"total_queries"`
+	ComparedQueries        int                    `json:"compared_queries"`
+	MissingPreviousQueries []string               `json:"missing_previous_queries,omitempty"`
+	MissingCurrentQueries  []string               `json:"missing_current_queries,omitempty"`
+	PreviousMRR            float64                `json:"previous_mean_reciprocal_rank"`
+	CurrentMRR             float64                `json:"current_mean_reciprocal_rank"`
+	MRRDelta               float64                `json:"mean_reciprocal_rank_delta"`
+	PreviousPassedQueries  int                    `json:"previous_passed_queries"`
+	CurrentPassedQueries   int                    `json:"current_passed_queries"`
+	PassedDelta            int                    `json:"passed_delta"`
+	PassChangedQueries     []string               `json:"pass_changed_queries,omitempty"`
+	LargestRankMovements   []rankingEvalDiffQuery `json:"largest_rank_movements"`
+	LargestScoreMovements  []rankingEvalDiffQuery `json:"largest_score_movements"`
+	Queries                []rankingEvalDiffQuery `json:"queries"`
+}
+
+type rankingEvalDiffQuery struct {
+	ID                     string  `json:"id"`
+	Category               string  `json:"category"`
+	PreviousPassed         bool    `json:"previous_passed"`
+	CurrentPassed          bool    `json:"current_passed"`
+	PreviousCorrectRank    int     `json:"previous_correct_rank,omitempty"`
+	CurrentCorrectRank     int     `json:"current_correct_rank,omitempty"`
+	RankDelta              int     `json:"rank_delta"`
+	PreviousReciprocalRank float64 `json:"previous_reciprocal_rank"`
+	CurrentReciprocalRank  float64 `json:"current_reciprocal_rank"`
+	ReciprocalRankDelta    float64 `json:"reciprocal_rank_delta"`
+	PreviousTopNodeID      string  `json:"previous_top_node_id,omitempty"`
+	CurrentTopNodeID       string  `json:"current_top_node_id,omitempty"`
+	PreviousTopText        string  `json:"previous_top_text,omitempty"`
+	CurrentTopText         string  `json:"current_top_text,omitempty"`
+	PreviousTopScore       float64 `json:"previous_top_score"`
+	CurrentTopScore        float64 `json:"current_top_score"`
+	TopScoreDelta          float64 `json:"top_score_delta"`
+	TopResultChanged       bool    `json:"top_result_changed"`
+}
+
 type vectorIndexRepairReport struct {
 	SchemaVersion    int      `json:"schema_version"`
 	ContextDBVersion string   `json:"contextdb_version"`
@@ -2026,6 +2104,198 @@ func buildRankingEvalMarkdown(report rankingEvalSnapshotReport) string {
 			markdownCell(formatRankingScoreBreakdown(top)))
 	}
 	return b.String()
+}
+
+func readRankingEvalSnapshotReport(path string) (rankingEvalSnapshotReport, error) {
+	var report rankingEvalSnapshotReport
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return report, fmt.Errorf("read ranking eval snapshot: %w", err)
+	}
+	if err := json.Unmarshal(data, &report); err != nil {
+		return report, fmt.Errorf("decode ranking eval snapshot: %w", err)
+	}
+	return report, nil
+}
+
+func buildRankingEvalDiffReport(previous, current rankingEvalSnapshotReport) rankingEvalDiffReport {
+	diff := rankingEvalDiffReport{
+		SchemaVersion:         1,
+		ContextDBVersion:      buildinfo.Version,
+		PreviousGeneratedAt:   previous.GeneratedAt,
+		CurrentGeneratedAt:    current.GeneratedAt,
+		Corpus:                current.Corpus,
+		TopK:                  current.TopK,
+		TotalQueries:          current.TotalQueries,
+		PreviousMRR:           previous.MeanReciprocal,
+		CurrentMRR:            current.MeanReciprocal,
+		MRRDelta:              current.MeanReciprocal - previous.MeanReciprocal,
+		PreviousPassedQueries: previous.PassedQueries,
+		CurrentPassedQueries:  current.PassedQueries,
+		PassedDelta:           current.PassedQueries - previous.PassedQueries,
+	}
+	if diff.Corpus == "" {
+		diff.Corpus = previous.Corpus
+	}
+	if diff.TopK == 0 {
+		diff.TopK = previous.TopK
+	}
+	previousByID := rankingEvalQueriesByID(previous.Queries)
+	currentByID := rankingEvalQueriesByID(current.Queries)
+	for _, query := range current.Queries {
+		previousQuery, ok := previousByID[query.ID]
+		if !ok {
+			diff.MissingPreviousQueries = append(diff.MissingPreviousQueries, query.ID)
+			continue
+		}
+		queryDiff := buildRankingEvalQueryDiff(previousQuery, query)
+		diff.Queries = append(diff.Queries, queryDiff)
+		diff.ComparedQueries++
+		if queryDiff.PreviousPassed != queryDiff.CurrentPassed {
+			diff.PassChangedQueries = append(diff.PassChangedQueries, query.ID)
+		}
+	}
+	for _, query := range previous.Queries {
+		if _, ok := currentByID[query.ID]; !ok {
+			diff.MissingCurrentQueries = append(diff.MissingCurrentQueries, query.ID)
+		}
+	}
+	sort.Strings(diff.MissingPreviousQueries)
+	sort.Strings(diff.MissingCurrentQueries)
+	sort.Strings(diff.PassChangedQueries)
+
+	diff.LargestRankMovements = append([]rankingEvalDiffQuery(nil), diff.Queries...)
+	sort.SliceStable(diff.LargestRankMovements, func(i, j int) bool {
+		left := absInt(diff.LargestRankMovements[i].RankDelta)
+		right := absInt(diff.LargestRankMovements[j].RankDelta)
+		if left == right {
+			return diff.LargestRankMovements[i].ID < diff.LargestRankMovements[j].ID
+		}
+		return left > right
+	})
+	diff.LargestRankMovements = rankingEvalTopDiffs(diff.LargestRankMovements, 5)
+
+	diff.LargestScoreMovements = append([]rankingEvalDiffQuery(nil), diff.Queries...)
+	sort.SliceStable(diff.LargestScoreMovements, func(i, j int) bool {
+		left := math.Abs(diff.LargestScoreMovements[i].TopScoreDelta)
+		right := math.Abs(diff.LargestScoreMovements[j].TopScoreDelta)
+		if left == right {
+			return diff.LargestScoreMovements[i].ID < diff.LargestScoreMovements[j].ID
+		}
+		return left > right
+	})
+	diff.LargestScoreMovements = rankingEvalTopDiffs(diff.LargestScoreMovements, 5)
+	return diff
+}
+
+func buildRankingEvalQueryDiff(previous, current rankingEvalSnapshotQuery) rankingEvalDiffQuery {
+	previousTop := rankingEvalTopResult(previous)
+	currentTop := rankingEvalTopResult(current)
+	return rankingEvalDiffQuery{
+		ID:                     current.ID,
+		Category:               current.Category,
+		PreviousPassed:         previous.Passed,
+		CurrentPassed:          current.Passed,
+		PreviousCorrectRank:    previous.CorrectRank,
+		CurrentCorrectRank:     current.CorrectRank,
+		RankDelta:              rankingEvalRankDelta(previous.CorrectRank, current.CorrectRank),
+		PreviousReciprocalRank: previous.ReciprocalRank,
+		CurrentReciprocalRank:  current.ReciprocalRank,
+		ReciprocalRankDelta:    current.ReciprocalRank - previous.ReciprocalRank,
+		PreviousTopNodeID:      previousTop.NodeID,
+		CurrentTopNodeID:       currentTop.NodeID,
+		PreviousTopText:        previousTop.Text,
+		CurrentTopText:         currentTop.Text,
+		PreviousTopScore:       previousTop.Score,
+		CurrentTopScore:        currentTop.Score,
+		TopScoreDelta:          currentTop.Score - previousTop.Score,
+		TopResultChanged:       rankingEvalResultIdentity(previousTop) != rankingEvalResultIdentity(currentTop),
+	}
+}
+
+func buildRankingEvalDiffMarkdown(diff rankingEvalDiffReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Ranking Eval Diff\n\n")
+	fmt.Fprintf(&b, "- Previous: `%s`\n", markdownInline(diff.PreviousGeneratedAt))
+	fmt.Fprintf(&b, "- Current: `%s`\n", markdownInline(diff.CurrentGeneratedAt))
+	fmt.Fprintf(&b, "- ContextDB version: `%s`\n", markdownInline(diff.ContextDBVersion))
+	fmt.Fprintf(&b, "- Corpus: `%s`\n", markdownInline(diff.Corpus))
+	fmt.Fprintf(&b, "- Compared queries: `%d`\n", diff.ComparedQueries)
+	fmt.Fprintf(&b, "- MRR delta: `%+.3f` (`%.3f` -> `%.3f`)\n", diff.MRRDelta, diff.PreviousMRR, diff.CurrentMRR)
+	fmt.Fprintf(&b, "- Passed delta: `%+d` (`%d` -> `%d`)\n\n", diff.PassedDelta, diff.PreviousPassedQueries, diff.CurrentPassedQueries)
+
+	if len(diff.PassChangedQueries) > 0 || len(diff.MissingPreviousQueries) > 0 || len(diff.MissingCurrentQueries) > 0 {
+		fmt.Fprintf(&b, "## Attention\n\n")
+		if len(diff.PassChangedQueries) > 0 {
+			fmt.Fprintf(&b, "- Pass changed: `%s`\n", markdownInline(strings.Join(diff.PassChangedQueries, ", ")))
+		}
+		if len(diff.MissingPreviousQueries) > 0 {
+			fmt.Fprintf(&b, "- Missing in previous snapshot: `%s`\n", markdownInline(strings.Join(diff.MissingPreviousQueries, ", ")))
+		}
+		if len(diff.MissingCurrentQueries) > 0 {
+			fmt.Fprintf(&b, "- Missing in current snapshot: `%s`\n", markdownInline(strings.Join(diff.MissingCurrentQueries, ", ")))
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	writeRankingEvalDiffTable(&b, "Largest Rank Movements", diff.LargestRankMovements)
+	writeRankingEvalDiffTable(&b, "Largest Score Movements", diff.LargestScoreMovements)
+	return b.String()
+}
+
+func writeRankingEvalDiffTable(b *strings.Builder, title string, queries []rankingEvalDiffQuery) {
+	fmt.Fprintf(b, "## %s\n\n", title)
+	fmt.Fprintf(b, "| Query | Category | Rank | Rank delta | Top score | Score delta | Top changed |\n")
+	fmt.Fprintf(b, "| --- | --- | --- | ---: | --- | ---: | --- |\n")
+	for _, query := range queries {
+		fmt.Fprintf(b, "| %s | %s | %s -> %s | %+d | %.3f -> %.3f | %+.3f | %s |\n",
+			markdownCell(query.ID),
+			markdownCell(query.Category),
+			markdownCell(formatRankingEvalRank(query.PreviousCorrectRank)),
+			markdownCell(formatRankingEvalRank(query.CurrentCorrectRank)),
+			query.RankDelta,
+			query.PreviousTopScore,
+			query.CurrentTopScore,
+			query.TopScoreDelta,
+			markdownCell(formatRankingEvalPass(query.TopResultChanged)))
+	}
+	fmt.Fprintf(b, "\n")
+}
+
+func rankingEvalQueriesByID(queries []rankingEvalSnapshotQuery) map[string]rankingEvalSnapshotQuery {
+	byID := make(map[string]rankingEvalSnapshotQuery, len(queries))
+	for _, query := range queries {
+		byID[query.ID] = query
+	}
+	return byID
+}
+
+func rankingEvalRankDelta(previousRank, currentRank int) int {
+	if previousRank == 0 || currentRank == 0 {
+		return currentRank - previousRank
+	}
+	return previousRank - currentRank
+}
+
+func rankingEvalTopDiffs(queries []rankingEvalDiffQuery, limit int) []rankingEvalDiffQuery {
+	if len(queries) <= limit {
+		return queries
+	}
+	return queries[:limit]
+}
+
+func rankingEvalResultIdentity(result rankingEvalSnapshotResult) string {
+	if strings.TrimSpace(result.Text) != "" {
+		return strings.TrimSpace(result.Text)
+	}
+	return result.NodeID
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func rankingEvalTopResult(query rankingEvalSnapshotQuery) rankingEvalSnapshotResult {

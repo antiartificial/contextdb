@@ -1063,6 +1063,50 @@ func TestBuildRankingEvalMarkdown(t *testing.T) {
 	is.True(strings.Contains(markdown, "sim "))
 }
 
+func TestBuildRankingEvalDiffReport(t *testing.T) {
+	is := is.New(t)
+
+	current, err := buildRankingEvalSnapshotReport(context.Background(), rankingEvalSnapshotOptions{
+		TopK:        5,
+		GeneratedAt: time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	previous := copyRankingEvalSnapshotReport(current)
+	previous.GeneratedAt = "2026-06-01T12:00:00Z"
+	previous.MeanReciprocal -= 0.1
+	previous.PassedQueries--
+	previous.Queries[0].Passed = false
+	previous.Queries[0].CorrectRank = 3
+	previous.Queries[0].ReciprocalRank = 1.0 / 3.0
+	previous.Queries[0].TopResults[0].Score -= 0.2
+
+	diff := buildRankingEvalDiffReport(previous, current)
+
+	is.Equal(diff.SchemaVersion, 1)
+	is.Equal(diff.ComparedQueries, current.TotalQueries)
+	is.True(diff.MRRDelta > 0.099 && diff.MRRDelta < 0.101)
+	is.Equal(diff.PassedDelta, 1)
+	is.Equal(len(diff.PassChangedQueries), 1)
+	is.Equal(diff.PassChangedQueries[0], current.Queries[0].ID)
+	is.Equal(diff.LargestRankMovements[0].ID, current.Queries[0].ID)
+	is.Equal(diff.LargestRankMovements[0].RankDelta, 2)
+	is.True(diff.LargestScoreMovements[0].TopScoreDelta > 0)
+
+	markdown := buildRankingEvalDiffMarkdown(diff)
+	is.True(strings.Contains(markdown, "# Ranking Eval Diff"))
+	is.True(strings.Contains(markdown, "Largest Rank Movements"))
+	is.True(strings.Contains(markdown, current.Queries[0].ID))
+	is.True(strings.Contains(markdown, "+0.200"))
+}
+
+func copyRankingEvalSnapshotReport(report rankingEvalSnapshotReport) rankingEvalSnapshotReport {
+	report.Queries = append([]rankingEvalSnapshotQuery(nil), report.Queries...)
+	for i := range report.Queries {
+		report.Queries[i].TopResults = append([]rankingEvalSnapshotResult(nil), report.Queries[i].TopResults...)
+	}
+	return report
+}
+
 func TestBuildStoreConsistencyCheck(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

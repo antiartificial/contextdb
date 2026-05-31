@@ -337,6 +337,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking eval Markdown recap | Implemented | `contextdb eval ranking --markdown` and `--markdown-out PATH` emit a compact release-review summary with totals, MRR, failures, top results, and score breakdowns |
 
+## Completed In v0.56.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Ranking eval historical diff | Implemented | `contextdb eval ranking --compare previous.json --diff-report` and `--diff-markdown` compare ranking snapshots and summarize MRR, pass, rank, and top-score movements |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -834,6 +840,15 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
 | KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
-| Ranking eval historical diff | Markdown recaps summarize a single run, but reviewers still need release-to-release score movement | Compare two ranking snapshots and emit largest rank and score movements |
+| Ranking eval historical diff | Markdown recaps summarize a single run, but reviewers still need release-to-release score movement | Completed in v0.56.0 with JSON and Markdown diffs for MRR, pass, rank, and top-score movement |
 | Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
 | Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+
+## Fresh Brainstorm After v0.56.0
+
+| Feature | Why it belongs | First useful slice |
+|:--------|:---------------|:-------------------|
+| KV refresh plan execution | Doctor can identify missing hot keys, but operators still need a reviewed refresh workflow | Add dry-run cache refresh plans with explicit execution for known derived key types |
+| Backup freshness doctor integration | Published freshness now exists as a lifecycle command, but operators may want one combined health command | Add an optional doctor check that calls the published freshness path with a max age |
+| Retry fatigue owner grouping | Endpoint-level fatigue is useful, but review owners may need workload-specific summaries | Add optional owner and escalation breakdowns to Markdown export |
+| Ranking diff baseline policy | Snapshot diffs exist, but release workflows still need guidance on which baseline to compare | Add docs and optional filename conventions for storing release ranking baselines |

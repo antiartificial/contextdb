@@ -61,6 +61,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Durability and ranking tests | Implemented | v0.4 | `durability`, `ranking` | Badger restart test, ranking golden fixtures, representative corpus ranking coverage, gRPC contract test, REST failure-path coverage |
 | Ranking eval snapshots | Implemented | v0.48 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --out --report` emits top-k, MRR, expected rank, and score breakdowns for the representative corpus |
 | Ranking eval Markdown recap | Implemented | v0.55 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --markdown` and `--markdown-out` emit pass/fail totals, MRR, failures, top results, and score breakdowns |
+| Ranking eval historical diff | Implemented | v0.56 | `ranking`, `release`, `inspectability` | `contextdb eval ranking --compare previous.json --diff-markdown` emits MRR, pass, rank, and top-score movements between snapshots |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |
@@ -83,4 +84,4 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
 2. KV refresh plan execution for reviewed missing hot keys.
-3. Ranking eval historical diff for release-to-release score movement.
+3. Backup freshness doctor integration for combined operator health checks.
