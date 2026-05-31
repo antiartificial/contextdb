@@ -755,6 +755,14 @@ type ReviewHandoffRetryRequest struct {
 	HTTPClient    *http.Client
 }
 
+// ReviewHandoffRetryFatigueRequest filters unresolved retry fatigue summaries.
+type ReviewHandoffRetryFatigueRequest struct {
+	After           time.Time
+	Now             time.Time
+	Owner           string
+	EscalationLevel string
+}
+
 // ReviewHandoffWebhookDelivery describes one dry-run webhook delivery that would be sent.
 type ReviewHandoffWebhookDelivery struct {
 	TargetURL       string                  `json:"target_url"`
@@ -2258,10 +2266,16 @@ func (h *NamespaceHandle) ReviewHandoffRetryRecommendations(ctx context.Context,
 
 // ReviewHandoffRetryFatigue groups retry recommendations by endpoint without sending retries.
 func (h *NamespaceHandle) ReviewHandoffRetryFatigue(ctx context.Context, after time.Time, now time.Time) ([]ReviewHandoffRetryFatigueSummary, error) {
-	recommendations, err := h.ReviewHandoffRetryRecommendations(ctx, after, now)
+	return h.ReviewHandoffRetryFatigueFiltered(ctx, ReviewHandoffRetryFatigueRequest{After: after, Now: now})
+}
+
+// ReviewHandoffRetryFatigueFiltered groups filtered retry recommendations by endpoint without sending retries.
+func (h *NamespaceHandle) ReviewHandoffRetryFatigueFiltered(ctx context.Context, req ReviewHandoffRetryFatigueRequest) ([]ReviewHandoffRetryFatigueSummary, error) {
+	recommendations, err := h.ReviewHandoffRetryRecommendations(ctx, req.After, req.Now)
 	if err != nil {
 		return nil, err
 	}
+	recommendations = filterReviewHandoffRetryRecommendations(recommendations, req)
 	summaries := map[string]*ReviewHandoffRetryFatigueSummary{}
 	statusFamilies := map[string]map[string]int{}
 	owners := map[string]map[string]int{}
@@ -2339,6 +2353,25 @@ func (h *NamespaceHandle) ReviewHandoffRetryFatigue(ctx context.Context, after t
 		return out[i].LastAttemptAt.After(out[j].LastAttemptAt)
 	})
 	return out, nil
+}
+
+func filterReviewHandoffRetryRecommendations(recommendations []ReviewHandoffRetryRecommendation, req ReviewHandoffRetryFatigueRequest) []ReviewHandoffRetryRecommendation {
+	owner := strings.TrimSpace(req.Owner)
+	escalationLevel := strings.TrimSpace(req.EscalationLevel)
+	if owner == "" && escalationLevel == "" {
+		return recommendations
+	}
+	out := make([]ReviewHandoffRetryRecommendation, 0, len(recommendations))
+	for _, recommendation := range recommendations {
+		if owner != "" && recommendation.Owner != owner {
+			continue
+		}
+		if escalationLevel != "" && recommendation.EscalationLevel != escalationLevel {
+			continue
+		}
+		out = append(out, recommendation)
+	}
+	return out
 }
 
 func reviewHandoffFatigueGroupValue(value, fallback string) string {

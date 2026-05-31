@@ -377,7 +377,7 @@ Summarize retry fatigue by endpoint without sending retries:
 
 ```graphql
 query {
-  reviewHandoffRetryFatigue(namespace: "my-app") {
+  reviewHandoffRetryFatigue(namespace: "my-app", owner: "alice", escalationLevel: "review_overdue") {
     targetUrl
     candidates
     totalAttempts
@@ -401,7 +401,7 @@ query {
 }
 ```
 
-Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures. Owner and escalation-level counts help route workload-specific handoffs.
+Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures. Optional `owner` and `escalationLevel` arguments scope the view, while owner and escalation-level counts help route workload-specific handoffs.
 
 Retry one unresolved failed delivery explicitly:
 

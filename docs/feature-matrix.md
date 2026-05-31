@@ -81,6 +81,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff retry fatigue | Implemented | v0.51 | `review`, `operations`, `audit` | Retry recommendations are grouped by target endpoint with candidate, attempt, readiness, and status-family counts |
 | Review handoff retry fatigue Markdown | Implemented | v0.53 | `review`, `operations`, `handoff` | REST `retry-fatigue?format=markdown` and Go helper render endpoint fatigue summaries for incident notes |
 | Review handoff retry fatigue owner groups | Implemented | v0.58 | `review`, `operations`, `handoff` | Retry fatigue summaries include owner and escalation-level counts in JSON, GraphQL, and Markdown |
+| Review handoff retry fatigue filters | Implemented | v0.60 | `review`, `operations`, `handoff` | REST, GraphQL, and Go SDK can filter retry fatigue by owner and escalation level |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates

@@ -1044,7 +1044,11 @@ func (s *RESTServer) handleReviewHandoffWebhookRetryFatigue(w http.ResponseWrite
 		after = t
 	}
 	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
-	summaries, err := h.ReviewHandoffRetryFatigue(r.Context(), after, time.Time{})
+	summaries, err := h.ReviewHandoffRetryFatigueFiltered(r.Context(), client.ReviewHandoffRetryFatigueRequest{
+		After:           after,
+		Owner:           strings.TrimSpace(r.URL.Query().Get("owner")),
+		EscalationLevel: strings.TrimSpace(r.URL.Query().Get("escalation_level")),
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

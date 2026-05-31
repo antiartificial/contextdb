@@ -483,6 +483,13 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	escalationLevels := summary["escalation_levels"].([]any)
 	is.Equal(len(escalationLevels), 1)
 	is.Equal(escalationLevels[0].(map[string]any)["escalation_level"], "review_overdue")
+	reqRetryFatigueFiltered := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue?owner=bob", nil)
+	wRetryFatigueFiltered := httptest.NewRecorder()
+	handler.ServeHTTP(wRetryFatigueFiltered, reqRetryFatigueFiltered)
+	is.Equal(wRetryFatigueFiltered.Code, http.StatusOK)
+	var retryFatigueFilteredResp map[string]any
+	is.NoErr(json.Unmarshal(wRetryFatigueFiltered.Body.Bytes(), &retryFatigueFilteredResp))
+	is.Equal(len(retryFatigueFilteredResp["summaries"].([]any)), 0)
 	reqRetryFatigueMarkdown := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue?format=markdown", nil)
 	wRetryFatigueMarkdown := httptest.NewRecorder()
 	handler.ServeHTTP(wRetryFatigueMarkdown, reqRetryFatigueMarkdown)
@@ -1029,6 +1036,25 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	is.Equal(retryFatigueOwners[0].(map[string]any)["owner"], "alice")
 	retryFatigueEscalations := retryFatigueSummary["escalationLevels"].([]any)
 	is.Equal(retryFatigueEscalations[0].(map[string]any)["escalationLevel"], "review_overdue")
+	retryFatigueFilteredBody, _ := json.Marshal(map[string]any{
+		"query": `query {
+			reviewHandoffRetryFatigue(namespace: "graphql-test", owner: "bob") {
+				targetUrl
+			}
+		}`,
+	})
+	req = httptest.NewRequest("POST", "/graphql", bytes.NewReader(retryFatigueFilteredBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	is.Equal(w.Code, http.StatusOK)
+	resp = map[string]any{}
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &resp))
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("graphql retry fatigue filtered errors: %v", errs)
+	}
+	retryFatigueFiltered := resp["data"].(map[string]any)["reviewHandoffRetryFatigue"].([]any)
+	is.Equal(len(retryFatigueFiltered), 0)
 	failGraphQLWebhook = false
 
 	retryWebhookBody, _ := json.Marshal(map[string]any{

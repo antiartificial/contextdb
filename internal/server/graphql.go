@@ -1582,9 +1582,11 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 			"reviewHandoffRetryFatigue": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewHandoffRetryFatigueSummaryType))),
 				Args: graphql.FieldConfigArgument{
-					"namespace": &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
-					"mode":      &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
-					"after":     &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"namespace":       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"owner":           &graphql.ArgumentConfig{Type: graphql.String},
+					"escalationLevel": &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: s.resolveReviewHandoffRetryFatigue,
 			},
@@ -2023,8 +2025,14 @@ func (s *GraphQLServer) resolveReviewHandoffRetryFatigue(p graphql.ResolveParams
 	}
 	mode, _ := p.Args["mode"].(string)
 	after, _ := p.Args["after"].(time.Time)
+	owner, _ := p.Args["owner"].(string)
+	escalationLevel, _ := p.Args["escalationLevel"].(string)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
-	return h.ReviewHandoffRetryFatigue(p.Context, after, time.Time{})
+	return h.ReviewHandoffRetryFatigueFiltered(p.Context, client.ReviewHandoffRetryFatigueRequest{
+		After:           after,
+		Owner:           owner,
+		EscalationLevel: escalationLevel,
+	})
 }
 
 func (s *GraphQLServer) resolveDeliverReviewHandoffWebhook(p graphql.ResolveParams) (interface{}, error) {

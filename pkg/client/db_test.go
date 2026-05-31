@@ -596,6 +596,20 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.True(strings.Contains(markdown, "review_overdue=1"))
 	is.True(strings.Contains(markdown, "5xx=1"))
 	is.True(strings.Contains(markdown, "status 502"))
+	filteredFatigue, err := ns.ReviewHandoffRetryFatigueFiltered(ctx, client.ReviewHandoffRetryFatigueRequest{
+		After: start,
+		Now:   retryCandidates[0].LastAttemptAt.Add(3 * time.Minute),
+		Owner: "alice",
+	})
+	is.NoErr(err)
+	is.Equal(len(filteredFatigue), 1)
+	filteredFatigue, err = ns.ReviewHandoffRetryFatigueFiltered(ctx, client.ReviewHandoffRetryFatigueRequest{
+		After: start,
+		Now:   retryCandidates[0].LastAttemptAt.Add(3 * time.Minute),
+		Owner: "bob",
+	})
+	is.NoErr(err)
+	is.Equal(len(filteredFatigue), 0)
 	failDelivery = false
 	retry, err := ns.ReviewHandoffWebhookRetry(ctx, client.ReviewHandoffRetryRequest{
 		After:         start,
