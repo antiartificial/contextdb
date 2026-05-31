@@ -2844,6 +2844,27 @@ func buildPublishedBackupFreshnessCheck(ctx context.Context, client *http.Client
 	return doctor.CheckResult{Name: "published_backup_freshness", OK: true, Detail: strings.TrimSpace(detail)}
 }
 
+func buildPublishedBackupDriftCheck(ctx context.Context, client *http.Client, path string, opts snapshotLifecycleIndexPublishDriftOptions) doctor.CheckResult {
+	report, err := buildSnapshotLifecycleIndexPublishDriftReport(ctx, client, path, opts)
+	detail := fmt.Sprintf("index=%s url=%s status=%s drift=%t differences=%d",
+		report.IndexFile,
+		report.PublishedURL,
+		report.Status,
+		report.Drift,
+		len(report.Differences))
+	if err != nil {
+		if len(report.Differences) > 0 {
+			detail += ": " + strings.Join(report.Differences, "; ")
+		} else if len(report.ValidationErrors) > 0 {
+			detail += ": " + strings.Join(report.ValidationErrors, "; ")
+		} else {
+			detail += ": " + err.Error()
+		}
+		return doctor.CheckResult{Name: "published_backup_drift", OK: false, Detail: strings.TrimSpace(detail)}
+	}
+	return doctor.CheckResult{Name: "published_backup_drift", OK: true, Detail: strings.TrimSpace(detail)}
+}
+
 func buildVectorIndexRepairReport(ctx context.Context, graph store.GraphStore, vecs store.VectorIndex, namespace string, sampleLimit int, execute bool) (vectorIndexRepairReport, error) {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
@@ -3836,6 +3857,7 @@ func runDoctor(args []string) {
 	backupMarker := fs.String("backup-marker", "", "path to a backup marker file to check for recency")
 	maxBackupAge := fs.Duration("max-backup-age", 24*time.Hour, "maximum acceptable age for --backup-marker")
 	publishedBackupURL := fs.String("published-backup-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL"), "published backup index metadata URL to check for freshness")
+	publishedBackupIndex := fs.String("published-backup-index", "", "local lifecycle index path to compare against published backup metadata")
 	publishedBackupMethod := fs.String("published-backup-method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_METHOD", http.MethodGet), "HTTP method for fetching published backup metadata")
 	publishedBackupToken := fs.String("published-backup-token", os.Getenv("NORN_TOKEN"), "optional bearer token for the published backup metadata endpoint")
 	maxPublishedBackupAge := fs.Duration("max-published-backup-age", 24*time.Hour, "maximum acceptable age for --published-backup-url")
@@ -3868,13 +3890,17 @@ func runDoctor(args []string) {
 			MaxAge:       *maxPublishedBackupAge,
 			Now:          time.Now(),
 		}))
-		report.OK = true
-		for _, check := range report.Checks {
-			if !check.OK {
-				report.OK = false
-				break
-			}
-		}
+		recomputeDoctorReportOK(&report)
+	}
+	if strings.TrimSpace(*publishedBackupIndex) != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), *publishedBackupTimeout)
+		defer cancel()
+		report.Checks = append(report.Checks, buildPublishedBackupDriftCheck(ctx, http.DefaultClient, *publishedBackupIndex, snapshotLifecycleIndexPublishDriftOptions{
+			PublishedURL: *publishedBackupURL,
+			Method:       *publishedBackupMethod,
+			Token:        *publishedBackupToken,
+		}))
+		recomputeDoctorReportOK(&report)
 	}
 	if *storeConsistency || len(kvKeys) > 0 {
 		db := openSnapshotDB()
@@ -3886,17 +3912,21 @@ func runDoctor(args []string) {
 		if len(kvKeys) > 0 {
 			report.Checks = append(report.Checks, buildKVConsistencyCheck(context.Background(), kv, kvKeys))
 		}
-		report.OK = true
-		for _, check := range report.Checks {
-			if !check.OK {
-				report.OK = false
-				break
-			}
-		}
+		recomputeDoctorReportOK(&report)
 	}
 	writeIndentedJSON(report)
 	if !report.OK {
 		os.Exit(1)
+	}
+}
+
+func recomputeDoctorReportOK(report *doctor.Report) {
+	report.OK = true
+	for _, check := range report.Checks {
+		if !check.OK {
+			report.OK = false
+			return
+		}
 	}
 }
 

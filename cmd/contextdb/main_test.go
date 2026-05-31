@@ -1070,6 +1070,65 @@ func TestBuildPublishedBackupFreshnessCheckReportsStale(t *testing.T) {
 	is.True(strings.Contains(check.Detail, "exceeds max age"))
 }
 
+func TestBuildPublishedBackupDriftCheck(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	payload := buildSnapshotLifecycleIndexPublishPayload(index)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		is.Equal(r.Header.Get("Authorization"), "Bearer index-token")
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer srv.Close()
+
+	check := buildPublishedBackupDriftCheck(context.Background(), srv.Client(), out, snapshotLifecycleIndexPublishDriftOptions{
+		PublishedURL: srv.URL,
+		Token:        "index-token",
+	})
+
+	is.True(check.OK)
+	is.Equal(check.Name, "published_backup_drift")
+	is.True(strings.Contains(check.Detail, "drift=false"))
+	is.True(strings.Contains(check.Detail, "differences=0"))
+}
+
+func TestBuildPublishedBackupDriftCheckReportsDrift(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	payload := buildSnapshotLifecycleIndexPublishPayload(index)
+	payload.TotalBundles = 2
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(snapshotLifecycleIndexPublishReport{Payload: payload})
+	}))
+	defer srv.Close()
+
+	check := buildPublishedBackupDriftCheck(context.Background(), srv.Client(), out, snapshotLifecycleIndexPublishDriftOptions{
+		PublishedURL: srv.URL,
+	})
+
+	is.True(!check.OK)
+	is.Equal(check.Name, "published_backup_drift")
+	is.True(strings.Contains(check.Detail, "drift=true"))
+	is.True(strings.Contains(check.Detail, "total_bundles differs"))
+}
+
 func TestBuildRankingEvalSnapshotReport(t *testing.T) {
 	is := is.New(t)
 
