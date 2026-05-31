@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.98.0"
+	Version = "0.99.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.98.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.99.0",
 	}
 }
 
@@ -136,8 +136,9 @@ func Features() []Feature {
 		{Name: "doctor-published-backup-receipt-verify", Status: "stable", Since: "v0.82.0", Description: "Doctor can verify published backup repair receipts against the local lifecycle index."},
 		{Name: "kv-derived-refresh-receipt", Status: "stable", Since: "v0.83.0", Description: "Executed derived KV refreshes can write receipts with value hashes and doctor confirmation commands."},
 		{Name: "doctor-backup-receipt-runbook-lane", Status: "stable", Since: "v0.95.0", Description: "Published backup repair docs include a doctor receipt closure lane from freshness and drift diagnosis through verified closeout."},
-		{Name: "doctor-backup-receipt-closure-artifact-bundle", Status: "stable", Since: "v0.98.0", Description: "Published backup repair docs define stable closure artifact filenames for incident handoff bundles."},
 		{Name: "kv-derived-refresh-receipt-verify", Status: "stable", Since: "v0.96.0", Description: "Derived KV refresh receipts can be verified against embedded reports, doctor commands, and optional reviewed value files."},
+		{Name: "doctor-backup-receipt-closure-artifact-bundle", Status: "stable", Since: "v0.98.0", Description: "Published backup repair docs define stable closure artifact filenames for incident handoff bundles."},
+		{Name: "kv-derived-refresh-receipt-doctor-lane", Status: "stable", Since: "v0.99.0", Description: "Doctor can verify derived KV refresh receipts and optional reviewed value files in the combined health report."},
 		{Name: "ranking-baseline-manifest-verify-markdown", Status: "stable", Since: "v0.84.0", Description: "Ranking baseline manifest verification can emit Markdown release summaries."},
 		{Name: "ranking-baseline-manifest-failure-annotations", Status: "stable", Since: "v0.85.0", Description: "Ranking baseline manifest verification can emit CI annotation lines for artifact failures."},
 		{Name: "ranking-baseline-annotation-fixture-docs", Status: "stable", Since: "v0.86.0", Description: "Docs include a GitHub Actions recipe for ranking baseline verification JSON, Markdown, and annotation artifacts."},

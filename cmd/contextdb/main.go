@@ -4507,6 +4507,25 @@ func buildPublishedBackupReceiptVerifyCheck(receiptPath, indexPath string) docto
 	return doctor.CheckResult{Name: "published_backup_receipt_verify", OK: true, Detail: strings.TrimSpace(detail)}
 }
 
+func buildKVRefreshReceiptVerifyCheck(receiptPath, valuePath string) doctor.CheckResult {
+	report, err := verifyKVRefreshReceipt(receiptPath, valuePath)
+	detail := fmt.Sprintf("receipt=%s value_file=%s value_sha256=%s written_keys=%d doctor_command=%s",
+		report.ReceiptFile,
+		report.ValueFile,
+		report.StoredValueSHA256,
+		len(report.WrittenKeys),
+		report.ComputedDoctorCommand)
+	if err != nil {
+		if len(report.ValidationErrors) > 0 {
+			detail += ": " + strings.Join(report.ValidationErrors, "; ")
+		} else {
+			detail += ": " + err.Error()
+		}
+		return doctor.CheckResult{Name: "kv_refresh_receipt_verify", OK: false, Detail: strings.TrimSpace(detail)}
+	}
+	return doctor.CheckResult{Name: "kv_refresh_receipt_verify", OK: true, Detail: strings.TrimSpace(detail)}
+}
+
 func buildVectorIndexRepairReport(ctx context.Context, graph store.GraphStore, vecs store.VectorIndex, namespace string, sampleLimit int, execute bool) (vectorIndexRepairReport, error) {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
@@ -5513,6 +5532,8 @@ func runDoctor(args []string) {
 	var kvDerivedKeys repeatedStringFlag
 	fs.Var(&kvDerivedKeys, "kv-derived-key", "expected derived KV hot key to check for generated_at freshness; repeat for multiple keys")
 	maxKVDerivedAge := fs.Duration("max-kv-derived-age", 24*time.Hour, "maximum acceptable generated_at age for --kv-derived-key")
+	kvRefreshReceipt := fs.String("kv-refresh-receipt", "", "derived KV refresh receipt path to verify")
+	kvRefreshValueFile := fs.String("kv-refresh-value-file", "", "optional reviewed derived KV value file to compare against --kv-refresh-receipt")
 	_ = fs.Parse(args)
 
 	report, err := doctor.Run(context.Background(), doctor.Options{
@@ -5550,6 +5571,10 @@ func runDoctor(args []string) {
 	}
 	if strings.TrimSpace(*publishedBackupReceipt) != "" {
 		report.Checks = append(report.Checks, buildPublishedBackupReceiptVerifyCheck(*publishedBackupReceipt, *publishedBackupIndex))
+		recomputeDoctorReportOK(&report)
+	}
+	if strings.TrimSpace(*kvRefreshReceipt) != "" {
+		report.Checks = append(report.Checks, buildKVRefreshReceiptVerifyCheck(*kvRefreshReceipt, *kvRefreshValueFile))
 		recomputeDoctorReportOK(&report)
 	}
 	if *storeConsistency || len(kvKeys) > 0 || len(kvDerivedKeys) > 0 {

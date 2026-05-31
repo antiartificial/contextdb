@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.98.0",
+  "version": "0.99.0",
   "api_version": "v1",
-  "docs_version": "0.98.0",
+  "docs_version": "0.99.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -716,16 +716,22 @@ curl http://localhost:7701/v1/version
       "description": "Published backup repair docs include a doctor receipt closure lane from freshness and drift diagnosis through verified closeout."
     },
     {
+      "name": "kv-derived-refresh-receipt-verify",
+      "status": "stable",
+      "since": "v0.96.0",
+      "description": "Derived KV refresh receipts can be verified against embedded reports, doctor commands, and optional reviewed value files."
+    },
+    {
       "name": "doctor-backup-receipt-closure-artifact-bundle",
       "status": "stable",
       "since": "v0.98.0",
       "description": "Published backup repair docs define stable closure artifact filenames for incident handoff bundles."
     },
     {
-      "name": "kv-derived-refresh-receipt-verify",
+      "name": "kv-derived-refresh-receipt-doctor-lane",
       "status": "stable",
-      "since": "v0.96.0",
-      "description": "Derived KV refresh receipts can be verified against embedded reports, doctor commands, and optional reviewed value files."
+      "since": "v0.99.0",
+      "description": "Doctor can verify derived KV refresh receipts and optional reviewed value files in the combined health report."
     },
     {
       "name": "ranking-baseline-manifest-verify-markdown",
@@ -817,7 +823,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.98.0"
+  "release_notes_path": "/contextdb/releases/v0.99.0"
 }
 ```
 

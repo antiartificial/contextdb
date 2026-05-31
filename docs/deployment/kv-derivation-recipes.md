@@ -111,6 +111,17 @@ contextdb repair kv-cache receipt verify \
 
 The verifier checks the receipt kind and schema, confirms the embedded report was executed for `derived:recent-nodes`, recomputes the doctor confirmation command from written keys, and compares `value_sha256` with `--value-file` when the reviewed value artifact is available.
 
+For incident closeout, add the same receipt to the combined doctor report:
+
+```bash
+contextdb doctor \
+  --kv-refresh-receipt context-prod-support-recent-nodes.receipt.json \
+  --kv-refresh-value-file context-prod-support-recent-nodes.value.json \
+  --report
+```
+
+Doctor reports this as `kv_refresh_receipt_verify`, so receipt drift can sit beside hot-key freshness, backup readiness, and other operational checks.
+
 ## Common Patterns
 
 | Pattern | Key | Scope |

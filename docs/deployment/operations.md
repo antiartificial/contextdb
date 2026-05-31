@@ -106,6 +106,16 @@ contextdb doctor \
 
 The `published_backup_receipt_verify` check compares the receipt payload hash and catalog metadata with the local lifecycle index without contacting the published endpoint.
 
+To include derived KV refresh receipt evidence in the same health report, pair the refresh receipt with the reviewed value artifact when it is available:
+
+```bash
+contextdb doctor \
+  --kv-refresh-receipt context-prod-support-recent-nodes.receipt.json \
+  --kv-refresh-value-file context-prod-support-recent-nodes.value.json
+```
+
+The `kv_refresh_receipt_verify` check validates the receipt structure, embedded executed report evidence, recomputed doctor command, and optional reviewed value SHA-256.
+
 Use `contextdb repair kv-cache` after reviewing missing hot keys and choosing the exact cache value to restore. The command is dry-run by default and only writes with `--execute`:
 
 ```bash

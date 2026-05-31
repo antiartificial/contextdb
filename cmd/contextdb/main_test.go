@@ -2145,6 +2145,64 @@ func TestVerifyKVRefreshReceiptRejectsMismatchedValue(t *testing.T) {
 	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "value_sha256 does not match"))
 }
 
+func TestBuildKVRefreshReceiptVerifyCheck(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	kv := memstore.NewKVStore()
+	value := []byte(`{"kind":"contextdb.kv.derived.recent_nodes","generated_at":"2026-06-01T12:00:00Z"}`)
+	refreshReport, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys:        []string{"context:prod:support:recent-nodes"},
+		Value:       value,
+		ValueSource: "derived:recent-nodes",
+		Execute:     true,
+		GeneratedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	receipt, err := buildKVRefreshReceipt(refreshReport, value)
+	is.NoErr(err)
+	receiptPath := filepath.Join(dir, "kv-refresh.receipt.json")
+	valuePath := filepath.Join(dir, "kv-refresh.value.json")
+	is.NoErr(writeJSONFile(receiptPath, receipt))
+	is.NoErr(os.WriteFile(valuePath, value, 0o644))
+
+	check := buildKVRefreshReceiptVerifyCheck(receiptPath, valuePath)
+
+	is.True(check.OK)
+	is.Equal(check.Name, "kv_refresh_receipt_verify")
+	is.True(strings.Contains(check.Detail, "written_keys=1"))
+	is.True(strings.Contains(check.Detail, "value_sha256="+receipt.ValueSHA256))
+	is.True(strings.Contains(check.Detail, "doctor_command=contextdb doctor --kv-derived-key 'context:prod:support:recent-nodes' --report"))
+}
+
+func TestBuildKVRefreshReceiptVerifyCheckReportsDrift(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	kv := memstore.NewKVStore()
+	value := []byte(`{"kind":"contextdb.kv.derived.recent_nodes","generated_at":"2026-06-01T12:00:00Z"}`)
+	refreshReport, err := buildKVRefreshReport(ctx, kv, kvRefreshOptions{
+		Keys:        []string{"context:prod:support:recent-nodes"},
+		Value:       value,
+		ValueSource: "derived:recent-nodes",
+		Execute:     true,
+		GeneratedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	receipt, err := buildKVRefreshReceipt(refreshReport, value)
+	is.NoErr(err)
+	receiptPath := filepath.Join(dir, "kv-refresh.receipt.json")
+	valuePath := filepath.Join(dir, "kv-refresh.value.json")
+	is.NoErr(writeJSONFile(receiptPath, receipt))
+	is.NoErr(os.WriteFile(valuePath, []byte(`{"kind":"other"}`), 0o644))
+
+	check := buildKVRefreshReceiptVerifyCheck(receiptPath, valuePath)
+
+	is.True(!check.OK)
+	is.Equal(check.Name, "kv_refresh_receipt_verify")
+	is.True(strings.Contains(check.Detail, "value_sha256 does not match"))
+}
+
 func TestBuildKVRefreshReceiptRejectsDryRun(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
