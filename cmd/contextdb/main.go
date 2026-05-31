@@ -365,6 +365,10 @@ func runSnapshotLifecycleVerify(args []string) {
 }
 
 func runSnapshotLifecycleIndex(args []string) {
+	if len(args) > 0 && args[0] == "verify" {
+		runSnapshotLifecycleIndexVerify(args[1:])
+		return
+	}
 	fs := flag.NewFlagSet("contextdb snapshot lifecycle index", flag.ExitOnError)
 	dir := fs.String("dir", "", "directory containing lifecycle summary files")
 	namespace := fs.String("namespace", "", "optional namespace filter")
@@ -387,6 +391,27 @@ func runSnapshotLifecycleIndex(args []string) {
 		writeIndentedJSON(index)
 	} else {
 		fmt.Fprintln(os.Stdout, index.IndexFile)
+	}
+}
+
+func runSnapshotLifecycleIndexVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index verify", flag.ExitOnError)
+	inPath := fs.String("in", "", "JSON lifecycle index to verify")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle index verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotLifecycleIndex(*inPath)
+	if err != nil {
+		if *reportOut && (report.IndexFile != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
 
@@ -649,6 +674,29 @@ type snapshotLifecycleIndex struct {
 	PruneableBundles int                                `json:"pruneable_bundles"`
 	DeleteCommands   []string                           `json:"delete_commands,omitempty"`
 	Bundles          []snapshotLifecycleRetentionBundle `json:"bundles"`
+}
+
+type snapshotLifecycleIndexVerifyReport struct {
+	OK                bool                                  `json:"ok"`
+	IndexFile         string                                `json:"index_file"`
+	SchemaVersion     int                                   `json:"schema_version"`
+	ContextDBVersion  string                                `json:"contextdb_version"`
+	TotalBundles      int                                   `json:"total_bundles"`
+	TotalArtifacts    int                                   `json:"total_artifacts"`
+	VerifiedArtifacts int                                   `json:"verified_artifacts"`
+	ValidationErrors  []string                              `json:"validation_errors,omitempty"`
+	Artifacts         []snapshotLifecycleIndexArtifactCheck `json:"artifacts"`
+}
+
+type snapshotLifecycleIndexArtifactCheck struct {
+	Kind           string   `json:"kind"`
+	Path           string   `json:"path"`
+	Exists         bool     `json:"exists"`
+	ExpectedBytes  int64    `json:"expected_bytes,omitempty"`
+	ActualBytes    int64    `json:"actual_bytes,omitempty"`
+	ExpectedSHA256 string   `json:"expected_sha256,omitempty"`
+	ActualSHA256   string   `json:"actual_sha256,omitempty"`
+	Errors         []string `json:"errors,omitempty"`
 }
 
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
@@ -1067,6 +1115,85 @@ func buildSnapshotLifecycleIndex(path string, opts snapshotLifecycleIndexOptions
 	index.Bundles = report.Bundles
 	addSnapshotLifecycleIndexHashes(index.Bundles)
 	return index, nil
+}
+
+func verifySnapshotLifecycleIndex(path string) (snapshotLifecycleIndexVerifyReport, error) {
+	path = strings.TrimSpace(path)
+	report := snapshotLifecycleIndexVerifyReport{IndexFile: path}
+	if path == "" {
+		return report, fmt.Errorf("--in is required")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return report, fmt.Errorf("read lifecycle index: %w", err)
+	}
+	var index snapshotLifecycleIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		return report, fmt.Errorf("decode lifecycle index: %w", err)
+	}
+	report.SchemaVersion = index.SchemaVersion
+	report.ContextDBVersion = index.ContextDBVersion
+	report.TotalBundles = len(index.Bundles)
+	if index.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported index schema_version %d", index.SchemaVersion))
+	}
+	for _, bundle := range index.Bundles {
+		for _, artifact := range bundle.Artifacts {
+			check := verifySnapshotLifecycleIndexArtifact(artifact)
+			report.TotalArtifacts++
+			if len(check.Errors) == 0 {
+				report.VerifiedArtifacts++
+			} else {
+				report.ValidationErrors = append(report.ValidationErrors, check.Errors...)
+			}
+			report.Artifacts = append(report.Artifacts, check)
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("lifecycle index verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func verifySnapshotLifecycleIndexArtifact(artifact snapshotLifecycleRetentionArtifact) snapshotLifecycleIndexArtifactCheck {
+	check := snapshotLifecycleIndexArtifactCheck{
+		Kind:           artifact.Kind,
+		Path:           strings.TrimSpace(artifact.Path),
+		ExpectedBytes:  artifact.Bytes,
+		ExpectedSHA256: strings.TrimSpace(artifact.ChecksumSHA256),
+	}
+	if check.Path == "" {
+		if artifact.Exists {
+			check.Errors = append(check.Errors, "indexed artifact path is empty")
+		}
+		return check
+	}
+	info, err := os.Stat(check.Path)
+	if err != nil || info.IsDir() {
+		if artifact.Exists {
+			check.Errors = append(check.Errors, fmt.Sprintf("indexed artifact missing: %s", check.Path))
+		}
+		return check
+	}
+	check.Exists = true
+	check.ActualBytes = info.Size()
+	if artifact.Exists && artifact.Bytes != check.ActualBytes {
+		check.Errors = append(check.Errors, fmt.Sprintf("artifact size mismatch for %s: index=%d actual=%d", check.Path, artifact.Bytes, check.ActualBytes))
+	}
+	if check.ExpectedSHA256 != "" {
+		data, err := os.ReadFile(check.Path)
+		if err != nil {
+			check.Errors = append(check.Errors, fmt.Sprintf("read indexed artifact %s: %v", check.Path, err))
+			return check
+		}
+		sum := sha256.Sum256(data)
+		check.ActualSHA256 = hex.EncodeToString(sum[:])
+		if !strings.EqualFold(check.ExpectedSHA256, check.ActualSHA256) {
+			check.Errors = append(check.Errors, fmt.Sprintf("artifact checksum mismatch for %s", check.Path))
+		}
+	}
+	return check
 }
 
 func addSnapshotLifecycleIndexHashes(bundles []snapshotLifecycleRetentionBundle) {

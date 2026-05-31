@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.33.0 | Passed | Passed | Corpus coverage present | Lifecycle index verification coverage added | CLI lifecycle index verify tests added | Adds artifact size and hash verification for lifecycle manifest indexes |
 | v0.32.0 | Passed | Passed | Corpus coverage present | Lifecycle index coverage added | CLI lifecycle index tests added | Adds compact backup manifest indexes with artifact hashes |
 | v0.31.0 | Passed | Passed | Corpus coverage present | Lifecycle delete-plan coverage added | CLI delete-plan tests added | Adds reviewable deletion-plan script output for pruneable backup lifecycle artifacts |
 | v0.30.0 | Passed | Passed | Corpus coverage present | Lifecycle retention report coverage added | CLI retention report tests added | Adds dry-run retention reporting for backup lifecycle bundles |

@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.32.0"
+	Version = "0.33.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.32.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.33.0",
 	}
 }
 
@@ -84,6 +84,7 @@ func Features() []Feature {
 		{Name: "lifecycle-retention-report", Status: "stable", Since: "v0.30.0", Description: "Snapshot lifecycle retention reports group backup bundles and mark newest artifacts to keep versus older pruneable bundles without deleting files."},
 		{Name: "lifecycle-delete-plan", Status: "stable", Since: "v0.31.0", Description: "Snapshot lifecycle retention can emit a reviewed shell deletion plan for pruneable artifacts without deleting files."},
 		{Name: "lifecycle-manifest-index", Status: "stable", Since: "v0.32.0", Description: "Snapshot lifecycle index writes a compact JSON catalog of backup bundles, retention decisions, artifact sizes, and hashes."},
+		{Name: "lifecycle-index-verify", Status: "stable", Since: "v0.33.0", Description: "Snapshot lifecycle index verification re-checks indexed artifact existence, sizes, and hashes."},
 	}
 }
 

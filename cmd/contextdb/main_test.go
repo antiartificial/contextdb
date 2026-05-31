@@ -661,6 +661,57 @@ func TestBuildSnapshotLifecycleIndexUsesDefaultPath(t *testing.T) {
 	is.Equal(index.TotalBundles, 1)
 }
 
+func TestVerifySnapshotLifecycleIndex(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	_, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+
+	report, err := verifySnapshotLifecycleIndex(out)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.TotalBundles, 1)
+	is.True(report.TotalArtifacts > 0)
+	is.Equal(report.VerifiedArtifacts, report.TotalArtifacts)
+	is.Equal(len(report.ValidationErrors), 0)
+}
+
+func TestVerifySnapshotLifecycleIndexRejectsChecksumMismatch(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+	is.NoErr(err)
+	var target string
+	for _, artifact := range index.Bundles[0].Artifacts {
+		if artifact.Kind == "summary" {
+			target = artifact.Path
+			break
+		}
+	}
+	is.NoErr(os.WriteFile(target, []byte(`{"changed":true}`), 0o644))
+
+	report, err := verifySnapshotLifecycleIndex(out)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(len(report.ValidationErrors) > 0)
+}
+
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
 	t.Helper()
 	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])

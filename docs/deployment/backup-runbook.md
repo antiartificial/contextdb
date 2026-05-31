@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.32.0",
+  "contextdb_version": "0.33.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -325,6 +325,16 @@ contextdb snapshot lifecycle index \
 ```
 
 The index records bundle timestamps, retention decisions, delete-plan commands, artifact paths, sizes, and SHA-256 hashes. If `--out` is omitted, contextdb writes `contextdb-backups.index.json` inside `--dir`.
+
+Verify an existing index before trusting it during audit or cleanup:
+
+```bash
+contextdb snapshot lifecycle index verify \
+  --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --report
+```
+
+Index verification re-checks indexed artifact paths, byte sizes, and SHA-256 hashes. Missing files, size drift, and checksum drift exit non-zero.
 
 A local cleanup pass can then remove old namespace backups after a successful export, lifecycle verification, off-host copy, and retention review:
 

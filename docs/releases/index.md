@@ -8,6 +8,7 @@ Release notes are the high-level map of what changed, why it matters, and which 
 
 | Release | Date | Theme |
 |:--------|:-----|:------|
+| [v0.33.0](v0.33.0) | 2026-05-30 | Lifecycle index verification |
 | [v0.32.0](v0.32.0) | 2026-05-30 | Lifecycle manifest indexes |
 | [v0.31.0](v0.31.0) | 2026-05-30 | Lifecycle deletion plans |
 | [v0.30.0](v0.30.0) | 2026-05-30 | Lifecycle retention reporting |
@@ -51,9 +52,9 @@ The docs are currently versioned by release notes and feature tags rather than a
 Use the Git tags for exact historical source:
 
 ```bash
-git checkout v0.32.0
+git checkout v0.33.0
 npm ci
 npm run docs:build
 ```
 
-Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.32.0 is intentionally non-breaking, so tagged release notes are the clearer tool.
+Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.33.0 is intentionally non-breaking, so tagged release notes are the clearer tool.

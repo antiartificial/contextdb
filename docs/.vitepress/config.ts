@@ -31,6 +31,7 @@ export default withMermaid(
               { text: 'Examples', link: '/examples' },
               { text: 'Releases', link: '/releases/' },
               { text: 'Release Health', link: '/release-health' },
+              { text: 'v0.33.0 Recap', link: '/releases/v0.33.0' },
               { text: 'v0.32.0 Recap', link: '/releases/v0.32.0' },
               { text: 'v0.31.0 Recap', link: '/releases/v0.31.0' },
               { text: 'v0.30.0 Recap', link: '/releases/v0.30.0' },
