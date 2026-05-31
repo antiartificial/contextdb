@@ -40,6 +40,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | `contextdb doctor --published-backup-url` | Implemented, opt-in readiness check | v0.57 | `operations`, `backup`, `durability` | CLI reuses published backup catalog freshness checks inside the combined doctor report |
 | `contextdb doctor --published-backup-index` | Implemented, opt-in readiness check | v0.62 | `operations`, `backup`, `durability` | CLI reuses published backup catalog drift checks inside the combined doctor report |
 | `contextdb doctor --published-backup-receipt` | Implemented, opt-in readiness check | v0.82 | `operations`, `backup`, `audit` | CLI verifies published backup repair receipts against the local lifecycle index inside the combined doctor report |
+| Doctor backup receipt runbook lane | Implemented | v0.95 | `operations`, `backup`, `audit` | Published backup repair docs now include a freshness, drift, receipt, doctor, and final closeout lane |
 | `published_backup_drift` repair hint | Implemented | v0.66 | `operations`, `backup`, `durability` | Drift reports include a dry-run publish command hint when local catalog metadata should replace published metadata |
 | Published backup repair guard | Implemented | v0.70 | `operations`, `backup`, `durability` | Deployment docs provide safety checks before executing published backup catalog replacement |
 | Published backup repair receipt | Implemented | v0.74 | `operations`, `backup`, `audit` | `snapshot lifecycle index publish --execute --receipt-out` writes durable evidence for catalog replacement |
@@ -119,6 +120,6 @@ This matrix is the implementation contract for the current codebase. "Introduced
 
 ## Next Candidates
 
-1. Doctor backup receipt runbook lane for repair closure checklists.
-2. KV derived refresh receipt verifier for incident evidence.
-3. Retry fatigue preset schema publication for docs consumers.
+1. KV derived refresh receipt verifier for incident evidence.
+2. Retry fatigue preset schema publication for docs consumers.
+3. Doctor backup receipt closure artifact bundle for incident handoff.

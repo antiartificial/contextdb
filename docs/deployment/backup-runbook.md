@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.94.0",
+  "contextdb_version": "0.95.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -213,6 +213,10 @@ contextdb snapshot lifecycle verify \
 ```
 
 Lifecycle verification checks that the backup, manifest, and rehearsal files exist and agree. When `promoted` is true, it also requires the promotion receipt and receipt-check report, then compares the promotion receipt back to the manifest. A failed check exits non-zero and reports the missing or inconsistent artifact.
+
+## Published Catalog Repair Closure
+
+If doctor reports stale or drifted published backup catalog metadata, use the [Published Backup Repair Guard](published-backup-repair-guard) doctor receipt closure lane. That lane combines published freshness, drift diagnosis, dry-run publish review, executed repair receipts, standalone receipt verification, `published_backup_receipt_verify` in doctor, and a final freshness/drift confirmation before closing the incident.
 
 ## launchd
 

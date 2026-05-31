@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.94.0",
+  "version": "0.95.0",
   "api_version": "v1",
-  "docs_version": "0.94.0",
+  "docs_version": "0.95.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -710,6 +710,12 @@ curl http://localhost:7701/v1/version
       "description": "Executed derived KV refreshes can write receipts with value hashes and doctor confirmation commands."
     },
     {
+      "name": "doctor-backup-receipt-runbook-lane",
+      "status": "stable",
+      "since": "v0.95.0",
+      "description": "Published backup repair docs include a doctor receipt closure lane from freshness and drift diagnosis through verified closeout."
+    },
+    {
       "name": "ranking-baseline-manifest-verify-markdown",
       "status": "stable",
       "since": "v0.84.0",
@@ -793,7 +799,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.94.0"
+  "release_notes_path": "/contextdb/releases/v0.95.0"
 }
 ```
 

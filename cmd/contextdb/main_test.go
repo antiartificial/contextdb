@@ -2458,6 +2458,31 @@ func TestBuildNornPublishReportRequiresPublishURLWhenExecuting(t *testing.T) {
 	is.True(strings.Contains(report.ValidationErrors[0], "--publish-url"))
 }
 
+func TestPublishedBackupRepairGuardDocumentsDoctorReceiptClosureLane(t *testing.T) {
+	is := is.New(t)
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "deployment", "published-backup-repair-guard.md"))
+	is.NoErr(err)
+	doc := string(data)
+
+	required := []string{
+		"## Doctor Receipt Closure Lane",
+		"contextdb doctor --published-backup-url",
+		"contextdb doctor --published-backup-index",
+		"recommended_publish_command",
+		"contextdb snapshot lifecycle index publish --in",
+		"--execute --token",
+		"--receipt-out",
+		"contextdb snapshot lifecycle index publish receipt verify",
+		"--published-backup-receipt",
+		"published_backup_receipt_verify",
+		"final doctor run proves the published catalog is fresh and matches the local lifecycle index",
+	}
+	for _, want := range required {
+		is.True(strings.Contains(doc, want))
+	}
+}
+
 func TestValidateNornManifestEntryRejectsWrongApp(t *testing.T) {
 	is := is.New(t)
 

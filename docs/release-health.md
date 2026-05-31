@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.95.0 | Passed | Passed | Corpus coverage present | Doctor backup receipt lane docs covered | CLI docs regression test added | Adds a published backup repair closure lane from doctor diagnosis through verified receipt closeout |
 | v0.94.0 | Passed | Passed | Corpus coverage present | Retry fatigue preset fixture coverage added | SDK and REST preset schema fixture tests added | Adds a shared schema fixture for retry fatigue preset payload parity |
 | v0.93.0 | Passed | Passed | Admin explain-rank compare coverage added | Corpus coverage present | Admin compare API and embedded asset tests added | Adds side-by-side explain-rank comparison to the Svelte debugger |
 | v0.92.0 | Passed | Passed | Svelte admin shell coverage added | Corpus coverage present | Embedded admin asset tests added | Moves the admin metrics/debugger surface into an embedded Svelte app |

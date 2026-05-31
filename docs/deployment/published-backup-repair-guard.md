@@ -77,6 +77,22 @@ contextdb doctor \
   --report
 ```
 
+## Doctor Receipt Closure Lane
+
+Use this lane when a published backup catalog incident needs one copyable checklist from diagnosis through closeout:
+
+| Step | Command | Closeout evidence |
+|:-----|:--------|:------------------|
+| 1. Diagnose freshness | `contextdb doctor --published-backup-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" --max-published-backup-age 24h --report` | Published catalog age is visible in the combined doctor report |
+| 2. Diagnose drift | `contextdb doctor --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" --published-backup-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" --report` | Drift details and `recommended_publish_command` are captured before repair |
+| 3. Save dry-run publish output | `contextdb snapshot lifecycle index publish --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" --publish-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL" --report` | Operator review confirms the payload, endpoint, bundle counts, retention decisions, and indexed bytes |
+| 4. Execute with a receipt | `contextdb snapshot lifecycle index publish --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" --publish-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL" --execute --token "$NORN_TOKEN" --receipt-out "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json" --report` | The repair write has a durable receipt with status, response, payload hash, and catalog payload |
+| 5. Verify the receipt directly | `contextdb snapshot lifecycle index publish receipt verify --receipt "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json" --in "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" --report` | The receipt still matches the local lifecycle index payload |
+| 6. Verify the receipt in doctor | `contextdb doctor --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" --published-backup-receipt "$CONTEXTDB_BACKUP_DIR/published-backup-repair.receipt.json" --report` | `published_backup_receipt_verify` is green beside other health checks |
+| 7. Confirm published state | `contextdb doctor --published-backup-index "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" --published-backup-url "$CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL" --max-published-backup-age 24h --report` | Freshness and drift are clear after the repair |
+
+Attach the dry-run report, execute report, receipt, receipt verification report, and final doctor report to the incident record. The repair should not be closed from the receipt alone; close it only after the final doctor run proves the published catalog is fresh and matches the local lifecycle index.
+
 ## Confirm The Repair
 
 After execution, rerun drift and freshness checks:
