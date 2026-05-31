@@ -24,6 +24,7 @@ Run these checks before tagging a release:
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
+| v0.68.0 | Passed | Passed | Ranking baseline delete-script coverage added | Corpus coverage present | CLI ranking baseline retention tests added | Adds reviewable deletion-plan output for pruneable ranking baseline artifacts |
 | v0.67.0 | Passed | Passed | Corpus coverage present | KV derivation recipe docs added | Docs build coverage | Adds naming, review, and promotion recipes for derived recent-node KV cache values |
 | v0.66.0 | Passed | Passed | Corpus coverage present | Published backup repair hint coverage added | CLI drift and doctor hint tests added | Adds dry-run publish command hints to published backup drift reports |
 | v0.65.0 | Passed | Passed | Corpus coverage present | Cookbook docs added | Docs build coverage | Adds retry fatigue owner and escalation-lane cookbook examples for handoff routing |

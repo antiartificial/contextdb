@@ -1285,6 +1285,34 @@ func TestBuildRankingEvalBaselineRetentionReport(t *testing.T) {
 	is.Equal(report.Baselines[1].Missing[0], "markdown")
 	is.Equal(report.Baselines[2].Version, "v0.61.0")
 	is.Equal(report.Baselines[2].Status, "pruneable")
+	is.Equal(len(report.DeleteCommands), 2)
+	is.True(strings.Contains(report.DeleteCommands[0], "ranking-eval-v0.61.0"))
+	is.True(strings.Contains(report.DeleteCommands[1], "ranking-eval-v0.61.0"))
+}
+
+func TestBuildRankingEvalBaselineDeleteScript(t *testing.T) {
+	is := is.New(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{
+		"ranking-eval-v0.61.0.json",
+		"ranking-eval-v0.61.0.md",
+		"ranking-eval-v0.62.0.json",
+		"ranking-eval-v0.62.0.md",
+	} {
+		is.NoErr(os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0o644))
+	}
+
+	report, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+
+	script := buildRankingEvalBaselineDeleteScript(report)
+
+	is.True(strings.Contains(script, "#!/usr/bin/env bash"))
+	is.True(strings.Contains(script, "contextdb eval ranking baseline retention"))
+	is.True(strings.Contains(script, "rm -- '"+filepath.Join(dir, "ranking-eval-v0.61.0.json")+"'"))
+	is.True(strings.Contains(script, "rm -- '"+filepath.Join(dir, "ranking-eval-v0.61.0.md")+"'"))
+	is.True(!strings.Contains(script, "ranking-eval-v0.62.0.json"))
 }
 
 func TestBuildRankingEvalBaselineRetentionReportRejectsNegativeKeep(t *testing.T) {
