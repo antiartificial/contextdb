@@ -332,6 +332,16 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	is.Equal(len(savedDigests), 1)
 	is.Equal(savedDigests[0].(map[string]any)["note"], "weekly handoff")
 
+	reqHandoffs := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoffs?owner=alice&escalation_level=review_overdue", nil)
+	wHandoffs := httptest.NewRecorder()
+	handler.ServeHTTP(wHandoffs, reqHandoffs)
+	is.Equal(wHandoffs.Code, http.StatusOK)
+	var handoffsResp map[string]any
+	is.NoErr(json.Unmarshal(wHandoffs.Body.Bytes(), &handoffsResp))
+	handoffs := handoffsResp["handoffs"].([]any)
+	is.Equal(len(handoffs), 1)
+	is.Equal(handoffs[0].(map[string]any)["note"], "weekly handoff")
+
 	refuteBody, _ := json.Marshal(map[string]any{"reason": "audit contradicted source"})
 	reqRefute := httptest.NewRequest("POST", "/v1/namespaces/channel:general/nodes/"+nodeID+"/refute", bytes.NewReader(refuteBody))
 	reqRefute.Header.Set("Content-Type", "application/json")
@@ -726,6 +736,11 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 				note
 				totalEscalated
 			}
+			reviewHandoffs(namespace: "graphql-test", owner: "alice", escalationLevel: "review_overdue") {
+				note
+				totalEscalated
+				groups { owner escalationLevel count }
+			}
 			sourceAnomalies: reviewQueue(namespace: "graphql-test", sourceTrustDropThreshold: 0.1, types: ["source_trust_anomaly"], sourceId: "docs") {
 				id
 				type
@@ -811,6 +826,9 @@ func TestGraphQLServer_SearchResolvesNodesAndSources(t *testing.T) {
 	savedGraphQLDigests := data["reviewEscalationDigests"].([]any)
 	is.Equal(len(savedGraphQLDigests), 1)
 	is.Equal(savedGraphQLDigests[0].(map[string]any)["note"], "graphql handoff")
+	graphQLHandoffs := data["reviewHandoffs"].([]any)
+	is.Equal(len(graphQLHandoffs), 1)
+	is.Equal(graphQLHandoffs[0].(map[string]any)["note"], "graphql handoff")
 	foundAnomaly := false
 	for _, raw := range queue {
 		candidate := raw.(map[string]any)

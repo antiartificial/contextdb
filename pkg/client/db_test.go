@@ -435,6 +435,16 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	is.Equal(savedDigests[0].EventID, recordedDigest.EventID)
 	is.Equal(savedDigests[0].TotalEscalated, 1)
 	is.Equal(savedDigests[0].Note, "weekly handoff")
+	handoffs, err := ns.ReviewHandoffs(ctx, client.ReviewHandoffRequest{
+		After:           start,
+		Owner:           "alice",
+		EscalationLevel: "review_overdue",
+	})
+	is.NoErr(err)
+	is.Equal(len(handoffs), 1)
+	is.Equal(handoffs[0].EventID, recordedDigest.EventID)
+	is.Equal(handoffs[0].TotalEscalated, 1)
+	is.Equal(handoffs[0].Groups[0].Owner, "alice")
 
 	filtered, err := ns.ReviewQueue(ctx, client.ReviewQueueRequest{
 		LowConfidenceThreshold: 0.35,

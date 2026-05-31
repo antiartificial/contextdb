@@ -61,10 +61,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review escalation rules | Implemented | v0.37 | `review`, `operations` | Review queues can add escalation metadata for aged assigned or snoozed tasks and high-priority source anomaly items |
 | Review escalation digest | Implemented | v0.38 | `review`, `operations` | Review escalation digests group escalated tasks by owner, source, item type, and escalation level |
 | Review escalation digest export | Implemented | v0.39 | `review`, `operations` | Review escalation digest snapshots can be recorded and listed for durable handoffs |
+| Review handoff feed | Implemented | v0.40 | `review`, `operations` | Saved escalation digest snapshots can be polled by owner and escalation level |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
-2. Review escalation rules for aged assigned, snoozed, or high-severity source anomaly items.
+2. Review handoff webhook delivery for teams that want push notifications after polling-friendly feeds.
 3. Deeper doctor store/index consistency checks.

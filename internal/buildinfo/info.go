@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.39.0"
+	Version = "0.40.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.39.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.40.0",
 	}
 }
 
@@ -91,6 +91,7 @@ func Features() []Feature {
 		{Name: "review-escalation-rules", Status: "stable", Since: "v0.37.0", Description: "Review queue escalation metadata flags aged assigned or snoozed items and high-priority source anomaly tasks."},
 		{Name: "review-escalation-digest", Status: "stable", Since: "v0.38.0", Description: "Review escalation digests summarize escalated queue items by owner, source, item type, and escalation level."},
 		{Name: "review-escalation-digest-export", Status: "stable", Since: "v0.39.0", Description: "Review escalation digest export records durable digest snapshots for review handoffs."},
+		{Name: "review-handoff-feed", Status: "stable", Since: "v0.40.0", Description: "Review handoff feeds expose saved escalation digest snapshots filtered by owner and escalation level."},
 	}
 }
 

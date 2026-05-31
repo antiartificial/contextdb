@@ -716,6 +716,14 @@ type ReviewEscalationGroup struct {
 	ReviewIDs       []string `json:"review_ids,omitempty"`
 }
 
+// ReviewHandoffRequest filters saved escalation digest snapshots for handoff feeds.
+type ReviewHandoffRequest struct {
+	After           time.Time
+	Owner           string
+	EscalationLevel string
+	Limit           int
+}
+
 // GapRequest configures knowledge-gap detection for a namespace.
 type GapRequest struct {
 	TopK       int
@@ -1692,6 +1700,53 @@ func (h *NamespaceHandle) ReviewEscalationDigests(ctx context.Context, after tim
 		out = append(out, digest)
 	}
 	return out, nil
+}
+
+// ReviewHandoffs returns saved digest snapshots filtered for polling by owner or escalation level.
+func (h *NamespaceHandle) ReviewHandoffs(ctx context.Context, req ReviewHandoffRequest) ([]ReviewEscalationDigest, error) {
+	digests, err := h.ReviewEscalationDigests(ctx, req.After)
+	if err != nil {
+		return nil, err
+	}
+	owner := strings.TrimSpace(req.Owner)
+	level := strings.TrimSpace(req.EscalationLevel)
+	out := make([]ReviewEscalationDigest, 0, len(digests))
+	for _, digest := range digests {
+		filtered := digest
+		if owner != "" || level != "" {
+			filtered.Groups = matchingEscalationGroups(digest.Groups, owner, level)
+			total := 0
+			for _, group := range filtered.Groups {
+				total += group.Count
+			}
+			filtered.TotalEscalated = total
+		}
+		if len(filtered.Groups) == 0 {
+			continue
+		}
+		out = append(out, filtered)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].GeneratedAt.After(out[j].GeneratedAt)
+	})
+	if req.Limit > 0 && len(out) > req.Limit {
+		out = out[:req.Limit]
+	}
+	return out, nil
+}
+
+func matchingEscalationGroups(groups []ReviewEscalationGroup, owner, level string) []ReviewEscalationGroup {
+	out := make([]ReviewEscalationGroup, 0, len(groups))
+	for _, group := range groups {
+		if owner != "" && group.Owner != owner {
+			continue
+		}
+		if level != "" && group.EscalationLevel != level {
+			continue
+		}
+		out = append(out, group)
+	}
+	return out
 }
 
 // Explain returns a narrative report explaining what is known about a node.

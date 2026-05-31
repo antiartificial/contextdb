@@ -331,8 +331,13 @@ saved, err := ns.RecordReviewEscalationDigest(ctx, client.ReviewQueueRequest{
     EscalationAfter: 72 * time.Hour,
 }, "weekly review handoff")
 digests, err := ns.ReviewEscalationDigests(ctx, time.Now().Add(-7*24*time.Hour))
+handoffs, err := ns.ReviewHandoffs(ctx, client.ReviewHandoffRequest{
+    Owner: "alice",
+    EscalationLevel: "review_overdue",
+})
 _ = saved
 _ = digests
+_ = handoffs
 ```
 
 Review decisions persist workflow state without making queue generation stateful:

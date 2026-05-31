@@ -1209,6 +1209,18 @@ func (s *GraphQLServer) buildSchema() (graphql.Schema, error) {
 				},
 				Resolve: s.resolveReviewEscalationDigests,
 			},
+			"reviewHandoffs": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewEscalationDigestType))),
+				Args: graphql.FieldConfigArgument{
+					"namespace":       &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "default"},
+					"mode":            &graphql.ArgumentConfig{Type: graphql.String, DefaultValue: "general"},
+					"after":           &graphql.ArgumentConfig{Type: graphql.DateTime},
+					"owner":           &graphql.ArgumentConfig{Type: graphql.String},
+					"escalationLevel": &graphql.ArgumentConfig{Type: graphql.String},
+					"limit":           &graphql.ArgumentConfig{Type: graphql.Int},
+				},
+				Resolve: s.resolveReviewHandoffs,
+			},
 			"reviewDecisions": &graphql.Field{
 				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(reviewDecisionType))),
 				Args: graphql.FieldConfigArgument{
@@ -1524,6 +1536,25 @@ func (s *GraphQLServer) resolveReviewEscalationDigests(p graphql.ResolveParams) 
 	after, _ := p.Args["after"].(time.Time)
 	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
 	return h.ReviewEscalationDigests(p.Context, after)
+}
+
+func (s *GraphQLServer) resolveReviewHandoffs(p graphql.ResolveParams) (interface{}, error) {
+	ns, _ := p.Args["namespace"].(string)
+	if ns == "" {
+		ns = "default"
+	}
+	mode, _ := p.Args["mode"].(string)
+	after, _ := p.Args["after"].(time.Time)
+	owner, _ := p.Args["owner"].(string)
+	level, _ := p.Args["escalationLevel"].(string)
+	limit, _ := p.Args["limit"].(int)
+	h := s.db.Namespace(ns, resolveModeForGraphQL(mode))
+	return h.ReviewHandoffs(p.Context, client.ReviewHandoffRequest{
+		After:           after,
+		Owner:           owner,
+		EscalationLevel: level,
+		Limit:           limit,
+	})
 }
 
 func (s *GraphQLServer) resolveRecordReviewDecision(p graphql.ResolveParams) (interface{}, error) {

@@ -274,6 +274,12 @@ query {
     totalEscalated
     groups { owner count escalationLevel }
   }
+
+  reviewHandoffs(namespace: "my-app", owner: "alice", escalationLevel: "review_overdue") {
+    note
+    totalEscalated
+    groups { owner count escalationLevel }
+  }
 }
 ```
 

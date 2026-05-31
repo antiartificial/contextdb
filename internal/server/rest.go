@@ -53,6 +53,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/sources/{sourceID}/trust", s.handleSourceTrustTimeline)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/queue", s.handleReviewQueue)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalations", s.handleReviewEscalations)
+	mux.HandleFunc("GET /v1/namespaces/{ns}/review/handoffs", s.handleReviewHandoffs)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/escalation-digests", s.handleReviewEscalationDigests)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/escalation-digests", s.handleRecordReviewEscalationDigest)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
@@ -252,6 +253,10 @@ type reviewEscalationDigestResponse struct {
 
 type reviewEscalationDigestsResponse struct {
 	Digests []client.ReviewEscalationDigest `json:"digests"`
+}
+
+type reviewHandoffsResponse struct {
+	Handoffs []client.ReviewEscalationDigest `json:"handoffs"`
 }
 
 type reviewDecisionsResponse struct {
@@ -789,6 +794,26 @@ func (s *RESTServer) handleReviewEscalationDigests(w http.ResponseWriter, r *htt
 	writeJSON(w, http.StatusOK, reviewEscalationDigestsResponse{Digests: digests})
 }
 
+func (s *RESTServer) handleReviewHandoffs(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	tenant := TenantFromContext(r.Context())
+	if tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	req, err := parseReviewHandoffRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	h := s.db.Namespace(ns, resolveMode(r.URL.Query().Get("mode")))
+	handoffs, err := h.ReviewHandoffs(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reviewHandoffsResponse{Handoffs: handoffs})
+}
+
 func (s *RESTServer) handleRecordReviewEscalationDigest(w http.ResponseWriter, r *http.Request) {
 	ns := r.PathValue("ns")
 	tenant := TenantFromContext(r.Context())
@@ -861,6 +886,27 @@ func parseReviewQueueRequest(r *http.Request) (client.ReviewQueueRequest, error)
 	req.SourceID = strings.TrimSpace(r.URL.Query().Get("source_id"))
 	req.Status = strings.TrimSpace(r.URL.Query().Get("status"))
 	req.Owner = strings.TrimSpace(r.URL.Query().Get("owner"))
+	return req, nil
+}
+
+func parseReviewHandoffRequest(r *http.Request) (client.ReviewHandoffRequest, error) {
+	var req client.ReviewHandoffRequest
+	if raw := strings.TrimSpace(r.URL.Query().Get("after")); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return req, fmt.Errorf("invalid after timestamp: %w", err)
+		}
+		req.After = t
+	}
+	req.Owner = strings.TrimSpace(r.URL.Query().Get("owner"))
+	req.EscalationLevel = strings.TrimSpace(r.URL.Query().Get("escalation_level"))
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return req, fmt.Errorf("invalid limit: %w", err)
+		}
+		req.Limit = parsed
+	}
 	return req, nil
 }
 
