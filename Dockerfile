@@ -1,3 +1,12 @@
+FROM node:24-alpine AS admin-ui-builder
+
+WORKDIR /src
+
+COPY package.json package-lock.json ./
+COPY internal/admin/ui ./internal/admin/ui
+RUN npm ci
+RUN npm run admin:build
+
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM golang:1.26-alpine AS builder
 
@@ -12,6 +21,7 @@ RUN go mod download
 
 # Copy source and build a statically linked binary
 COPY . .
+COPY --from=admin-ui-builder /src/internal/admin/dist ./internal/admin/dist
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags="-s -w -extldflags=-static" \
     -o /out/contextdb ./cmd/contextdb
