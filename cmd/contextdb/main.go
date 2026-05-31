@@ -301,6 +301,8 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 	reportOut := fs.Bool("report", false, "print a JSON ranking baseline manifest verification report")
 	markdownOut := fs.Bool("markdown", false, "print a Markdown ranking baseline manifest verification summary")
 	markdownOutPath := fs.String("markdown-out", "", "Markdown ranking baseline manifest verification summary to write")
+	annotationsOut := fs.Bool("annotations", false, "print CI annotation lines for ranking baseline manifest verification failures")
+	annotationsOutPath := fs.String("annotations-out", "", "CI annotation lines for ranking baseline manifest verification failures to write")
 	_ = fs.Parse(args)
 
 	report, err := verifyRankingEvalBaselineArtifactManifest(*manifestPath)
@@ -309,8 +311,21 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 			err = writeErr
 		}
 	}
+	if strings.TrimSpace(*annotationsOutPath) != "" {
+		if writeErr := writeTextFile(*annotationsOutPath, buildRankingEvalBaselineArtifactManifestFailureAnnotations(report)); writeErr != nil && err == nil {
+			err = writeErr
+		}
+	}
 	if *markdownOut {
 		fmt.Print(buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report))
+	}
+	if *annotationsOut {
+		annotations := buildRankingEvalBaselineArtifactManifestFailureAnnotations(report)
+		if strings.TrimSpace(annotations) == "" {
+			fmt.Fprintln(os.Stdout, "ok")
+		} else {
+			fmt.Print(annotations)
+		}
 	}
 	if *reportOut || err != nil {
 		writeIndentedJSON(report)
@@ -319,7 +334,7 @@ func runEvalRankingBaselineManifestVerify(args []string) {
 		fmt.Fprintf(os.Stderr, "contextdb eval ranking baseline manifest verify: %v\n", err)
 		os.Exit(1)
 	}
-	if !*reportOut && !*markdownOut && strings.TrimSpace(*markdownOutPath) == "" {
+	if !*reportOut && !*markdownOut && strings.TrimSpace(*markdownOutPath) == "" && !*annotationsOut && strings.TrimSpace(*annotationsOutPath) == "" {
 		fmt.Fprintln(os.Stdout, "ok")
 	}
 }
@@ -3164,6 +3179,31 @@ func buildRankingEvalBaselineArtifactManifestVerifyMarkdown(report rankingEvalBa
 	return b.String()
 }
 
+func buildRankingEvalBaselineArtifactManifestFailureAnnotations(report rankingEvalBaselineArtifactManifestVerifyReport) string {
+	if report.OK && len(report.ValidationErrors) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	itemFailures := 0
+	for _, item := range report.ArtifactVerifications {
+		for _, validationErr := range item.ValidationErrors {
+			itemFailures++
+			fmt.Fprintf(&b, "::error file=%s,title=%s::%s\n",
+				ciAnnotationEscape(item.Path),
+				ciAnnotationEscape("Ranking baseline manifest verification"),
+				ciAnnotationEscape(artifactManifestValidationPrefix(item, validationErr)))
+		}
+	}
+	if itemFailures == 0 {
+		for _, validationErr := range report.ValidationErrors {
+			fmt.Fprintf(&b, "::error title=%s::%s\n",
+				ciAnnotationEscape("Ranking baseline manifest verification"),
+				ciAnnotationEscape(validationErr))
+		}
+	}
+	return b.String()
+}
+
 func artifactManifestValidationPrefix(item rankingEvalBaselineArtifactManifestVerifyReportItem, msg string) string {
 	label := strings.TrimSpace(item.Kind)
 	if label == "" {
@@ -3408,6 +3448,15 @@ func formatRankingEvalPass(passed bool) string {
 
 func markdownInline(value string) string {
 	return strings.ReplaceAll(value, "`", "'")
+}
+
+func ciAnnotationEscape(value string) string {
+	value = strings.ReplaceAll(value, "%", "%25")
+	value = strings.ReplaceAll(value, "\r", "%0D")
+	value = strings.ReplaceAll(value, "\n", "%0A")
+	value = strings.ReplaceAll(value, ":", "%3A")
+	value = strings.ReplaceAll(value, ",", "%2C")
+	return value
 }
 
 func markdownCell(value string) string {

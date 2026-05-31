@@ -1632,6 +1632,42 @@ func TestVerifyRankingEvalBaselineArtifactManifestDetectsHashDrift(t *testing.T)
 	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "artifact sha256 mismatch"))
 }
 
+func TestBuildRankingEvalBaselineArtifactManifestFailureAnnotations(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	jsonPath := filepath.Join(dir, "ranking-eval-v0.61.0.json")
+	mdPath := filepath.Join(dir, "ranking-eval-v0.61.0.md")
+	is.NoErr(os.WriteFile(jsonPath, []byte(`{"version":"0.61.0"}`), 0o644))
+	is.NoErr(os.WriteFile(mdPath, []byte("# v0.61.0\n"), 0o644))
+	retention, err := buildRankingEvalBaselineRetentionReport(dir, 1)
+	is.NoErr(err)
+	manifest, err := buildRankingEvalBaselineArtifactManifest(retention, time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC))
+	is.NoErr(err)
+	manifestPath := filepath.Join(dir, "ranking-baseline-manifest.json")
+	is.NoErr(writeJSONFile(manifestPath, manifest))
+	is.NoErr(os.WriteFile(jsonPath, []byte(`{"version":"0.61.0","changed":true}`), 0o644))
+	report, err := verifyRankingEvalBaselineArtifactManifest(manifestPath)
+	is.True(err != nil)
+
+	annotations := buildRankingEvalBaselineArtifactManifestFailureAnnotations(report)
+
+	is.True(strings.Contains(annotations, "::error file="))
+	is.True(strings.Contains(annotations, "title=Ranking baseline manifest verification"))
+	is.True(strings.Contains(annotations, "artifact sha256 mismatch"))
+	is.True(strings.Contains(annotations, "ranking-eval-v0.61.0.json"))
+}
+
+func TestBuildRankingEvalBaselineArtifactManifestFailureAnnotationsManifestError(t *testing.T) {
+	is := is.New(t)
+	report := rankingEvalBaselineArtifactManifestVerifyReport{
+		ValidationErrors: []string{"unsupported manifest kind \"wrong:kind\""},
+	}
+
+	annotations := buildRankingEvalBaselineArtifactManifestFailureAnnotations(report)
+
+	is.Equal(annotations, "::error title=Ranking baseline manifest verification::unsupported manifest kind \"wrong%3Akind\"\n")
+}
+
 func TestBuildRankingEvalBaselineDeleteScript(t *testing.T) {
 	is := is.New(t)
 

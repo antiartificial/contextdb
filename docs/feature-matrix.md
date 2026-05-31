@@ -83,6 +83,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Ranking baseline artifact manifest | Implemented | v0.76 | `ranking`, `release`, `audit` | `contextdb eval ranking --baseline-manifest-out` writes artifact inventory JSON with bytes and SHA-256 hashes |
 | Ranking baseline artifact manifest verify | Implemented | v0.80 | `ranking`, `release`, `audit` | `contextdb eval ranking baseline manifest verify --manifest` verifies inventory paths, byte sizes, and SHA-256 hashes |
 | Ranking baseline manifest verification Markdown | Implemented | v0.84 | `ranking`, `release`, `audit` | `contextdb eval ranking baseline manifest verify --markdown-out` writes compact verification recaps |
+| Ranking manifest failure annotations | Implemented | v0.85 | `ranking`, `release`, `ci` | `contextdb eval ranking baseline manifest verify --annotations` and `--annotations-out` emit CI annotation lines for failed artifacts |
 | Mini/Norn deployment notes | Implemented | v0.3 | `operations` | Internal live deployment discovery and health-check docs |
 | Norn registration helper | Implemented | v0.14 | `operations`, `deployment` | `contextdb norn manifest` and `contextdb norn validate` generate and check service entries |
 | Norn live drift check | Implemented | v0.16 | `operations`, `deployment` | `contextdb norn drift` compares expected local service metadata with the live Norn manifest and reports field differences |

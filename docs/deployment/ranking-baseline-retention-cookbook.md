@@ -56,10 +56,11 @@ Verify the inventory later with:
 contextdb eval ranking baseline manifest verify \
   --manifest ranking-baseline-manifest.json \
   --report \
-  --markdown-out ranking-baseline-manifest-verification.md
+  --markdown-out ranking-baseline-manifest-verification.md \
+  --annotations-out ranking-baseline-manifest-annotations.txt
 ```
 
-The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash. Use `--markdown` for a stdout recap or `--markdown-out` to save the artifact summary beside the JSON report.
+The verifier exits non-zero when an artifact path is missing unexpectedly, points to a directory, has a different byte size, or no longer matches the recorded SHA-256 hash. Use `--markdown` for a stdout recap or `--markdown-out` to save the artifact summary beside the JSON report. Use `--annotations` or `--annotations-out` when CI should surface each failed artifact as an annotation line.
 
 ## Review Retention
 

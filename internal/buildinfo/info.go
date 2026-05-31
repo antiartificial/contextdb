@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.84.0"
+	Version = "0.85.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.84.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.85.0",
 	}
 }
 
@@ -136,6 +136,7 @@ func Features() []Feature {
 		{Name: "doctor-published-backup-receipt-verify", Status: "stable", Since: "v0.82.0", Description: "Doctor can verify published backup repair receipts against the local lifecycle index."},
 		{Name: "kv-derived-refresh-receipt", Status: "stable", Since: "v0.83.0", Description: "Executed derived KV refreshes can write receipts with value hashes and doctor confirmation commands."},
 		{Name: "ranking-baseline-manifest-verify-markdown", Status: "stable", Since: "v0.84.0", Description: "Ranking baseline manifest verification can emit Markdown release summaries."},
+		{Name: "ranking-baseline-manifest-failure-annotations", Status: "stable", Since: "v0.85.0", Description: "Ranking baseline manifest verification can emit CI annotation lines for artifact failures."},
 	}
 }
 
