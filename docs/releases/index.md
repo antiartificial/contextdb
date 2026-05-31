@@ -127,4 +127,4 @@ npm ci
 npm run docs:build
 ```
 
-Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.103.0 is intentionally non-breaking, so tagged release notes are the clearer tool.
+Full multi-version docs would make sense once there are active supported release lines with incompatible APIs. For now, v0.103.0 is intentionally pre-1.0 and non-breaking, so tagged release notes are the clearer tool.
