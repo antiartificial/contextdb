@@ -283,20 +283,32 @@ func runRepairKVCache(args []string) {
 	fs.Var(&keys, "key", "KV hot key to refresh; repeat for multiple keys")
 	value := fs.String("value", "", "literal value to write for each refresh candidate")
 	valueFile := fs.String("value-file", "", "file containing the value to write for each refresh candidate")
+	derive := fs.String("derive", "", "derive a reviewed refresh value; supported: recent-nodes")
+	deriveNamespace := fs.String("derive-namespace", "default", "namespace to read when deriving a refresh value")
+	var deriveLabels repeatedStringFlag
+	fs.Var(&deriveLabels, "derive-label", "label filter for derived refresh values; repeat for multiple labels")
+	deriveLimit := fs.Int("derive-limit", 5, "maximum nodes to include in derived refresh values")
 	ttl := fs.Int("ttl", 0, "TTL seconds for refreshed keys; 0 means no explicit expiry")
 	overwrite := fs.Bool("overwrite", false, "refresh keys even when they already have values")
 	execute := fs.Bool("execute", false, "write reviewed KV refresh candidates")
 	reportOut := fs.Bool("report", false, "print the JSON KV refresh report")
 	_ = fs.Parse(args)
 
-	valueBytes, valueSource, err := kvRefreshValue(*value, *valueFile)
+	db := openSnapshotDB()
+	defer db.Close()
+	graph, _, kv, _ := db.Stores()
+	valueBytes, valueSource, err := kvRefreshValue(context.Background(), graph, kvRefreshValueOptions{
+		Value:           *value,
+		ValueFile:       *valueFile,
+		Derive:          *derive,
+		DeriveNamespace: *deriveNamespace,
+		DeriveLabels:    deriveLabels,
+		DeriveLimit:     *deriveLimit,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "contextdb repair kv-cache: %v\n", err)
 		os.Exit(2)
 	}
-	db := openSnapshotDB()
-	defer db.Close()
-	_, _, kv, _ := db.Stores()
 	report, err := buildKVRefreshReport(context.Background(), kv, kvRefreshOptions{
 		Keys:        keys,
 		Value:       valueBytes,
@@ -1271,6 +1283,36 @@ type kvRefreshOptions struct {
 	Overwrite   bool
 	Execute     bool
 	GeneratedAt time.Time
+}
+
+type kvRefreshValueOptions struct {
+	Value           string
+	ValueFile       string
+	Derive          string
+	DeriveNamespace string
+	DeriveLabels    []string
+	DeriveLimit     int
+}
+
+type kvRefreshRecentNodesValue struct {
+	Kind        string                     `json:"kind"`
+	Namespace   string                     `json:"namespace"`
+	GeneratedAt string                     `json:"generated_at"`
+	Limit       int                        `json:"limit"`
+	Labels      []string                   `json:"labels,omitempty"`
+	Count       int                        `json:"count"`
+	Nodes       []kvRefreshRecentNodeValue `json:"nodes"`
+}
+
+type kvRefreshRecentNodeValue struct {
+	ID            string         `json:"id"`
+	TxTime        string         `json:"tx_time,omitempty"`
+	ValidFrom     string         `json:"valid_from,omitempty"`
+	Labels        []string       `json:"labels,omitempty"`
+	Text          string         `json:"text,omitempty"`
+	Confidence    float64        `json:"confidence,omitempty"`
+	EpistemicType string         `json:"epistemic_type,omitempty"`
+	Properties    map[string]any `json:"properties,omitempty"`
 }
 
 type kvRefreshReport struct {
@@ -2792,11 +2834,18 @@ func buildKVRefreshReport(ctx context.Context, kv store.KVStore, opts kvRefreshO
 	return report, nil
 }
 
-func kvRefreshValue(value, valueFile string) ([]byte, string, error) {
-	value = strings.TrimSpace(value)
-	valueFile = strings.TrimSpace(valueFile)
-	if value != "" && valueFile != "" {
-		return nil, "", errors.New("--value and --value-file are mutually exclusive")
+func kvRefreshValue(ctx context.Context, graph store.GraphStore, opts kvRefreshValueOptions) ([]byte, string, error) {
+	value := strings.TrimSpace(opts.Value)
+	valueFile := strings.TrimSpace(opts.ValueFile)
+	derive := strings.TrimSpace(opts.Derive)
+	explicitSources := 0
+	for _, source := range []string{value, valueFile, derive} {
+		if source != "" {
+			explicitSources++
+		}
+	}
+	if explicitSources > 1 {
+		return nil, "", errors.New("--value, --value-file, and --derive are mutually exclusive")
 	}
 	if valueFile != "" {
 		data, err := os.ReadFile(valueFile)
@@ -2805,7 +2854,103 @@ func kvRefreshValue(value, valueFile string) ([]byte, string, error) {
 		}
 		return data, "file:" + valueFile, nil
 	}
+	if derive != "" {
+		switch derive {
+		case "recent-nodes":
+			value, err := deriveKVRefreshRecentNodesValue(ctx, graph, opts)
+			if err != nil {
+				return nil, "", err
+			}
+			data, err := json.MarshalIndent(value, "", "  ")
+			if err != nil {
+				return nil, "", fmt.Errorf("marshal derived recent-nodes value: %w", err)
+			}
+			data = append(data, '\n')
+			return data, "derived:recent-nodes", nil
+		default:
+			return nil, "", fmt.Errorf("unsupported --derive %q", derive)
+		}
+	}
 	return []byte(value), "literal", nil
+}
+
+func deriveKVRefreshRecentNodesValue(ctx context.Context, graph store.GraphStore, opts kvRefreshValueOptions) (kvRefreshRecentNodesValue, error) {
+	if graph == nil {
+		return kvRefreshRecentNodesValue{}, errors.New("graph store unavailable")
+	}
+	namespace := strings.TrimSpace(opts.DeriveNamespace)
+	if namespace == "" {
+		namespace = "default"
+	}
+	limit := opts.DeriveLimit
+	if limit <= 0 {
+		limit = 5
+	}
+	labels := normalizeKVRefreshKeys(opts.DeriveLabels)
+	nodes, err := graph.ValidAt(ctx, namespace, time.Now(), labels)
+	if err != nil {
+		return kvRefreshRecentNodesValue{}, fmt.Errorf("derive recent-nodes: %w", err)
+	}
+	sort.SliceStable(nodes, func(i, j int) bool {
+		left := nodes[i].TxTime
+		if left.IsZero() {
+			left = nodes[i].ValidFrom
+		}
+		right := nodes[j].TxTime
+		if right.IsZero() {
+			right = nodes[j].ValidFrom
+		}
+		return left.After(right)
+	})
+	if len(nodes) > limit {
+		nodes = nodes[:limit]
+	}
+	value := kvRefreshRecentNodesValue{
+		Kind:        "contextdb.kv.derived.recent_nodes.v1",
+		Namespace:   namespace,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Limit:       limit,
+		Labels:      labels,
+		Count:       len(nodes),
+		Nodes:       make([]kvRefreshRecentNodeValue, 0, len(nodes)),
+	}
+	for _, node := range nodes {
+		item := kvRefreshRecentNodeValue{
+			ID:            node.ID.String(),
+			Labels:        append([]string(nil), node.Labels...),
+			Text:          core.NodeText(node),
+			Confidence:    node.Confidence,
+			EpistemicType: node.EpistemicType,
+			Properties:    compactKVRefreshNodeProperties(node.Properties),
+		}
+		if !node.TxTime.IsZero() {
+			item.TxTime = node.TxTime.UTC().Format(time.RFC3339)
+		}
+		if !node.ValidFrom.IsZero() {
+			item.ValidFrom = node.ValidFrom.UTC().Format(time.RFC3339)
+		}
+		value.Nodes = append(value.Nodes, item)
+	}
+	return value, nil
+}
+
+func compactKVRefreshNodeProperties(properties map[string]any) map[string]any {
+	if len(properties) == 0 {
+		return nil
+	}
+	compact := make(map[string]any, len(properties))
+	for key, value := range properties {
+		switch key {
+		case "text", "content":
+			continue
+		default:
+			compact[key] = value
+		}
+	}
+	if len(compact) == 0 {
+		return nil
+	}
+	return compact
 }
 
 func normalizeKVRefreshKeys(keys []string) []string {

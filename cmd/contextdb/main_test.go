@@ -1430,6 +1430,64 @@ func TestBuildKVRefreshReportRequiresValue(t *testing.T) {
 	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "refresh value"))
 }
 
+func TestKVRefreshValueDerivesRecentNodes(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	graph := memstore.NewGraphStore()
+	olderID := uuid.New()
+	newerID := uuid.New()
+	is.NoErr(graph.UpsertNode(ctx, core.Node{
+		ID:         olderID,
+		Namespace:  "prod",
+		Labels:     []string{"SessionContext"},
+		Properties: map[string]any{"content": "older deploy note", "source": "standup"},
+		ValidFrom:  time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC),
+		TxTime:     time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC),
+		Confidence: 0.8,
+	}))
+	is.NoErr(graph.UpsertNode(ctx, core.Node{
+		ID:            newerID,
+		Namespace:     "prod",
+		Labels:        []string{"SessionContext"},
+		Properties:    map[string]any{"content": "newer deploy note", "priority": "high"},
+		ValidFrom:     time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC),
+		TxTime:        time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC),
+		Confidence:    0.9,
+		EpistemicType: core.EpistemicObservation,
+	}))
+
+	data, source, err := kvRefreshValue(ctx, graph, kvRefreshValueOptions{
+		Derive:          "recent-nodes",
+		DeriveNamespace: "prod",
+		DeriveLabels:    []string{"SessionContext"},
+		DeriveLimit:     1,
+	})
+
+	is.NoErr(err)
+	is.Equal(source, "derived:recent-nodes")
+	var value kvRefreshRecentNodesValue
+	is.NoErr(json.Unmarshal(data, &value))
+	is.Equal(value.Kind, "contextdb.kv.derived.recent_nodes.v1")
+	is.Equal(value.Namespace, "prod")
+	is.Equal(value.Count, 1)
+	is.Equal(value.Nodes[0].ID, newerID.String())
+	is.Equal(value.Nodes[0].Text, "newer deploy note")
+	is.Equal(value.Nodes[0].EpistemicType, core.EpistemicObservation)
+	is.Equal(value.Nodes[0].Properties["priority"], "high")
+}
+
+func TestKVRefreshValueRejectsMixedSources(t *testing.T) {
+	is := is.New(t)
+
+	_, _, err := kvRefreshValue(context.Background(), memstore.NewGraphStore(), kvRefreshValueOptions{
+		Value:  "literal",
+		Derive: "recent-nodes",
+	})
+
+	is.True(err != nil)
+	is.True(strings.Contains(err.Error(), "mutually exclusive"))
+}
+
 func TestBuildVectorIndexRepairReportDryRun(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()
