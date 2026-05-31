@@ -620,6 +620,8 @@ func TestNamespace_ReviewDecisionPersistsWorkflowState(t *testing.T) {
 	presets := client.ReviewHandoffRetryFatiguePresets()
 	is.True(len(presets) >= 3)
 	is.Equal(presets[0].Name, "review-overdue")
+	is.Equal(presets[0].ExampleRESTQuery, "preset=review-overdue")
+	is.Equal(presets[0].ExampleGraphQL, `preset: "review-overdue"`)
 	filteredFatigue, err = ns.ReviewHandoffRetryFatigueFiltered(ctx, client.ReviewHandoffRetryFatigueRequest{
 		After: start,
 		Now:   retryCandidates[0].LastAttemptAt.Add(3 * time.Minute),

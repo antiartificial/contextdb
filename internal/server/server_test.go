@@ -486,6 +486,8 @@ func TestRESTServer_WriteAndRetrieve(t *testing.T) {
 	presets := retryFatigueResp["presets"].([]any)
 	is.True(len(presets) >= 3)
 	is.Equal(presets[0].(map[string]any)["name"], "review-overdue")
+	is.Equal(presets[0].(map[string]any)["example_rest_query"], "preset=review-overdue")
+	is.Equal(presets[0].(map[string]any)["example_graphql"], `preset: "review-overdue"`)
 	reqRetryFatiguePreset := httptest.NewRequest("GET", "/v1/namespaces/channel:general/review/handoff-webhooks/retry-fatigue?preset=review-overdue", nil)
 	wRetryFatiguePreset := httptest.NewRecorder()
 	handler.ServeHTTP(wRetryFatiguePreset, reqRetryFatiguePreset)

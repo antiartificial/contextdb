@@ -401,7 +401,7 @@ query {
 }
 ```
 
-Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures. Optional `preset`, `owner`, and `escalationLevel` arguments scope the view, while owner and escalation-level counts help route workload-specific handoffs. See the [retry fatigue cookbook](/deployment/retry-fatigue-cookbook) for common owner and escalation-lane filter combinations, including the built-in preset reference table.
+Fatigue summaries group unresolved retry recommendations by target endpoint so dashboards can highlight repeated failures. Optional `preset`, `owner`, and `escalationLevel` arguments scope the view, while owner and escalation-level counts help route workload-specific handoffs. REST preset metadata includes copyable GraphQL argument snippets for dashboards. See the [retry fatigue cookbook](/deployment/retry-fatigue-cookbook) for common owner and escalation-lane filter combinations, including the built-in preset reference table.
 
 Retry one unresolved failed delivery explicitly:
 

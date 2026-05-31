@@ -2,7 +2,7 @@ package buildinfo
 
 const (
 	// Version is the current contextdb release version.
-	Version = "0.76.0"
+	Version = "0.77.0"
 )
 
 type Feature struct {
@@ -39,7 +39,7 @@ func Current(migrations []Migration) Info {
 		Features:         Features(),
 		Migrations:       migrations,
 		RecommendedDocs:  "/contextdb/",
-		ReleaseNotesPath: "/contextdb/releases/v0.76.0",
+		ReleaseNotesPath: "/contextdb/releases/v0.77.0",
 	}
 }
 
@@ -124,6 +124,7 @@ func Features() []Feature {
 		{Name: "review-handoff-retry-fatigue-cookbook", Status: "stable", Since: "v0.65.0", Description: "Docs include owner and escalation lane recipes for retry fatigue handoffs."},
 		{Name: "review-handoff-retry-fatigue-presets", Status: "stable", Since: "v0.69.0", Description: "Retry fatigue supports stable preset names for repeated owner and escalation lanes."},
 		{Name: "review-handoff-retry-fatigue-preset-discovery-docs", Status: "stable", Since: "v0.73.0", Description: "Docs include a compact retry fatigue preset table with expanded filters and handoff audiences."},
+		{Name: "review-handoff-retry-fatigue-preset-examples", Status: "stable", Since: "v0.77.0", Description: "Retry fatigue preset metadata includes copyable REST and GraphQL filter examples."},
 		{Name: "doctor-published-backup-repair-hint", Status: "stable", Since: "v0.66.0", Description: "Published backup drift reports include a dry-run publish command hint."},
 		{Name: "published-backup-repair-guard", Status: "stable", Since: "v0.70.0", Description: "Docs include safety checks before executing published backup catalog replacement."},
 		{Name: "published-backup-repair-receipt", Status: "stable", Since: "v0.74.0", Description: "Executed lifecycle index publish writes can record a JSON repair receipt."},

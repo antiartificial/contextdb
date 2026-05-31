@@ -34,17 +34,17 @@ Use `preset` when dashboards or handoff scripts should share a stable lane name:
 curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue?preset=review-overdue"
 ```
 
-Built-in presets are `review-overdue`, `source-trust-anomaly`, and `unassigned-review-overdue`. JSON responses include the same preset metadata so clients can render the available lanes without hard-coding descriptions.
+Built-in presets are `review-overdue`, `source-trust-anomaly`, and `unassigned-review-overdue`. JSON responses include the same preset metadata so clients can render the available lanes without hard-coding descriptions or assembling example filters.
 
 ## Preset Reference
 
 Dashboards can read the same preset metadata from retry fatigue JSON responses, but this table is the compact reference for operators and handoff tooling:
 
-| Preset | Expanded filters | Intended handoff audience |
-|:-------|:-----------------|:--------------------------|
-| `review-overdue` | `escalation_level=review_overdue` | Review owners or coordinators handling assigned or snoozed work that missed its review window |
-| `source-trust-anomaly` | `escalation_level=source_trust_anomaly` | Source-quality reviewers investigating credibility drops, repeated refutations, or trust anomalies |
-| `unassigned-review-overdue` | `owner=unassigned`, `escalation_level=review_overdue` | Queue triage or on-call reviewers who need to claim overdue work with no explicit owner |
+| Preset | Expanded filters | Example REST query | Example GraphQL args | Intended handoff audience |
+|:-------|:-----------------|:-------------------|:---------------------|:--------------------------|
+| `review-overdue` | `escalation_level=review_overdue` | `preset=review-overdue` | `preset: "review-overdue"` | Review owners or coordinators handling assigned or snoozed work that missed its review window |
+| `source-trust-anomaly` | `escalation_level=source_trust_anomaly` | `preset=source-trust-anomaly` | `preset: "source-trust-anomaly"` | Source-quality reviewers investigating credibility drops, repeated refutations, or trust anomalies |
+| `unassigned-review-overdue` | `owner=unassigned`, `escalation_level=review_overdue` | `preset=unassigned-review-overdue` | `preset: "unassigned-review-overdue"` | Queue triage or on-call reviewers who need to claim overdue work with no explicit owner |
 
 Explicit `owner` or `escalation_level` query parameters can narrow or override a preset-expanded value. Keep preset names stable in dashboards and scripts; change the expanded filters in one place when the handoff lane changes.
 

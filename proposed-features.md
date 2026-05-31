@@ -463,6 +463,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking baseline artifact manifest | Implemented | `contextdb eval ranking --baseline-retention-dir DIR --baseline-manifest-out PATH` writes artifact bytes and SHA-256 inventory JSON |
 
+## Completed In v0.77.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Retry fatigue preset examples endpoint | Implemented | Retry fatigue preset metadata includes `example_rest_query` and `example_graphql` snippets for dashboard filters |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -999,11 +1005,11 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.76.0
+## Fresh Brainstorm After v0.77.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| Retry fatigue preset examples endpoint | Preset docs cover humans, but dashboards may want sample URLs without assembling query strings | Add a response metadata field with example REST and GraphQL filters for each preset |
 | Published backup receipt verifier | Receipts record repairs, but operators may want to verify them later | Add `snapshot lifecycle index publish receipt verify --receipt PATH --in INDEX` to compare payload hashes and catalog metadata |
 | KV derivation repair execution recipe | Doctor now suggests a dry-run command, but teams may want a guarded execute checklist | Add docs for reviewing and executing stale derived KV refreshes safely |
 | Ranking baseline manifest verifier | Manifest records bytes and hashes, but CI may want a later integrity check | Add a command to verify artifact inventory paths, byte sizes, and SHA-256 hashes |
+| Retry fatigue preset example docs test | Preset examples now ship in metadata, but docs could drift from SDK values | Add a small test that cookbook preset rows match `ReviewHandoffRetryFatiguePresets()` |

@@ -98,10 +98,11 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Review handoff retry fatigue cookbook | Implemented | v0.65 | `review`, `operations`, `handoff` | Deployment docs provide owner and escalation-lane recipes for retry fatigue handoffs |
 | Review handoff retry fatigue presets | Implemented | v0.69 | `review`, `operations`, `handoff` | REST, GraphQL, and Go SDK support stable preset names for repeated owner and escalation lanes |
 | Retry fatigue preset discovery docs | Implemented | v0.73 | `review`, `operations`, `handoff` | Deployment docs provide preset names, expanded filters, and intended handoff audiences for dashboards |
+| Retry fatigue preset examples | Implemented | v0.77 | `review`, `operations`, `handoff` | Preset metadata includes copyable REST query and GraphQL argument snippets |
 | Admin/debug UI | Not started | Future | `inspectability` | GraphQL now exposes the data needed for an inspector |
 
 ## Next Candidates
 
 1. A local belief debugger UI backed by GraphQL, feature introspection, explain-rank, feedback events, and source trust timelines.
 2. Published backup receipt verification for post-repair audit checks.
-3. Retry fatigue preset example metadata for dashboard query builders.
+3. KV derivation repair execution recipe for stale cache refresh handoffs.

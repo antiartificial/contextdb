@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.76.0",
+  "version": "0.77.0",
   "api_version": "v1",
-  "docs_version": "0.76.0",
+  "docs_version": "0.77.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -650,6 +650,12 @@ curl http://localhost:7701/v1/version
       "description": "Docs include a compact retry fatigue preset table with expanded filters and handoff audiences."
     },
     {
+      "name": "review-handoff-retry-fatigue-preset-examples",
+      "status": "stable",
+      "since": "v0.77.0",
+      "description": "Retry fatigue preset metadata includes copyable REST and GraphQL filter examples."
+    },
+    {
       "name": "published-backup-repair-guard",
       "status": "stable",
       "since": "v0.70.0",
@@ -673,7 +679,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.76.0"
+  "release_notes_path": "/contextdb/releases/v0.77.0"
 }
 ```
 
@@ -1049,7 +1055,7 @@ Summarize repeated retry pressure by endpoint without sending retries:
 curl "http://localhost:7701/v1/namespaces/my-app/review/handoff-webhooks/retry-fatigue"
 ```
 
-The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, owner counts, escalation-level counts, status-family counts, the latest failure detail for each endpoint, and stable `presets` metadata for repeated owner and escalation lanes.
+The response groups unresolved retry recommendations by `target_url` and includes candidate count, total attempts, ready and waiting counts, owner counts, escalation-level counts, status-family counts, the latest failure detail for each endpoint, and stable `presets` metadata for repeated owner and escalation lanes. Each preset includes `example_rest_query` and `example_graphql` snippets so dashboards can show copyable filters.
 
 Add `owner`, `escalation_level`, or `preset` query parameters when the handoff should focus on a specific workload owner, escalation class, or named lane.
 

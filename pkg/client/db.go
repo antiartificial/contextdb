@@ -766,10 +766,12 @@ type ReviewHandoffRetryFatigueRequest struct {
 
 // ReviewHandoffRetryFatiguePreset names a reusable retry fatigue filter lane.
 type ReviewHandoffRetryFatiguePreset struct {
-	Name            string `json:"name"`
-	Owner           string `json:"owner,omitempty"`
-	EscalationLevel string `json:"escalation_level,omitempty"`
-	Description     string `json:"description"`
+	Name             string `json:"name"`
+	Owner            string `json:"owner,omitempty"`
+	EscalationLevel  string `json:"escalation_level,omitempty"`
+	Description      string `json:"description"`
+	ExampleRESTQuery string `json:"example_rest_query"`
+	ExampleGraphQL   string `json:"example_graphql"`
 }
 
 // ReviewHandoffWebhookDelivery describes one dry-run webhook delivery that would be sent.
@@ -902,20 +904,26 @@ func ReviewHandoffRetryFatigueMarkdown(summaries []ReviewHandoffRetryFatigueSumm
 func ReviewHandoffRetryFatiguePresets() []ReviewHandoffRetryFatiguePreset {
 	return []ReviewHandoffRetryFatiguePreset{
 		{
-			Name:            "review-overdue",
-			EscalationLevel: "review_overdue",
-			Description:     "Retry fatigue for review handoffs that escalated because assigned or snoozed work is overdue.",
+			Name:             "review-overdue",
+			EscalationLevel:  "review_overdue",
+			Description:      "Retry fatigue for review handoffs that escalated because assigned or snoozed work is overdue.",
+			ExampleRESTQuery: "preset=review-overdue",
+			ExampleGraphQL:   `preset: "review-overdue"`,
 		},
 		{
-			Name:            "source-trust-anomaly",
-			EscalationLevel: "source_trust_anomaly",
-			Description:     "Retry fatigue for handoffs generated from source trust anomaly review tasks.",
+			Name:             "source-trust-anomaly",
+			EscalationLevel:  "source_trust_anomaly",
+			Description:      "Retry fatigue for handoffs generated from source trust anomaly review tasks.",
+			ExampleRESTQuery: "preset=source-trust-anomaly",
+			ExampleGraphQL:   `preset: "source-trust-anomaly"`,
 		},
 		{
-			Name:            "unassigned-review-overdue",
-			Owner:           "unassigned",
-			EscalationLevel: "review_overdue",
-			Description:     "Retry fatigue for overdue review handoffs without an assigned owner.",
+			Name:             "unassigned-review-overdue",
+			Owner:            "unassigned",
+			EscalationLevel:  "review_overdue",
+			Description:      "Retry fatigue for overdue review handoffs without an assigned owner.",
+			ExampleRESTQuery: "preset=unassigned-review-overdue",
+			ExampleGraphQL:   `preset: "unassigned-review-overdue"`,
 		},
 	}
 }
