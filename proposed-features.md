@@ -548,11 +548,17 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Ranking baseline bundle index verifier | Implemented | `contextdb eval ranking baseline manifest bundle verify --index PATH --report` re-hashes verification bundle artifacts and confirms index status matches the JSON report |
 
+## Completed In v0.91.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| Admin metrics dashboard | Implemented | `/admin/` now surfaces health signals, ingest admission/rejection rates, retrieval error rates, latency snapshots, raw `/admin/api/metrics` JSON, and the debugger/search workflow in one dashboard |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
 |:--------|:---------------|:------|
-| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; debugger search completed in v0.89.0; next step is explain-rank integration |
+| Belief debugger UI | Makes nodes, score breakdowns, evidence, contradictions, source trust, and history visible in one place | Initial observe-port dashboard and belief audit UI completed in v0.88.0; debugger search completed in v0.89.0; metrics dashboard completed in v0.91.0; next step is Svelte shell and explain-rank integration |
 | Ranking evaluation dashboard | Tracks query sets, expected nodes, recall@k, MRR, and score deltas across releases | Snapshot foundation completed in v0.48.0; next step is dashboard/UI |
 | Explain-rank endpoint | Answers "why did this node rank above that one?" | Completed in v0.8.0; graph support-chain evidence completed in v0.11.0; next step is UI integration |
 | Feature/version introspection | Lets clients ask which APIs and migrations are available | Completed in v0.4.0; keep expanding feature metadata as APIs mature |
@@ -1084,11 +1090,12 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.90.0
+## Fresh Brainstorm After v0.91.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
+| Svelte admin app shell | The embedded dashboard works, but richer debugger/metrics workflows will be easier to evolve with a typed component UI | Add a Svelte build path that preserves `/admin/` while moving metrics cards, debugger search, and JSON panes into components |
+| Debugger explain-rank compare | Search can find nodes, but ranking questions need side-by-side comparison | Add a UI flow that selects two search results and calls explain-rank |
 | Retry fatigue preset API schema fixture | Preset docs now have drift coverage, but API examples could use a small schema fixture | Add a test fixture for retry fatigue preset JSON fields across SDK and REST |
 | Doctor backup receipt runbook lane | Receipt verification is in doctor, but teams may want a full incident checklist | Add a deployment recipe combining freshness, drift, receipt verify, and repair closure |
 | KV derived refresh receipt verifier | Refresh receipts now exist, but incident review may need later integrity checks | Add a verifier that recomputes report/value hash and checks written-key doctor commands |
-| Debugger explain-rank compare | Search can find nodes, but ranking questions need side-by-side comparison | Add a UI flow that selects two search results and calls explain-rank |

@@ -43,6 +43,7 @@ func New(db *client.DB) http.Handler {
 	h.mux.HandleFunc("GET /admin/", h.handleIndex)
 	h.mux.HandleFunc("GET /admin/debugger", h.handleIndex)
 	h.mux.HandleFunc("GET /admin/api/stats", h.handleStats)
+	h.mux.HandleFunc("GET /admin/api/metrics", h.handleMetrics)
 	h.mux.HandleFunc("GET /admin/api/belief", h.handleBeliefAudit)
 	h.mux.HandleFunc("GET /admin/api/search", h.handleSearch)
 	h.mux.HandleFunc("GET /admin/api/timetravel", h.handleTimeTravel)
@@ -76,6 +77,107 @@ func (h *adminHandler) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := h.db.Stats()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
+}
+
+type adminMetricsSnapshot struct {
+	Mode        string                `json:"mode"`
+	GeneratedAt string                `json:"generated_at"`
+	Health      adminMetricsHealth    `json:"health"`
+	Ingest      adminIngestMetrics    `json:"ingest"`
+	Retrieval   adminRetrievalMetrics `json:"retrieval"`
+	Latency     adminLatencyMetrics   `json:"latency"`
+}
+
+type adminMetricsHealth struct {
+	Status  string   `json:"status"`
+	Signals []string `json:"signals"`
+}
+
+type adminIngestMetrics struct {
+	Total         int64   `json:"total"`
+	Admitted      int64   `json:"admitted"`
+	Rejected      int64   `json:"rejected"`
+	AdmissionRate float64 `json:"admission_rate"`
+	RejectionRate float64 `json:"rejection_rate"`
+}
+
+type adminRetrievalMetrics struct {
+	Total     int64   `json:"total"`
+	Errors    int64   `json:"errors"`
+	ErrorRate float64 `json:"error_rate"`
+}
+
+type adminLatencyMetrics struct {
+	P50Us  float64 `json:"p50_us"`
+	P95Us  float64 `json:"p95_us"`
+	MeanUs float64 `json:"mean_us"`
+	P50Ms  float64 `json:"p50_ms"`
+	P95Ms  float64 `json:"p95_ms"`
+	MeanMs float64 `json:"mean_ms"`
+}
+
+func (h *adminHandler) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics := buildAdminMetricsSnapshot(h.db.Stats(), time.Now().UTC())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(metrics)
+}
+
+func buildAdminMetricsSnapshot(stats client.DBStats, generatedAt time.Time) adminMetricsSnapshot {
+	ingestTotal := float64(stats.IngestTotal)
+	retrievalTotal := float64(stats.RetrievalTotal)
+	admissionRate := ratio(float64(stats.IngestAdmitted), ingestTotal)
+	rejectionRate := ratio(float64(stats.IngestRejected), ingestTotal)
+	errorRate := ratio(float64(stats.RetrievalErrors), retrievalTotal)
+	status := "healthy"
+	signals := []string{"admin metrics online"}
+	if stats.RetrievalErrors > 0 {
+		status = "degraded"
+		signals = append(signals, "retrieval errors observed")
+	}
+	if stats.IngestRejected > 0 {
+		if status == "healthy" {
+			status = "watch"
+		}
+		signals = append(signals, "ingest rejections observed")
+	}
+	if stats.IngestTotal == 0 && stats.RetrievalTotal == 0 {
+		signals = append(signals, "no traffic recorded yet")
+	}
+	return adminMetricsSnapshot{
+		Mode:        string(stats.Mode),
+		GeneratedAt: generatedAt.Format(time.RFC3339),
+		Health: adminMetricsHealth{
+			Status:  status,
+			Signals: signals,
+		},
+		Ingest: adminIngestMetrics{
+			Total:         stats.IngestTotal,
+			Admitted:      stats.IngestAdmitted,
+			Rejected:      stats.IngestRejected,
+			AdmissionRate: admissionRate,
+			RejectionRate: rejectionRate,
+		},
+		Retrieval: adminRetrievalMetrics{
+			Total:     stats.RetrievalTotal,
+			Errors:    stats.RetrievalErrors,
+			ErrorRate: errorRate,
+		},
+		Latency: adminLatencyMetrics{
+			P50Us:  stats.LatencyP50Us,
+			P95Us:  stats.LatencyP95Us,
+			MeanUs: stats.LatencyMeanUs,
+			P50Ms:  stats.LatencyP50Us / 1000,
+			P95Ms:  stats.LatencyP95Us / 1000,
+			MeanMs: stats.LatencyMeanUs / 1000,
+		},
+	}
+}
+
+func ratio(numerator, denominator float64) float64 {
+	if denominator <= 0 {
+		return 0
+	}
+	return numerator / denominator
 }
 
 // handleBeliefAudit returns the evidence trail for one claim.
@@ -337,13 +439,25 @@ const indexHTML = `<!DOCTYPE html>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, sans-serif; background: #0f1117; color: #e1e4e8; line-height: 1.6; }
-  .container { max-width: 1120px; margin: 0 auto; padding: 2rem; }
-  h1 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 1.5rem; }
+  .container { max-width: 1180px; margin: 0 auto; padding: 2rem; }
+  .header { display: flex; justify-content: space-between; gap: 1rem; align-items: center; margin-bottom: 1.5rem; }
+  h1 { font-size: 1.5rem; color: #e1e4e8; }
   h2 { font-size: 1.1rem; color: #8b949e; margin-bottom: 1rem; border-bottom: 1px solid #21262d; padding-bottom: 0.5rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
+  .status { color: #8b949e; font-size: 0.86rem; text-align: right; }
+  .status strong { color: #58a6ff; text-transform: capitalize; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+  .dashboard { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr); gap: 1rem; margin-bottom: 2rem; }
+  .card, .panel { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
   .card .label { font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
   .card .value { font-size: 1.8rem; font-weight: 600; color: #58a6ff; margin-top: 0.25rem; }
+  .card .sub { color: #8b949e; font-size: 0.78rem; }
+  .bars { display: grid; gap: 0.8rem; }
+  .bar-label { display: flex; justify-content: space-between; color: #8b949e; font-size: 0.82rem; margin-bottom: 0.28rem; }
+  .bar-track { height: 0.55rem; background: #0f1117; border: 1px solid #30363d; border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; width: 0%; background: #58a6ff; }
+  .bar-fill.warn { background: #d29922; }
+  .signals { margin-top: 1rem; color: #8b949e; font-size: 0.86rem; }
+  .signals li { margin-left: 1rem; }
   .links { list-style: none; }
   .links li { padding: 0.5rem 0; border-bottom: 1px solid #21262d; }
   .links a { color: #58a6ff; text-decoration: none; }
@@ -364,38 +478,65 @@ const indexHTML = `<!DOCTYPE html>
   .ghost:hover { background: #30363d; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0f1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; max-height: 28rem; overflow: auto; }
   .footer { margin-top: 2rem; font-size: 0.8rem; color: #484f58; }
-  @media (max-width: 760px) { .row, .search-row, .result { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .dashboard, .row, .search-row, .result { grid-template-columns: 1fr; } .header { align-items: flex-start; flex-direction: column; } .status { text-align: left; } }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>contextdb admin</h1>
+  <div class="header">
+    <div>
+      <h1>contextdb admin</h1>
+      <div class="meta">Dashboard and debugger for local contextdb observability.</div>
+    </div>
+    <div class="status">Health <strong id="health-status">loading</strong><br><span id="generated-at">waiting for metrics</span></div>
+  </div>
 
-  <h2>Overview</h2>
-  <div class="grid">
-    <div class="card">
-      <div class="label">Mode</div>
-      <div class="value" style="font-size:1.2rem">{{.Mode}}</div>
+  <h2>Metrics</h2>
+  <div class="dashboard">
+    <div>
+      <div class="grid">
+        <div class="card">
+          <div class="label">Mode</div>
+          <div class="value" id="metric-mode" style="font-size:1.2rem">{{.Mode}}</div>
+          <div class="sub">Runtime store profile</div>
+        </div>
+        <div class="card">
+          <div class="label">Ingest Total</div>
+          <div class="value" id="metric-ingest-total">{{.IngestTotal}}</div>
+          <div class="sub"><span id="metric-admission-rate">0%</span> admitted</div>
+        </div>
+        <div class="card">
+          <div class="label">Retrieval Total</div>
+          <div class="value" id="metric-retrieval-total">{{.RetrievalTotal}}</div>
+          <div class="sub"><span id="metric-error-rate">0%</span> error rate</div>
+        </div>
+        <div class="card">
+          <div class="label">P95 Latency</div>
+          <div class="value" id="metric-p95">0.00 ms</div>
+          <div class="sub">Mean <span id="metric-mean">0.00 ms</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="bars">
+          <div>
+            <div class="bar-label"><span>Admitted</span><span id="bar-admitted-label">0 / 0</span></div>
+            <div class="bar-track"><div id="bar-admitted" class="bar-fill"></div></div>
+          </div>
+          <div>
+            <div class="bar-label"><span>Rejected</span><span id="bar-rejected-label">0 / 0</span></div>
+            <div class="bar-track"><div id="bar-rejected" class="bar-fill warn"></div></div>
+          </div>
+          <div>
+            <div class="bar-label"><span>Retrieval errors</span><span id="bar-errors-label">0 / 0</span></div>
+            <div class="bar-track"><div id="bar-errors" class="bar-fill warn"></div></div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="card">
-      <div class="label">Ingest Total</div>
-      <div class="value">{{.IngestTotal}}</div>
-    </div>
-    <div class="card">
-      <div class="label">Admitted</div>
-      <div class="value">{{.IngestAdmitted}}</div>
-    </div>
-    <div class="card">
-      <div class="label">Rejected</div>
-      <div class="value">{{.IngestRejected}}</div>
-    </div>
-    <div class="card">
-      <div class="label">Retrieval Total</div>
-      <div class="value">{{.RetrievalTotal}}</div>
-    </div>
-    <div class="card">
-      <div class="label">Retrieval Errors</div>
-      <div class="value">{{.RetrievalErrors}}</div>
+    <div class="panel">
+      <h2 style="margin-bottom:0.75rem">Signals</h2>
+      <ul id="metric-signals" class="signals"><li>Loading metrics...</li></ul>
+      <pre id="metrics-json" style="margin-top:1rem; max-height:16rem">Loading /admin/api/metrics...</pre>
     </div>
   </div>
 
@@ -445,10 +586,57 @@ const indexHTML = `<!DOCTYPE html>
 <script>
 const output = document.getElementById('debug-output');
 const searchResults = document.getElementById('search-results');
+function pct(value) {
+  return Math.round((value || 0) * 1000) / 10 + '%';
+}
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+function setBar(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.style.width = Math.max(0, Math.min(100, (value || 0) * 100)) + '%';
+}
+async function refreshMetrics() {
+  try {
+    const res = await fetch('/admin/api/metrics');
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || res.statusText);
+    const data = JSON.parse(text);
+    setText('health-status', data.health.status);
+    setText('generated-at', data.generated_at);
+    setText('metric-mode', data.mode);
+    setText('metric-ingest-total', data.ingest.total);
+    setText('metric-retrieval-total', data.retrieval.total);
+    setText('metric-admission-rate', pct(data.ingest.admission_rate));
+    setText('metric-error-rate', pct(data.retrieval.error_rate));
+    setText('metric-p95', (data.latency.p95_ms || 0).toFixed(2) + ' ms');
+    setText('metric-mean', (data.latency.mean_ms || 0).toFixed(2) + ' ms');
+    setText('bar-admitted-label', data.ingest.admitted + ' / ' + data.ingest.total);
+    setText('bar-rejected-label', data.ingest.rejected + ' / ' + data.ingest.total);
+    setText('bar-errors-label', data.retrieval.errors + ' / ' + data.retrieval.total);
+    setBar('bar-admitted', data.ingest.admission_rate);
+    setBar('bar-rejected', data.ingest.rejection_rate);
+    setBar('bar-errors', data.retrieval.error_rate);
+    const signals = document.getElementById('metric-signals');
+    signals.innerHTML = '';
+    for (const signal of data.health.signals || []) {
+      const item = document.createElement('li');
+      item.textContent = signal;
+      signals.appendChild(item);
+    }
+    document.getElementById('metrics-json').textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    setText('health-status', 'unknown');
+    document.getElementById('metrics-json').textContent = String(err.message || err);
+  }
+}
 function setDebuggerTarget(ns, id) {
   document.getElementById('debug-ns').value = ns;
   document.getElementById('debug-id').value = id;
 }
+refreshMetrics();
+setInterval(refreshMetrics, 5000);
 document.getElementById('search-run').addEventListener('click', async () => {
   const ns = document.getElementById('search-ns').value.trim();
   const q = document.getElementById('search-q').value.trim();

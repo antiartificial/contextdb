@@ -13,6 +13,7 @@ import (
 	"github.com/matryer/is"
 
 	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/observe"
 	"github.com/antiartificial/contextdb/pkg/client"
 )
@@ -86,9 +87,48 @@ func TestAdminDashboardIncludesDebugger(t *testing.T) {
 	New(db).ServeHTTP(w, req)
 
 	is.Equal(w.Code, http.StatusOK)
+	is.True(strings.Contains(w.Body.String(), "Metrics"))
 	is.True(strings.Contains(w.Body.String(), "Belief Debugger"))
+	is.True(strings.Contains(w.Body.String(), "/admin/api/metrics"))
 	is.True(strings.Contains(w.Body.String(), "/admin/api/search"))
 	is.True(strings.Contains(w.Body.String(), "/admin/api/belief"))
+}
+
+func TestAdminMetricsAPI(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+	ns := db.Namespace("metrics-test", namespace.ModeGeneral)
+	_, err := ns.Write(ctx, client.WriteRequest{
+		Content:    "admin metrics should surface ingest and latency signals",
+		SourceID:   "metrics-test",
+		Labels:     []string{"Claim"},
+		Vector:     []float32{1, 0, 0, 0, 0, 0, 0, 0},
+		Confidence: 0.9,
+	})
+	is.NoErr(err)
+	_, err = ns.Retrieve(ctx, client.RetrieveRequest{
+		Text:   "metrics",
+		Vector: []float32{1, 0, 0, 0, 0, 0, 0, 0},
+		TopK:   1,
+	})
+	is.NoErr(err)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/metrics", nil)
+	w := httptest.NewRecorder()
+	New(db).ServeHTTP(w, req)
+
+	is.Equal(w.Code, http.StatusOK)
+	var body adminMetricsSnapshot
+	is.NoErr(json.Unmarshal(w.Body.Bytes(), &body))
+	is.Equal(body.Mode, "embedded")
+	is.Equal(body.Health.Status, "healthy")
+	is.True(body.Ingest.Total >= 1)
+	is.True(body.Ingest.Admitted >= 1)
+	is.True(body.Ingest.AdmissionRate > 0)
+	is.True(body.Retrieval.Total >= 1)
+	is.True(len(body.Health.Signals) > 0)
 }
 
 func TestAdminSearchAPI(t *testing.T) {

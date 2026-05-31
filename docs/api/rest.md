@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.90.0",
+  "version": "0.91.0",
   "api_version": "v1",
-  "docs_version": "0.90.0",
+  "docs_version": "0.91.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -762,6 +762,12 @@ curl http://localhost:7701/v1/version
       "status": "stable",
       "since": "v0.89.0",
       "description": "The admin debugger can search recent valid nodes by text, label, source, or ID before opening an audit."
+    },
+    {
+      "name": "admin-metrics-dashboard",
+      "status": "stable",
+      "since": "v0.91.0",
+      "description": "The admin dashboard surfaces health, ingest, retrieval, latency, and raw metrics through /admin/api/metrics."
     }
   ],
   "migrations": [
@@ -769,7 +775,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.90.0"
+  "release_notes_path": "/contextdb/releases/v0.91.0"
 }
 ```
 
@@ -1306,6 +1312,9 @@ open http://localhost:7702/admin/
 # Admin stats API
 curl http://localhost:7702/admin/api/stats
 
+# Admin metrics API
+curl http://localhost:7702/admin/api/metrics
+
 # Belief debugger API
 curl "http://localhost:7702/admin/api/belief?ns=my-app&id=NODE_UUID"
 
@@ -1313,7 +1322,7 @@ curl "http://localhost:7702/admin/api/belief?ns=my-app&id=NODE_UUID"
 curl "http://localhost:7702/admin/api/search?ns=my-app&q=auth&limit=10"
 ```
 
-The dashboard displays ingest/retrieval counters, error rates, links to metrics and profiling endpoints, and a belief debugger for source, support, contradiction, provenance, and confidence-history evidence. The debugger search API scans recent valid graph nodes by text, labels, source ID, or node ID so operators can open an audit without first copying a UUID from another tool.
+The dashboard displays health signals, ingest and retrieval rates, latency snapshots, raw metrics JSON, links to metrics and profiling endpoints, and a belief debugger for source, support, contradiction, provenance, and confidence-history evidence. The debugger search API scans recent valid graph nodes by text, labels, source ID, or node ID so operators can open an audit without first copying a UUID from another tool.
 
 ## Observability
 
