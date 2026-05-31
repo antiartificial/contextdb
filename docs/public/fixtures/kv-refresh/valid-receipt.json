@@ -1,0 +1,35 @@
+{
+  "kind": "contextdb.kv.refresh.receipt",
+  "schema_version": 1,
+  "generated_at": "2026-06-01T12:00:00Z",
+  "contextdb_version": "0.102.0",
+  "value_source": "derived:recent-nodes",
+  "value_sha256": "22ec5bee03ae1823e17a0c5c0ef91a64f9a47653ceb918551fafd92e3809986a",
+  "recommended_doctor_command": "contextdb doctor --kv-derived-key 'context:prod:support:recent-nodes' --report",
+  "report": {
+    "schema_version": 1,
+    "contextdb_version": "0.102.0",
+    "generated_at": "2026-06-01T12:00:00Z",
+    "dry_run": false,
+    "execute": true,
+    "overwrite": false,
+    "ttl_seconds": 0,
+    "value_source": "derived:recent-nodes",
+    "keys": 1,
+    "present": 0,
+    "missing": 1,
+    "refresh_candidates": 1,
+    "written": 1,
+    "skipped": 0,
+    "ok": true,
+    "items": [
+      {
+        "key": "context:prod:support:recent-nodes",
+        "present": false,
+        "action": "written",
+        "value_bytes": 136,
+        "ttl_seconds": 0
+      }
+    ]
+  }
+}

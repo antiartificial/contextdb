@@ -211,9 +211,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.101.0",
+  "version": "0.102.0",
   "api_version": "v1",
-  "docs_version": "0.101.0",
+  "docs_version": "0.102.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -794,6 +794,12 @@ curl http://localhost:7701/v1/version
       "description": "CLI can generate a hashed closure manifest for published backup repair evidence bundles."
     },
     {
+      "name": "kv-refresh-receipt-fixtures",
+      "status": "stable",
+      "since": "v0.102.0",
+      "description": "Docs publish passing and failing derived KV refresh receipt fixtures for integration and CI consumers."
+    },
+    {
       "name": "admin-observe-dashboard",
       "status": "stable",
       "since": "v0.88.0",
@@ -835,7 +841,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.101.0"
+  "release_notes_path": "/contextdb/releases/v0.102.0"
 }
 ```
 

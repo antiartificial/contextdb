@@ -614,6 +614,12 @@ This is the working backlog for features that would make contextdb more useful, 
 |:--------|:-------|:---------|
 | Doctor backup receipt closure bundle CLI | Implemented | `contextdb snapshot lifecycle index publish closure-bundle --dir PATH --out PATH --report` writes `closure-manifest.json` with expected repair artifacts, byte counts, SHA-256 hashes, and missing-artifact errors |
 
+## Completed In v0.102.0
+
+| Feature | Status | Evidence |
+|:--------|:-------|:---------|
+| KV receipt verification fixture bundle | Implemented | `docs/public/fixtures/kv-refresh/valid-receipt.json`, `valid-value.json`, and `mismatched-value.json` give integrations passing and failing verifier examples; CLI tests run `verifyKVRefreshReceipt` over both paths |
+
 ## Product And Inspection
 
 | Feature | Why it matters | Notes |
@@ -1150,10 +1156,10 @@ The current docs should stay latest-first, with release recap pages and feature 
 | Retry fatigue owner filter | Owner grouping is visible, but operators may want endpoint fatigue scoped to one owner | Completed in v0.60.0 with owner and escalation filters for REST, GraphQL, and Go SDK |
 | KV refresh typed derivations | Explicit value refreshes exist, but common cache keys could be derived from graph data | Completed in v0.63.0 with --derive recent-nodes for reviewed session context values |
 
-## Fresh Brainstorm After v0.101.0
+## Fresh Brainstorm After v0.102.0
 
 | Feature | Why it belongs | First useful slice |
 |:--------|:---------------|:-------------------|
-| KV receipt verification fixture bundle | CLI and doctor verification exist, but integrations need sample artifacts to test against | Add tiny passing and failing receipt/value fixtures plus docs showing CI use |
 | Schema catalog drift annotations | The catalog is tested, but CI consumers may want direct failure annotations | Emit a compact annotation line when a public schema catalog entry points to a missing or mismatched artifact |
 | Closure bundle manifest verify | Manifests are written, but later audits should recheck saved hashes | Add `closure-bundle verify --manifest PATH` to compare saved byte counts and SHA-256 values against the bundle directory |
+| KV receipt fixture catalog entry | Fixtures are public, but tooling needs discoverability without scraping docs | Add a fixtures catalog JSON that lists valid and mismatched KV receipt artifacts with expected verifier outcomes |

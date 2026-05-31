@@ -2145,6 +2145,34 @@ func TestVerifyKVRefreshReceiptRejectsMismatchedValue(t *testing.T) {
 	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "value_sha256 does not match"))
 }
 
+func TestPublicKVRefreshReceiptFixturesVerify(t *testing.T) {
+	is := is.New(t)
+	receiptPath := filepath.Join("..", "..", "docs", "public", "fixtures", "kv-refresh", "valid-receipt.json")
+	valuePath := filepath.Join("..", "..", "docs", "public", "fixtures", "kv-refresh", "valid-value.json")
+
+	report, err := verifyKVRefreshReceipt(receiptPath, valuePath)
+
+	is.NoErr(err)
+	is.True(report.OK)
+	is.Equal(report.StoredValueSHA256, "22ec5bee03ae1823e17a0c5c0ef91a64f9a47653ceb918551fafd92e3809986a")
+	is.Equal(report.ComputedValueSHA256, report.StoredValueSHA256)
+	is.Equal(report.ComputedDoctorCommand, "contextdb doctor --kv-derived-key 'context:prod:support:recent-nodes' --report")
+	is.Equal(len(report.WrittenKeys), 1)
+	is.Equal(report.WrittenKeys[0], "context:prod:support:recent-nodes")
+}
+
+func TestPublicKVRefreshReceiptMismatchFixtureFails(t *testing.T) {
+	is := is.New(t)
+	receiptPath := filepath.Join("..", "..", "docs", "public", "fixtures", "kv-refresh", "valid-receipt.json")
+	valuePath := filepath.Join("..", "..", "docs", "public", "fixtures", "kv-refresh", "mismatched-value.json")
+
+	report, err := verifyKVRefreshReceipt(receiptPath, valuePath)
+
+	is.True(err != nil)
+	is.True(!report.OK)
+	is.True(strings.Contains(strings.Join(report.ValidationErrors, "\n"), "value_sha256 does not match"))
+}
+
 func TestBuildKVRefreshReceiptVerifyCheck(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

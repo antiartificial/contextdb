@@ -111,6 +111,24 @@ contextdb repair kv-cache receipt verify \
 
 The verifier checks the receipt kind and schema, confirms the embedded report was executed for `derived:recent-nodes`, recomputes the doctor confirmation command from written keys, and compares `value_sha256` with `--value-file` when the reviewed value artifact is available.
 
+## Receipt Fixtures
+
+Docs publish tiny verifier fixtures for integrations and CI jobs:
+
+```bash
+contextdb repair kv-cache receipt verify \
+  --receipt docs/public/fixtures/kv-refresh/valid-receipt.json \
+  --value-file docs/public/fixtures/kv-refresh/valid-value.json \
+  --report
+
+contextdb repair kv-cache receipt verify \
+  --receipt docs/public/fixtures/kv-refresh/valid-receipt.json \
+  --value-file docs/public/fixtures/kv-refresh/mismatched-value.json \
+  --report
+```
+
+The first command should pass. The second should fail with `value_sha256 does not match --value-file`, which gives downstream test suites a stable negative case without generating their own receipts.
+
 For incident closeout, add the same receipt to the combined doctor report:
 
 ```bash
