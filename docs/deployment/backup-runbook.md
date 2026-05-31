@@ -67,7 +67,7 @@ When `--manifest` is set, export writes a JSON sidecar next to the backup:
   "backup_bytes": 12345,
   "checksum_sha256": "...",
   "created_at": "2026-05-30T23:30:00Z",
-  "contextdb_version": "0.31.0",
+  "contextdb_version": "0.32.0",
   "backup_marker": "/var/lib/contextdb/.last-backup",
   "records": {
     "lines": 42,
@@ -312,6 +312,19 @@ contextdb snapshot lifecycle retention \
 ```
 
 The generated script contains only `rm -- ...` commands for existing artifacts in `pruneable` bundles. Review it before running it; contextdb still does not delete files.
+
+Write a compact manifest index when you want one portable catalog of the backup directory:
+
+```bash
+contextdb snapshot lifecycle index \
+  --dir "$CONTEXTDB_BACKUP_DIR" \
+  --namespace "$CONTEXTDB_NAMESPACE" \
+  --keep 14 \
+  --out "$CONTEXTDB_BACKUP_DIR/contextdb-backups.index.json" \
+  --report
+```
+
+The index records bundle timestamps, retention decisions, delete-plan commands, artifact paths, sizes, and SHA-256 hashes. If `--out` is omitted, contextdb writes `contextdb-backups.index.json` inside `--dir`.
 
 A local cleanup pass can then remove old namespace backups after a successful export, lifecycle verification, off-host copy, and retention review:
 

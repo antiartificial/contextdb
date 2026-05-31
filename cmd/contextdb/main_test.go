@@ -614,6 +614,53 @@ func TestBuildSnapshotLifecycleDeleteScript(t *testing.T) {
 	is.True(!strings.Contains(script, "prod-20260531T233000.lifecycle.json"))
 }
 
+func TestWriteSnapshotLifecycleIndex(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+	writeLifecycleFixture(t, dir, "prod", "2026-05-31T23:30:00Z", false)
+	out := filepath.Join(dir, "contextdb-backups.index.json")
+
+	index, err := writeSnapshotLifecycleIndex(out, snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.NoErr(err)
+	is.Equal(index.SchemaVersion, 1)
+	is.Equal(index.IndexFile, out)
+	is.Equal(index.GeneratedAt, "2026-06-01T12:00:00Z")
+	is.Equal(index.TotalBundles, 2)
+	is.Equal(index.KeepBundles, 1)
+	is.Equal(index.PruneableBundles, 1)
+	is.True(len(index.DeleteCommands) > 0)
+	is.True(index.Bundles[0].Artifacts[0].ChecksumSHA256 != "")
+	data, err := os.ReadFile(out)
+	is.NoErr(err)
+	var decoded snapshotLifecycleIndex
+	is.NoErr(json.Unmarshal(data, &decoded))
+	is.Equal(decoded.TotalBundles, 2)
+}
+
+func TestBuildSnapshotLifecycleIndexUsesDefaultPath(t *testing.T) {
+	is := is.New(t)
+	dir := t.TempDir()
+	writeLifecycleFixture(t, dir, "prod", "2026-05-30T23:30:00Z", false)
+
+	index, err := buildSnapshotLifecycleIndex("", snapshotLifecycleIndexOptions{
+		Dir:       dir,
+		Namespace: "prod",
+		Keep:      1,
+		CreatedAt: time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	is.NoErr(err)
+	is.Equal(index.IndexFile, filepath.Join(dir, "contextdb-backups.index.json"))
+	is.Equal(index.TotalBundles, 1)
+}
+
 func writeLifecycleFixture(t *testing.T, dir, namespace, createdAt string, promoted bool) {
 	t.Helper()
 	stamp := strings.NewReplacer("-", "", ":", "").Replace(createdAt[:19])

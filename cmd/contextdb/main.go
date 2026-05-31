@@ -327,7 +327,7 @@ func runSnapshotReceiptVerify(args []string) {
 
 func runSnapshotLifecycle(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle: expected verify or retention")
+		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle: expected verify, retention, or index")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -335,6 +335,8 @@ func runSnapshotLifecycle(args []string) {
 		runSnapshotLifecycleVerify(args[1:])
 	case "retention":
 		runSnapshotLifecycleRetention(args[1:])
+	case "index":
+		runSnapshotLifecycleIndex(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle: unknown subcommand %q\n", args[0])
 		os.Exit(2)
@@ -359,6 +361,32 @@ func runSnapshotLifecycleVerify(args []string) {
 		writeIndentedJSON(report)
 	} else {
 		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycleIndex(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index", flag.ExitOnError)
+	dir := fs.String("dir", "", "directory containing lifecycle summary files")
+	namespace := fs.String("namespace", "", "optional namespace filter")
+	keep := fs.Int("keep", 14, "number of newest lifecycle bundles to mark as kept")
+	outPath := fs.String("out", "", "JSON index file to write, defaults to contextdb-backups.index.json in --dir")
+	reportOut := fs.Bool("report", false, "print the JSON lifecycle index")
+	_ = fs.Parse(args)
+
+	index, err := writeSnapshotLifecycleIndex(*outPath, snapshotLifecycleIndexOptions{
+		Dir:       *dir,
+		Namespace: *namespace,
+		Keep:      *keep,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(index)
+	} else {
+		fmt.Fprintln(os.Stdout, index.IndexFile)
 	}
 }
 
@@ -594,10 +622,33 @@ type snapshotLifecycleRetentionBundle struct {
 }
 
 type snapshotLifecycleRetentionArtifact struct {
-	Kind   string `json:"kind"`
-	Path   string `json:"path"`
-	Exists bool   `json:"exists"`
-	Bytes  int64  `json:"bytes,omitempty"`
+	Kind           string `json:"kind"`
+	Path           string `json:"path"`
+	Exists         bool   `json:"exists"`
+	Bytes          int64  `json:"bytes,omitempty"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
+}
+
+type snapshotLifecycleIndexOptions struct {
+	Dir       string
+	Namespace string
+	Keep      int
+	CreatedAt time.Time
+}
+
+type snapshotLifecycleIndex struct {
+	SchemaVersion    int                                `json:"schema_version"`
+	IndexFile        string                             `json:"index_file"`
+	GeneratedAt      string                             `json:"generated_at"`
+	ContextDBVersion string                             `json:"contextdb_version"`
+	Dir              string                             `json:"dir"`
+	Namespace        string                             `json:"namespace,omitempty"`
+	Keep             int                                `json:"keep"`
+	TotalBundles     int                                `json:"total_bundles"`
+	KeepBundles      int                                `json:"keep_bundles"`
+	PruneableBundles int                                `json:"pruneable_bundles"`
+	DeleteCommands   []string                           `json:"delete_commands,omitempty"`
+	Bundles          []snapshotLifecycleRetentionBundle `json:"bundles"`
 }
 
 func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
@@ -963,6 +1014,75 @@ func snapshotLifecycleRetentionArtifactFor(kind, path string) snapshotLifecycleR
 		artifact.Bytes = info.Size()
 	}
 	return artifact
+}
+
+func writeSnapshotLifecycleIndex(path string, opts snapshotLifecycleIndexOptions) (snapshotLifecycleIndex, error) {
+	index, err := buildSnapshotLifecycleIndex(path, opts)
+	if err != nil {
+		return index, err
+	}
+	data, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return index, fmt.Errorf("encode lifecycle index: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(index.IndexFile, data, 0o644); err != nil {
+		return index, fmt.Errorf("write lifecycle index: %w", err)
+	}
+	return index, nil
+}
+
+func buildSnapshotLifecycleIndex(path string, opts snapshotLifecycleIndexOptions) (snapshotLifecycleIndex, error) {
+	dir := strings.TrimSpace(opts.Dir)
+	index := snapshotLifecycleIndex{
+		SchemaVersion:    1,
+		Dir:              dir,
+		Namespace:        strings.TrimSpace(opts.Namespace),
+		Keep:             opts.Keep,
+		ContextDBVersion: buildinfo.Version,
+	}
+	if opts.CreatedAt.IsZero() {
+		opts.CreatedAt = time.Now()
+	}
+	index.GeneratedAt = opts.CreatedAt.UTC().Format(time.RFC3339)
+	path = strings.TrimSpace(path)
+	if path == "" && dir != "" {
+		path = filepath.Join(dir, "contextdb-backups.index.json")
+	}
+	index.IndexFile = path
+	if path == "" {
+		return index, fmt.Errorf("--out requires --dir or an explicit path")
+	}
+	report, err := buildSnapshotLifecycleRetentionReport(dir, opts.Namespace, opts.Keep)
+	if err != nil {
+		return index, err
+	}
+	index.Dir = report.Dir
+	index.Namespace = report.Namespace
+	index.Keep = report.Keep
+	index.TotalBundles = report.TotalBundles
+	index.KeepBundles = report.KeepBundles
+	index.PruneableBundles = report.PruneableBundles
+	index.DeleteCommands = report.DeleteCommands
+	index.Bundles = report.Bundles
+	addSnapshotLifecycleIndexHashes(index.Bundles)
+	return index, nil
+}
+
+func addSnapshotLifecycleIndexHashes(bundles []snapshotLifecycleRetentionBundle) {
+	for i := range bundles {
+		for j := range bundles[i].Artifacts {
+			if !bundles[i].Artifacts[j].Exists || strings.TrimSpace(bundles[i].Artifacts[j].Path) == "" {
+				continue
+			}
+			data, err := os.ReadFile(bundles[i].Artifacts[j].Path)
+			if err != nil {
+				continue
+			}
+			sum := sha256.Sum256(data)
+			bundles[i].Artifacts[j].ChecksumSHA256 = hex.EncodeToString(sum[:])
+		}
+	}
 }
 
 func resolveLifecycleSummaryPath(baseDir, path string) string {
