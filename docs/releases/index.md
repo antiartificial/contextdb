@@ -8,6 +8,20 @@ Release notes are the high-level map of what changed, why it matters, and which 
 
 | Release | Date | Theme |
 |:--------|:-----|:------|
+| [v0.122.0](v0.122.0) | 2026-06-05 | ContextDB review worker and Norn release candidate |
+| [v0.121.0](v0.121.0) | 2026-06-05 | Scheduled extended soak lane |
+| [v0.120.0](v0.120.0) | 2026-06-05 | Postgres integration fault injection |
+| [v0.119.0](v0.119.0) | 2026-06-05 | Ranking dashboard local baselines |
+| [v0.118.0](v0.118.0) | 2026-06-05 | Debugger graph context filters |
+| [v0.117.0](v0.117.0) | 2026-06-05 | Source quarantine UI affordances |
+| [v0.116.0](v0.116.0) | 2026-06-05 | Hermes review integration hardening |
+| [v0.115.0](v0.115.0) | 2026-06-05 | Review operations dashboard |
+| [v0.114.0](v0.114.0) | 2026-06-05 | Evaluator smoke failure fixtures |
+| [v0.113.0](v0.113.0) | 2026-06-05 | Review worker policy presets |
+| [v0.112.0](v0.112.0) | 2026-06-05 | Async Python review workflow parity |
+| [v0.111.0](v0.111.0) | 2026-06-05 | Review worker evaluator smoke tests |
+| [v0.110.0](v0.110.0) | 2026-06-05 | Per-namespace review worker policies |
+| [v0.109.0](v0.109.0) | 2026-06-05 | Review worker run summaries |
 | [v0.108.0](v0.108.0) | 2026-05-31 | Reliability verifiers and source quarantine |
 | [v0.107.0](v0.107.0) | 2026-05-31 | Acquisition connector retry receipts |
 | [v0.106.0](v0.106.0) | 2026-05-31 | First-party acquisition provider connectors |
