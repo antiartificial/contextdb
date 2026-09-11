@@ -157,7 +157,7 @@ func TestComputeBeliefDiff_CredibilityGap(t *testing.T) {
 		wantGap float64
 	}{
 		{"high-vs-low", 0.9, 0.2, 0.7},
-		{"low-vs-high", 0.2, 0.9, 0.7},  // order should not matter
+		{"low-vs-high", 0.2, 0.9, 0.7}, // order should not matter
 		{"equal", 0.5, 0.5, 0.0},
 		{"zero-treated-as-half", 0.0, 0.9, 0.4}, // 0 → 0.5, gap = 0.9 - 0.5
 	}

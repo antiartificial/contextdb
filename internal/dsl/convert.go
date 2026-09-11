@@ -79,11 +79,7 @@ func buildStrategy(q *Query) retrieval.HybridStrategy {
 	s.MaxDepth = maxDepth
 	s.Traversal = store.StrategyWaterCircle
 
-	// Edge types are stored in the traversal strategy; the current
-	// HybridStrategy doesn't have an EdgeTypes field, so we rely on
-	// the retrieval engine's default traversal filtering.
-	// TODO: plumb edge type filter through to WalkQuery.EdgeTypes
-	_ = edgeTypes
+	s.EdgeTypes = edgeTypes
 
 	return s
 }

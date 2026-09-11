@@ -1,4 +1,8 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte'
+  import { normalizeBeliefAudit } from './belief-audit.js'
+  import { deleteRankingBaseline, isRankingEval, readRankingBaselines, saveRankingBaseline } from './ranking-baselines.js'
+
   type Metrics = {
     mode: string
     generated_at: string
@@ -43,6 +47,7 @@
   }
 
   type RankingEval = {
+    evaluation_id?: string
     generated_at: string
     contextdb_version: string
     corpus: string
@@ -159,6 +164,9 @@
   let selectedQueryID = ''
   let baselineName = ''
   let baseline: RankingEval | null = null
+  let baselines: { id: string; name: string; saved_at: string; report: RankingEval }[] = []
+  let selectedBaselineID = ''
+  let baselineMessage = ''
   let searchNamespace = 'default'
   let searchQuery = ''
   let searchLimit = '10'
@@ -166,6 +174,7 @@
   let searchMessage = ''
   let debugNamespace = 'default'
   let debugID = ''
+  let debugEvaluationID = ''
   let debugAudit: BeliefAudit | null = null
   let debugOutput =
     'Enter a namespace and node ID to inspect source, support, contradictions, provenance, and confidence history.'
@@ -221,7 +230,11 @@
       const text = await response.text()
       if (!response.ok) throw new Error(text || response.statusText)
       ranking = JSON.parse(text)
+      if (!isRankingEval(ranking)) throw new Error('Ranking evaluation returned an invalid report.')
       selectedQueryID = ranking?.queries[0]?.id || ''
+      const saved = saveRankingBaseline(window.localStorage, ranking)
+      baselines = saved.entries
+      baselineMessage = saved.saved ? 'Saved this run in browser history.' : 'This run could not be saved in browser storage.'
       rankingError = ''
     } catch (error) {
       rankingError = String(error instanceof Error ? error.message : error)
@@ -233,8 +246,11 @@
     const file = input.files?.[0]
     if (!file) return
     try {
-      baseline = JSON.parse(await file.text())
+      const parsed = JSON.parse(await file.text())
+      if (!isRankingEval(parsed)) throw new Error('This file is not a valid ranking evaluation report.')
+      baseline = parsed
       baselineName = file.name
+      selectedBaselineID = ''
     } catch (error) {
       baselineName = ''
       baseline = null
@@ -266,7 +282,41 @@
     activeTab = 'debugger'
     debugNamespace = searchNamespace
     debugID = result.id
+    debugEvaluationID = ''
+    await tick()
     await inspectNode()
+  }
+
+  async function inspectRankingResult(result: RankingResult | undefined, query: RankingQuery | null) {
+    if (!query || !result?.node_id) {
+      rankingError = 'This query has no inspectable top result.'
+      return
+    }
+    activeTab = 'debugger'
+    debugNamespace = query.namespace
+    debugID = result.node_id
+    debugEvaluationID = ranking?.evaluation_id || ''
+    await tick()
+    await inspectNode()
+  }
+
+  function selectBaseline(event: Event) {
+    const id = (event.currentTarget as HTMLSelectElement).value
+    selectedBaselineID = id
+    const entry = baselines.find((candidate) => candidate.id === id)
+    baseline = entry?.report || null
+    baselineName = entry?.name || ''
+    baselineMessage = entry ? `Comparing with saved run from ${formatDate(entry.saved_at)}.` : ''
+  }
+
+  function removeSelectedBaseline() {
+    if (!selectedBaselineID) return
+    const deleted = deleteRankingBaseline(window.localStorage, selectedBaselineID)
+    baselines = deleted.entries
+    baseline = null
+    baselineName = ''
+    selectedBaselineID = ''
+    baselineMessage = deleted.saved ? 'Removed saved baseline.' : 'Baseline was removed for this page, but browser storage is unavailable.'
   }
 
   function addCompareTarget(result: SearchResult) {
@@ -283,10 +333,14 @@
     debugAudit = null
     try {
       const params = new URLSearchParams({ ns: debugNamespace.trim(), id: debugID.trim() })
+      if (debugEvaluationID) params.set('evaluation_id', debugEvaluationID)
       const response = await fetch(`/admin/api/belief?${params}`)
       const text = await response.text()
-      if (!response.ok) throw new Error(text || response.statusText)
-      debugAudit = JSON.parse(text)
+      if (!response.ok) {
+        if (response.status === 404) throw new Error(`Node ${debugID.trim()} is no longer available in namespace ${debugNamespace.trim()}.`)
+        throw new Error(text || response.statusText)
+      }
+      debugAudit = normalizeBeliefAudit(JSON.parse(text))
       debugOutput = JSON.stringify(debugAudit, null, 2)
     } catch (error) {
       debugOutput = String(error instanceof Error ? error.message : error)
@@ -330,6 +384,15 @@
       compareOutput = String(error instanceof Error ? error.message : error)
     }
   }
+
+  onMount(() => {
+    baselines = readRankingBaselines(window.localStorage)
+    if (baselines[0]) {
+      baseline = baselines[0].report
+      baselineName = baselines[0].name
+      selectedBaselineID = baselines[0].id
+    }
+  })
 
   refreshMetrics()
   runRankingEval()
@@ -387,6 +450,19 @@
       {#if rankingError}
         <p class:muted={rankingError.includes('Running')} class:error={!rankingError.includes('Running')}>{rankingError}</p>
       {/if}
+      <div class="baseline-history" aria-live="polite">
+        <label>
+          Saved browser baseline
+          <select value={selectedBaselineID} on:change={selectBaseline}>
+            <option value="">Choose a saved run</option>
+            {#each baselines as entry}
+              <option value={entry.id}>{entry.name}</option>
+            {/each}
+          </select>
+        </label>
+        <button type="button" class="ghost" disabled={!selectedBaselineID} on:click={removeSelectedBaseline}>Delete saved baseline</button>
+        <p class="muted">{baselineMessage || `${baselines.length} saved runs on this browser (up to 12).`}</p>
+      </div>
 
       <div class="rank-summary">
         <article>
@@ -478,6 +554,7 @@
             {#if topResult(selectedQuery)}
               <h4>Top Result</h4>
               <strong class="result-title">{resultLabel(topResult(selectedQuery))}</strong>
+              <button type="button" class="ghost inspect-top-result" on:click={() => inspectRankingResult(topResult(selectedQuery), selectedQuery)}>Inspect top result</button>
               <div class="score-bars">
                 <div><span>Similarity</span><div class="bar-track"><span style={`width:${width(topResult(selectedQuery)?.similarity_score)}`}></span></div></div>
                 <div><span>Confidence</span><div class="bar-track"><span style={`width:${width(topResult(selectedQuery)?.confidence_score)}`}></span></div></div>

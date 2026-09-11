@@ -6,3 +6,9 @@ bin
 docker-compose.yml
 **/*_test.go
 bench/
+node_modules/
+sdk/typescript/node_modules/
+sdk/typescript/dist/
+**/__pycache__/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

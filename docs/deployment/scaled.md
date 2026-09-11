@@ -4,6 +4,8 @@ title: Scaled Deployment
 
 # Scaled Deployment
 
+> **Unavailable in the current build.** Scaled mode is a design target, not a supported deployment. Selecting it now fails explicitly instead of silently using other stores. Use `CONTEXTDB_MODE=standard` with a Postgres DSN. The configuration examples below describe the intended future integration and are not runnable instructions for this release.
+
 `ModeScaled` distributes storage across dedicated backends: **Qdrant** for vectors, **Redis** for key-value and event log, and **Postgres** for the graph store. This enables higher throughput and independent scaling of each component.
 
 ## Architecture

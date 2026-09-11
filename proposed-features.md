@@ -2,6 +2,15 @@
 
 This is the working backlog for features that would make contextdb more useful, inspectable, and durable as a live system.
 
+## Current Next Steps
+
+| Feature | Why it belongs | First useful slice |
+|:--|:--|:--|
+| Indexed pending/idempotency events | Recovery scans should remain bounded as history grows | Add keyed event indexes and verify lookup parity |
+| Recovery failure injection | Durable recovery needs stronger failure evidence | Inject graph/vector/log failures and verify manual conflict lanes |
+| Reviewer operations UI | Candidate approval and worker runs need an operator surface | Show candidate state, worker decisions, and explicit approve/reject controls |
+| Corpus-backed provider evaluation | Provider adapters should follow evidence | Compare provider decisions on a reviewed corpus before adding an adapter |
+
 ## Completed In v0.4.0
 
 | Feature | Status | Evidence |

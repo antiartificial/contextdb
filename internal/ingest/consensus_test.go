@@ -101,9 +101,9 @@ func TestRankSourcesByCredibility(t *testing.T) {
 	is := is.New(t)
 
 	sources := []core.Source{
-		{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111"), Alpha: 10, Beta: 2, ClaimsAsserted: 12},   // High credibility, many observations
-		{ID: uuid.MustParse("22222222-2222-2222-2222-222222222222"), Alpha: 5, Beta: 5, ClaimsAsserted: 10},    // Medium credibility, many observations
-		{ID: uuid.MustParse("33333333-3333-3333-3333-333333333333"), Alpha: 10, Beta: 1, ClaimsAsserted: 2},    // Very high credibility, few observations (uncertain)
+		{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111"), Alpha: 10, Beta: 2, ClaimsAsserted: 12}, // High credibility, many observations
+		{ID: uuid.MustParse("22222222-2222-2222-2222-222222222222"), Alpha: 5, Beta: 5, ClaimsAsserted: 10},  // Medium credibility, many observations
+		{ID: uuid.MustParse("33333333-3333-3333-3333-333333333333"), Alpha: 10, Beta: 1, ClaimsAsserted: 2},  // Very high credibility, few observations (uncertain)
 	}
 
 	rankings := RankSourcesByCredibility(sources, 1.0)
@@ -218,7 +218,7 @@ func TestAnomalyDetector_ActivityBurst(t *testing.T) {
 			{Timestamp: time.Now().Add(-72 * time.Hour), Credibility: 0.5, Alpha: 2, Beta: 2},
 			{Timestamp: time.Now().Add(-48 * time.Hour), Credibility: 0.5, Alpha: 4, Beta: 2}, // +2 claims
 			{Timestamp: time.Now().Add(-24 * time.Hour), Credibility: 0.5, Alpha: 6, Beta: 2}, // +2 claims
-			{Timestamp: time.Now(), Credibility: 0.5, Alpha: 26, Beta: 2},                   // +20 claims (burst!)
+			{Timestamp: time.Now(), Credibility: 0.5, Alpha: 26, Beta: 2},                     // +20 claims (burst!)
 		},
 	}
 
@@ -289,9 +289,9 @@ func TestCredibilitySnapshot_DeltaCalculation(t *testing.T) {
 
 	// Test delta calculation for activity burst detection
 	snapshots := []CredibilitySnapshot{
-		{Timestamp: time.Now().Add(-2 * time.Hour), Alpha: 10, Beta: 5},  // 15 total
-		{Timestamp: time.Now().Add(-1 * time.Hour), Alpha: 12, Beta: 5},  // 17 total, +2
-		{Timestamp: time.Now(), Alpha: 30, Beta: 5},                      // 35 total, +18
+		{Timestamp: time.Now().Add(-2 * time.Hour), Alpha: 10, Beta: 5}, // 15 total
+		{Timestamp: time.Now().Add(-1 * time.Hour), Alpha: 12, Beta: 5}, // 17 total, +2
+		{Timestamp: time.Now(), Alpha: 30, Beta: 5},                     // 35 total, +18
 	}
 
 	// Calculate deltas

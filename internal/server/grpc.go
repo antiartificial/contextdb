@@ -70,6 +70,7 @@ func (s *GRPCService) Register(srv *grpc.Server) {
 			{MethodName: "KV", Handler: s.handleKV},
 			{MethodName: "EventAppend", Handler: s.handleEventAppend},
 			{MethodName: "EventSince", Handler: s.handleEventSince},
+			{MethodName: "EventSinceAll", Handler: s.handleEventSinceAll},
 			{MethodName: "EventMarkProcessed", Handler: s.handleEventMarkProcessed},
 		},
 		Streams: []grpc.StreamDesc{
@@ -80,6 +81,20 @@ func (s *GRPCService) Register(srv *grpc.Server) {
 				ClientStreams: false,
 			},
 		},
+	}
+	// Hand-written handlers decode their request themselves, so wrap dispatch
+	// here to ensure server interceptors still run before any handler work.
+	for i := range desc.Methods {
+		method := desc.Methods[i].MethodName
+		handler := desc.Methods[i].Handler
+		desc.Methods[i].Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+			if interceptor == nil {
+				return handler(srv, ctx, dec, nil)
+			}
+			return interceptor(ctx, nil, &grpc.UnaryServerInfo{Server: srv, FullMethod: "/contextdb.v1.ContextDB/" + method}, func(ctx context.Context, _ interface{}) (interface{}, error) {
+				return handler(srv, ctx, dec, nil)
+			})
+		}
 	}
 	srv.RegisterService(&desc, s)
 }
@@ -858,6 +873,18 @@ func (s *GRPCService) handleEventSince(srv interface{}, ctx context.Context, dec
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	events, err := s.log.Since(ctx, req.Namespace, req.After)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &grpcEventSinceResp{Events: events}, nil
+}
+
+func (s *GRPCService) handleEventSinceAll(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	var req grpcEventSinceReq
+	if err := dec(&req); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	events, err := s.log.SinceAll(ctx, req.Namespace, req.After)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

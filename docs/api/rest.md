@@ -215,9 +215,9 @@ curl http://localhost:7701/v1/version
 
 ```json
 {
-  "version": "0.108.0",
+  "version": "0.123.0",
   "api_version": "v1",
-  "docs_version": "0.108.0",
+  "docs_version": "0.123.0",
   "compatibility": "non-breaking pre-1.0 minor release",
   "latest_migration": 2,
   "features": [
@@ -953,7 +953,7 @@ curl http://localhost:7701/v1/version
     { "version": 2, "name": "node_fingerprints" }
   ],
   "recommended_docs": "/contextdb/",
-  "release_notes_path": "/contextdb/releases/v0.108.0"
+  "release_notes_path": "/contextdb/releases/v0.123.0"
 }
 ```
 
@@ -1638,3 +1638,23 @@ curl http://localhost:7702/debug/pprof/
 # Health
 curl http://localhost:7702/healthz
 ```
+
+## Review and recovery workflows
+
+These endpoints ship in v0.123.0. See the [release recap](../releases/v0.123.0) and [access control](../security/access-control).
+
+| Method | Namespace-relative path | Behavior |
+|:--|:--|:--|
+| GET | `/acquisition/review/candidates` | List durable acquired evidence; candidates are outside the graph |
+| POST | `/acquisition/review/candidates/{id}/approve` | Admit a reviewed candidate with stable write identity |
+| POST | `/acquisition/review/candidates/{id}/reject` | Record rejection without admitting evidence |
+| POST | `/review/worker/cycle` | Plan or execute one bounded central review cycle |
+| GET | `/review/worker/runs` | Return structured, durable cycle summaries |
+| GET | `/recovery/pending` | List pending write and feedback intents |
+| POST | `/recovery/reconcile` | Preview pending work; `execute: true` explicitly replays it |
+
+Prefix each path with `/v1/namespaces/{namespace}`. The existing acquisition `/execute` endpoint accepts `review_before_admission: true` to stage returned evidence instead of writing graph nodes. Candidate decisions accept optional `actor` and `note`. The worker accepts `execute` (default false), `limit` (maximum 100), `evaluator` (`rules` or server-configured `webhook`), and `allowed_actions`. No webhook URL or provider secret is accepted in request JSON.
+
+`GET /v1/backends` reports effective graph, vector, KV, and event backends. It does not expose DSNs or paths. `persistent` on a remote client is not a statement about the target server's durability; inspect the target directly.
+
+A write error can identify a durable pending operation. Inspect pending intents and reconcile them before resubmitting an ambiguous operation. Reconciliation stops on conflicting later state rather than overwriting it. Worker mutation failures remain assigned for manual inspection; use pending recovery, inspect history and the worker summary, then resolve the existing review decision. Do not blindly reopen and reapply uncertain feedback.

@@ -28,6 +28,9 @@ func withTenant(ctx context.Context, tenant string) context.Context {
 // tenant ID from the "x-tenant-id" metadata header.
 func TenantInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if TokenFromContext(ctx).Tenant != "" {
+			return handler(ctx, req)
+		}
 		md, ok := metadata.FromIncomingContext(ctx)
 		if ok {
 			if values := md.Get("x-tenant-id"); len(values) > 0 {

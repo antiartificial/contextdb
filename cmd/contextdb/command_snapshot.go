@@ -1,0 +1,2493 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"github.com/antiartificial/contextdb/internal/buildinfo"
+	"github.com/antiartificial/contextdb/internal/doctor"
+	"github.com/antiartificial/contextdb/pkg/client"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
+	"time"
+)
+
+func runSnapshot(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot: expected export, import, verify, rehearse, receipt, or lifecycle")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "export":
+		runSnapshotExport(args[1:])
+	case "import":
+		runSnapshotImport(args[1:])
+	case "verify":
+		runSnapshotVerify(args[1:])
+	case "rehearse":
+		runSnapshotRehearse(args[1:])
+	case "receipt":
+		runSnapshotReceipt(args[1:])
+	case "lifecycle":
+		runSnapshotLifecycle(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotExport(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot export", flag.ExitOnError)
+	namespace := fs.String("namespace", "default", "namespace to export")
+	outPath := fs.String("out", "-", "output NDJSON file, or - for stdout")
+	seedRaw := fs.String("seeds", "", "comma-separated seed node IDs for filtered export")
+	maxDepth := fs.Int("max-depth", 10, "maximum graph depth for seeded exports")
+	backupMarker := fs.String("backup-marker", "", "marker file to write after successful export")
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to write after successful export")
+	_ = fs.Parse(args)
+
+	db := openSnapshotDB()
+	defer db.Close()
+
+	out, closeOut, err := outputWriter(*outPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(2)
+	}
+	defer closeOut()
+
+	seeds, err := parseUUIDList(*seedRaw)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(2)
+	}
+	if len(seeds) > 0 {
+		err = db.ExportSnapshotFromSeeds(context.Background(), *namespace, seeds, *maxDepth, out)
+	} else {
+		err = db.ExportSnapshot(context.Background(), *namespace, out)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(1)
+	}
+	exportedAt := time.Now()
+	if err := writeBackupMarker(*backupMarker, exportedAt); err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(1)
+	}
+	if err := writeSnapshotArtifactManifest(*manifestPath, snapshotArtifactManifestOptions{
+		Namespace:    *namespace,
+		BackupPath:   *outPath,
+		BackupMarker: *backupMarker,
+		CreatedAt:    exportedAt,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot export: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runSnapshotImport(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot import", flag.ExitOnError)
+	namespace := fs.String("namespace", "default", "namespace to import into")
+	inPath := fs.String("in", "-", "input NDJSON file, or - for stdin")
+	dryRun := fs.Bool("dry-run", false, "validate the snapshot without writing")
+	reportOut := fs.Bool("report", false, "print a JSON import report")
+	promotionNote := fs.String("promotion-note", "", "operator note to include in the promotion receipt")
+	promotionReport := fs.String("promotion-report", "", "JSON promotion receipt to write after successful import")
+	_ = fs.Parse(args)
+	if *dryRun && strings.TrimSpace(*promotionReport) != "" {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot import: --promotion-report requires a real import, not --dry-run")
+		os.Exit(2)
+	}
+
+	in, closeIn, err := inputReader(*inPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
+		os.Exit(2)
+	}
+	defer closeIn()
+
+	db := openSnapshotDB()
+	defer db.Close()
+	var report client.SnapshotReport
+	if *dryRun {
+		report, err = db.ValidateSnapshotReport(context.Background(), *namespace, in)
+	} else {
+		report, err = db.ImportSnapshotReport(context.Background(), *namespace, in)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
+		os.Exit(1)
+	}
+	if !*dryRun {
+		if err := writeSnapshotPromotionReceipt(*promotionReport, snapshotPromotionReceiptOptions{
+			Namespace:  *namespace,
+			BackupPath: *inPath,
+			Note:       *promotionNote,
+			ImportedAt: time.Now(),
+			Report:     report,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "contextdb snapshot import: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if *dryRun {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot verify", flag.ExitOnError)
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to verify")
+	inPath := fs.String("in", "", "input NDJSON file, defaults to manifest backup_file beside manifest")
+	reportOut := fs.Bool("report", false, "print a JSON verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotArtifactManifest(*manifestPath, *inPath)
+	if err != nil {
+		if *reportOut && (report.Manifest != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotRehearse(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot rehearse", flag.ExitOnError)
+	namespace := fs.String("namespace", "restore-preview", "namespace to dry-run the import into")
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to verify")
+	inPath := fs.String("in", "", "input NDJSON file, defaults to manifest backup_file beside manifest")
+	reportOut := fs.Bool("report", false, "print a JSON rehearsal report")
+	_ = fs.Parse(args)
+
+	db := openSnapshotDB()
+	defer db.Close()
+	report, err := rehearseSnapshotRestore(context.Background(), db, *namespace, *manifestPath, *inPath)
+	if err != nil {
+		if *reportOut && (report.Verification.Manifest != "" || len(report.Verification.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot rehearse: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotReceipt(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot receipt: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runSnapshotReceiptVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot receipt: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotReceiptVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot receipt verify", flag.ExitOnError)
+	promotionReport := fs.String("promotion-report", "", "JSON promotion receipt to verify")
+	manifestPath := fs.String("manifest", "", "JSON artifact manifest to compare against")
+	reportOut := fs.Bool("report", false, "print a JSON receipt verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotPromotionReceipt(*promotionReport, *manifestPath)
+	if err != nil {
+		if *reportOut && (report.PromotionReport != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot receipt verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycle(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle: expected verify, retention, or index")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runSnapshotLifecycleVerify(args[1:])
+	case "retention":
+		runSnapshotLifecycleRetention(args[1:])
+	case "index":
+		runSnapshotLifecycleIndex(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotLifecycleVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle verify", flag.ExitOnError)
+	summaryPath := fs.String("summary", "", "JSON lifecycle summary to verify")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotLifecycleSummary(*summaryPath)
+	if err != nil {
+		if *reportOut && (report.Summary != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycleIndex(args []string) {
+	if len(args) > 0 && args[0] == "diff" {
+		runSnapshotLifecycleIndexDiff(args[1:])
+		return
+	}
+	if len(args) > 0 && args[0] == "publish" {
+		runSnapshotLifecycleIndexPublish(args[1:])
+		return
+	}
+	if len(args) > 0 && args[0] == "verify" {
+		runSnapshotLifecycleIndexVerify(args[1:])
+		return
+	}
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index", flag.ExitOnError)
+	dir := fs.String("dir", "", "directory containing lifecycle summary files")
+	namespace := fs.String("namespace", "", "optional namespace filter")
+	keep := fs.Int("keep", 14, "number of newest lifecycle bundles to mark as kept")
+	outPath := fs.String("out", "", "JSON index file to write, defaults to contextdb-backups.index.json in --dir")
+	reportOut := fs.Bool("report", false, "print the JSON lifecycle index")
+	_ = fs.Parse(args)
+
+	index, err := writeSnapshotLifecycleIndex(*outPath, snapshotLifecycleIndexOptions{
+		Dir:       *dir,
+		Namespace: *namespace,
+		Keep:      *keep,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(index)
+	} else {
+		fmt.Fprintln(os.Stdout, index.IndexFile)
+	}
+}
+
+func runSnapshotLifecycleIndexPublish(args []string) {
+	if len(args) > 0 && args[0] == "receipt" {
+		runSnapshotLifecycleIndexPublishReceipt(args[1:])
+		return
+	}
+	if len(args) > 0 && args[0] == "drift" {
+		runSnapshotLifecycleIndexPublishDrift(args[1:])
+		return
+	}
+	if len(args) > 0 && args[0] == "freshness" {
+		runSnapshotLifecycleIndexPublishFreshness(args[1:])
+		return
+	}
+	if len(args) > 0 && args[0] == "closure-bundle" {
+		runSnapshotLifecycleIndexPublishClosureBundle(args[1:])
+		return
+	}
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish", flag.ExitOnError)
+	inPath := fs.String("in", "", "JSON lifecycle index to publish")
+	publishURL := fs.String("publish-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL"), "backup index metadata publish endpoint")
+	method := fs.String("method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_METHOD", http.MethodPost), "HTTP method for publishing")
+	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the publish endpoint")
+	dryRunFlag := fs.Bool("dry-run", true, "validate and print the publish plan without sending it")
+	execute := fs.Bool("execute", false, "send the backup index metadata to --publish-url")
+	receiptOut := fs.String("receipt-out", "", "write a JSON publish receipt after successful --execute")
+	reportOut := fs.Bool("report", false, "print a JSON backup index publish report")
+	timeout := fs.Duration("timeout", 5*time.Second, "publish request timeout")
+	_ = fs.Parse(args)
+
+	dryRun := *dryRunFlag && !*execute
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	report, err := buildSnapshotLifecycleIndexPublishReport(ctx, http.DefaultClient, *inPath, snapshotLifecycleIndexPublishOptions{
+		PublishURL: *publishURL,
+		Method:     *method,
+		Token:      *token,
+		DryRun:     dryRun,
+		ReceiptOut: *receiptOut,
+	})
+	if err != nil {
+		if *reportOut && (report.IndexFile != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if report.DryRun {
+		fmt.Fprintln(os.Stdout, "dry-run ok")
+	} else {
+		fmt.Fprintln(os.Stdout, "published")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishClosureBundle(args []string) {
+	if len(args) > 0 && args[0] == "verify" {
+		runSnapshotLifecycleIndexPublishClosureBundleVerify(args[1:])
+		return
+	}
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish closure-bundle", flag.ExitOnError)
+	dir := fs.String("dir", "", "published backup repair closure bundle directory")
+	outPath := fs.String("out", "", "write the JSON closure bundle manifest, defaults to closure-manifest.json in --dir")
+	reportOut := fs.Bool("report", false, "print the JSON closure bundle manifest")
+	_ = fs.Parse(args)
+
+	manifestOut := strings.TrimSpace(*outPath)
+	if manifestOut == "" && strings.TrimSpace(*dir) != "" {
+		manifestOut = filepath.Join(strings.TrimSpace(*dir), "closure-manifest.json")
+	}
+	manifest, err := buildPublishedBackupRepairClosureBundleManifest(*dir, time.Now())
+	if manifestOut != "" {
+		manifest.ManifestFile = manifestOut
+		if writeErr := writeJSONFile(manifestOut, manifest); writeErr != nil && err == nil {
+			err = fmt.Errorf("write closure bundle manifest: %w", writeErr)
+		}
+	}
+	if *reportOut || err != nil {
+		writeIndentedJSON(manifest)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish closure-bundle: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, manifestOut)
+	}
+}
+
+func runSnapshotLifecycleIndexPublishClosureBundleVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish closure-bundle verify", flag.ExitOnError)
+	manifestPath := fs.String("manifest", "", "JSON closure bundle manifest to verify")
+	dir := fs.String("dir", "", "override bundle directory when verifying a moved bundle")
+	reportOut := fs.Bool("report", false, "print a JSON closure bundle verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifyPublishedBackupRepairClosureBundleManifest(*manifestPath, *dir)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish closure-bundle verify: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishReceipt(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "contextdb snapshot lifecycle index publish receipt: expected verify")
+		os.Exit(2)
+	}
+	switch args[0] {
+	case "verify":
+		runSnapshotLifecycleIndexPublishReceiptVerify(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish receipt: unknown subcommand %q\n", args[0])
+		os.Exit(2)
+	}
+}
+
+func runSnapshotLifecycleIndexPublishReceiptVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish receipt verify", flag.ExitOnError)
+	receiptPath := fs.String("receipt", "", "JSON lifecycle index publish receipt to verify")
+	inPath := fs.String("in", "", "JSON lifecycle index to compare against the receipt")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle index publish receipt verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotLifecycleIndexPublishReceipt(*receiptPath, *inPath)
+	if *reportOut || err != nil {
+		writeIndentedJSON(report)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish receipt verify: %v\n", err)
+		os.Exit(1)
+	}
+	if !*reportOut {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishDrift(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish drift", flag.ExitOnError)
+	inPath := fs.String("in", "", "local JSON lifecycle index to compare")
+	publishedURL := fs.String("published-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL"), "published backup index metadata URL")
+	method := fs.String("method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_METHOD", http.MethodGet), "HTTP method for fetching published metadata")
+	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the published metadata endpoint")
+	reportOut := fs.Bool("report", false, "print a JSON backup index publish drift report")
+	timeout := fs.Duration("timeout", 5*time.Second, "published metadata request timeout")
+	_ = fs.Parse(args)
+
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	report, err := buildSnapshotLifecycleIndexPublishDriftReport(ctx, http.DefaultClient, *inPath, snapshotLifecycleIndexPublishDriftOptions{
+		PublishedURL: *publishedURL,
+		Method:       *method,
+		Token:        *token,
+	})
+	if err != nil {
+		if *reportOut && (report.IndexFile != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish drift: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if report.Drift {
+		fmt.Fprintln(os.Stdout, "drift detected")
+	} else {
+		fmt.Fprintln(os.Stdout, "no drift")
+	}
+}
+
+func runSnapshotLifecycleIndexPublishFreshness(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index publish freshness", flag.ExitOnError)
+	publishedURL := fs.String("published-url", os.Getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL"), "published backup index metadata URL")
+	method := fs.String("method", getenv("CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_METHOD", http.MethodGet), "HTTP method for fetching published metadata")
+	token := fs.String("token", os.Getenv("NORN_TOKEN"), "optional bearer token for the published metadata endpoint")
+	maxAge := fs.Duration("max-age", 24*time.Hour, "maximum acceptable age for published generated_at")
+	reportOut := fs.Bool("report", false, "print a JSON backup index publish freshness report")
+	timeout := fs.Duration("timeout", 5*time.Second, "published metadata request timeout")
+	_ = fs.Parse(args)
+
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	report, err := buildSnapshotLifecycleIndexPublishFreshnessReport(ctx, http.DefaultClient, snapshotLifecycleIndexPublishFreshnessOptions{
+		PublishedURL: *publishedURL,
+		Method:       *method,
+		Token:        *token,
+		MaxAge:       *maxAge,
+		Now:          time.Now(),
+	})
+	if err != nil {
+		if *reportOut && (report.PublishedURL != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index publish freshness: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if report.Fresh {
+		fmt.Fprintln(os.Stdout, "fresh")
+	} else {
+		fmt.Fprintln(os.Stdout, "stale")
+	}
+}
+
+func runSnapshotLifecycleIndexDiff(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index diff", flag.ExitOnError)
+	oldPath := fs.String("old", "", "previous JSON lifecycle index to compare")
+	newPath := fs.String("new", "", "new JSON lifecycle index to compare")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle index diff report")
+	_ = fs.Parse(args)
+
+	report, err := diffSnapshotLifecycleIndexes(*oldPath, *newPath)
+	if err != nil {
+		if *reportOut && (report.OldIndex != "" || report.NewIndex != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index diff: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycleIndexVerify(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle index verify", flag.ExitOnError)
+	inPath := fs.String("in", "", "JSON lifecycle index to verify")
+	reportOut := fs.Bool("report", false, "print a JSON lifecycle index verification report")
+	_ = fs.Parse(args)
+
+	report, err := verifySnapshotLifecycleIndex(*inPath)
+	if err != nil {
+		if *reportOut && (report.IndexFile != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle index verify: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func runSnapshotLifecycleRetention(args []string) {
+	fs := flag.NewFlagSet("contextdb snapshot lifecycle retention", flag.ExitOnError)
+	dir := fs.String("dir", "", "directory containing lifecycle summary files")
+	namespace := fs.String("namespace", "", "optional namespace filter")
+	keep := fs.Int("keep", 14, "number of newest lifecycle bundles to keep")
+	reportOut := fs.Bool("report", false, "print a JSON retention report")
+	emitDeleteScript := fs.Bool("emit-delete-script", false, "print a shell script for pruneable artifacts without deleting files")
+	_ = fs.Parse(args)
+
+	report, err := buildSnapshotLifecycleRetentionReport(*dir, *namespace, *keep)
+	if err != nil {
+		if *reportOut && (report.Dir != "" || len(report.ValidationErrors) > 0) {
+			writeIndentedJSON(report)
+		}
+		fmt.Fprintf(os.Stderr, "contextdb snapshot lifecycle retention: %v\n", err)
+		os.Exit(1)
+	}
+	if *reportOut {
+		writeIndentedJSON(report)
+	} else if *emitDeleteScript {
+		fmt.Print(buildSnapshotLifecycleDeleteScript(report))
+	} else {
+		fmt.Fprintln(os.Stdout, "ok")
+	}
+}
+
+func openSnapshotDB() *client.DB {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := client.Open(client.Options{
+		Mode:        client.Mode(getenv("CONTEXTDB_MODE", "embedded")),
+		DataDir:     os.Getenv("CONTEXTDB_DATA_DIR"),
+		DSN:         os.Getenv("CONTEXTDB_DSN"),
+		Addr:        os.Getenv("CONTEXTDB_ADDR"),
+		DedupWrites: os.Getenv("CONTEXTDB_DEDUP_WRITES") == "true",
+		Logger:      logger,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "contextdb snapshot: open database: %v\n", err)
+		os.Exit(2)
+	}
+	return db
+}
+
+func writeBackupMarker(path string, at time.Time) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	return os.WriteFile(path, []byte(at.UTC().Format(time.RFC3339)+"\n"), 0o644)
+}
+
+type snapshotArtifactManifestOptions struct {
+	Namespace    string
+	BackupPath   string
+	BackupMarker string
+	CreatedAt    time.Time
+}
+
+type snapshotArtifactManifest struct {
+	SchemaVersion    int                    `json:"schema_version"`
+	Namespace        string                 `json:"namespace"`
+	BackupFile       string                 `json:"backup_file"`
+	BackupBytes      int64                  `json:"backup_bytes"`
+	ChecksumSHA256   string                 `json:"checksum_sha256"`
+	CreatedAt        string                 `json:"created_at"`
+	ContextDBVersion string                 `json:"contextdb_version"`
+	BackupMarker     string                 `json:"backup_marker,omitempty"`
+	Records          snapshotArtifactCounts `json:"records"`
+}
+
+type snapshotArtifactCounts struct {
+	Lines   int `json:"lines"`
+	Nodes   int `json:"nodes"`
+	Edges   int `json:"edges"`
+	Sources int `json:"sources"`
+}
+
+type snapshotArtifactVerifyReport struct {
+	OK               bool                   `json:"ok"`
+	Manifest         string                 `json:"manifest"`
+	BackupFile       string                 `json:"backup_file"`
+	ExpectedBytes    int64                  `json:"expected_bytes"`
+	ActualBytes      int64                  `json:"actual_bytes"`
+	ExpectedSHA256   string                 `json:"expected_sha256"`
+	ActualSHA256     string                 `json:"actual_sha256"`
+	ExpectedRecords  snapshotArtifactCounts `json:"expected_records"`
+	ActualRecords    snapshotArtifactCounts `json:"actual_records"`
+	ContextDBVersion string                 `json:"contextdb_version"`
+	ManifestVersion  string                 `json:"manifest_contextdb_version"`
+	SchemaVersion    int                    `json:"schema_version"`
+	ValidationErrors []string               `json:"validation_errors,omitempty"`
+}
+
+type snapshotRehearsalReport struct {
+	OK                       bool                         `json:"ok"`
+	Namespace                string                       `json:"namespace"`
+	RehearsedAt              string                       `json:"rehearsed_at"`
+	TargetNamespace          string                       `json:"target_namespace"`
+	RecommendedImportCommand string                       `json:"recommended_import_command"`
+	Verification             snapshotArtifactVerifyReport `json:"verification"`
+	Restore                  client.SnapshotReport        `json:"restore"`
+}
+
+type snapshotPromotionReceiptOptions struct {
+	Namespace  string
+	BackupPath string
+	Note       string
+	ImportedAt time.Time
+	Report     client.SnapshotReport
+}
+
+type snapshotPromotionReceipt struct {
+	SchemaVersion    int                   `json:"schema_version"`
+	Namespace        string                `json:"namespace"`
+	BackupFile       string                `json:"backup_file"`
+	PromotedAt       string                `json:"promoted_at"`
+	ContextDBVersion string                `json:"contextdb_version"`
+	PromotionNote    string                `json:"promotion_note,omitempty"`
+	ImportReport     client.SnapshotReport `json:"import_report"`
+}
+
+type snapshotPromotionReceiptVerifyReport struct {
+	OK                 bool                   `json:"ok"`
+	PromotionReport    string                 `json:"promotion_report"`
+	Manifest           string                 `json:"manifest"`
+	ReceiptNamespace   string                 `json:"receipt_namespace"`
+	ImportNamespace    string                 `json:"import_namespace"`
+	ReceiptBackupFile  string                 `json:"receipt_backup_file"`
+	ManifestBackupFile string                 `json:"manifest_backup_file"`
+	ReceiptVersion     string                 `json:"receipt_contextdb_version"`
+	ManifestVersion    string                 `json:"manifest_contextdb_version"`
+	ImportedRecords    snapshotArtifactCounts `json:"imported_records"`
+	ManifestRecords    snapshotArtifactCounts `json:"manifest_records"`
+	PromotedAt         string                 `json:"promoted_at"`
+	ValidationErrors   []string               `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleSummary struct {
+	Namespace    string `json:"namespace"`
+	CreatedAt    string `json:"created_at"`
+	Backup       string `json:"backup"`
+	Manifest     string `json:"manifest"`
+	Rehearsal    string `json:"rehearsal"`
+	Promotion    string `json:"promotion"`
+	ReceiptCheck string `json:"receipt_check"`
+	Promoted     bool   `json:"promoted"`
+}
+
+type snapshotLifecycleVerifyReport struct {
+	OK               bool     `json:"ok"`
+	Summary          string   `json:"summary"`
+	Namespace        string   `json:"namespace"`
+	CreatedAt        string   `json:"created_at"`
+	Promoted         bool     `json:"promoted"`
+	Backup           string   `json:"backup"`
+	BackupExists     bool     `json:"backup_exists"`
+	Manifest         string   `json:"manifest"`
+	ManifestExists   bool     `json:"manifest_exists"`
+	ManifestOK       bool     `json:"manifest_ok"`
+	Rehearsal        string   `json:"rehearsal"`
+	RehearsalExists  bool     `json:"rehearsal_exists"`
+	RehearsalOK      bool     `json:"rehearsal_ok"`
+	Promotion        string   `json:"promotion,omitempty"`
+	PromotionExists  bool     `json:"promotion_exists"`
+	PromotionOK      bool     `json:"promotion_ok"`
+	ReceiptCheck     string   `json:"receipt_check,omitempty"`
+	ReceiptCheckOK   bool     `json:"receipt_check_ok"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleRetentionReport struct {
+	OK               bool                               `json:"ok"`
+	Dir              string                             `json:"dir"`
+	Namespace        string                             `json:"namespace,omitempty"`
+	Keep             int                                `json:"keep"`
+	TotalBundles     int                                `json:"total_bundles"`
+	KeepBundles      int                                `json:"keep_bundles"`
+	PruneableBundles int                                `json:"pruneable_bundles"`
+	DeleteCommands   []string                           `json:"delete_commands,omitempty"`
+	Bundles          []snapshotLifecycleRetentionBundle `json:"bundles"`
+	ValidationErrors []string                           `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleRetentionBundle struct {
+	Namespace string                               `json:"namespace"`
+	CreatedAt string                               `json:"created_at"`
+	Summary   string                               `json:"summary"`
+	Promoted  bool                                 `json:"promoted"`
+	Decision  string                               `json:"decision"`
+	Reason    string                               `json:"reason"`
+	Artifacts []snapshotLifecycleRetentionArtifact `json:"artifacts"`
+	sortTime  time.Time
+}
+
+type snapshotLifecycleRetentionArtifact struct {
+	Kind           string `json:"kind"`
+	Path           string `json:"path"`
+	Exists         bool   `json:"exists"`
+	Bytes          int64  `json:"bytes,omitempty"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
+}
+
+type snapshotLifecycleIndexOptions struct {
+	Dir       string
+	Namespace string
+	Keep      int
+	CreatedAt time.Time
+}
+
+type snapshotLifecycleIndexPublishOptions struct {
+	PublishURL string
+	Method     string
+	Token      string
+	DryRun     bool
+	ReceiptOut string
+}
+
+type snapshotLifecycleIndexPublishDriftOptions struct {
+	PublishedURL string
+	Method       string
+	Token        string
+}
+
+type snapshotLifecycleIndexPublishFreshnessOptions struct {
+	PublishedURL string
+	Method       string
+	Token        string
+	MaxAge       time.Duration
+	Now          time.Time
+}
+
+type snapshotLifecycleIndex struct {
+	SchemaVersion    int                                `json:"schema_version"`
+	IndexFile        string                             `json:"index_file"`
+	GeneratedAt      string                             `json:"generated_at"`
+	ContextDBVersion string                             `json:"contextdb_version"`
+	Dir              string                             `json:"dir"`
+	Namespace        string                             `json:"namespace,omitempty"`
+	Keep             int                                `json:"keep"`
+	TotalBundles     int                                `json:"total_bundles"`
+	KeepBundles      int                                `json:"keep_bundles"`
+	PruneableBundles int                                `json:"pruneable_bundles"`
+	DeleteCommands   []string                           `json:"delete_commands,omitempty"`
+	Bundles          []snapshotLifecycleRetentionBundle `json:"bundles"`
+}
+
+type snapshotLifecycleIndexVerifyReport struct {
+	OK                bool                                  `json:"ok"`
+	IndexFile         string                                `json:"index_file"`
+	SchemaVersion     int                                   `json:"schema_version"`
+	ContextDBVersion  string                                `json:"contextdb_version"`
+	TotalBundles      int                                   `json:"total_bundles"`
+	TotalArtifacts    int                                   `json:"total_artifacts"`
+	VerifiedArtifacts int                                   `json:"verified_artifacts"`
+	ValidationErrors  []string                              `json:"validation_errors,omitempty"`
+	Artifacts         []snapshotLifecycleIndexArtifactCheck `json:"artifacts"`
+}
+
+type snapshotLifecycleIndexArtifactCheck struct {
+	Kind           string   `json:"kind"`
+	Path           string   `json:"path"`
+	Exists         bool     `json:"exists"`
+	ExpectedBytes  int64    `json:"expected_bytes,omitempty"`
+	ActualBytes    int64    `json:"actual_bytes,omitempty"`
+	ExpectedSHA256 string   `json:"expected_sha256,omitempty"`
+	ActualSHA256   string   `json:"actual_sha256,omitempty"`
+	Errors         []string `json:"errors,omitempty"`
+}
+
+type snapshotLifecycleIndexDiffReport struct {
+	OK               bool                               `json:"ok"`
+	OldIndex         string                             `json:"old_index"`
+	NewIndex         string                             `json:"new_index"`
+	OldBundles       int                                `json:"old_bundles"`
+	NewBundles       int                                `json:"new_bundles"`
+	AddedBundles     []string                           `json:"added_bundles,omitempty"`
+	RemovedBundles   []string                           `json:"removed_bundles,omitempty"`
+	ChangedBundles   []snapshotLifecycleIndexBundleDiff `json:"changed_bundles,omitempty"`
+	ValidationErrors []string                           `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexBundleDiff struct {
+	Bundle          string                               `json:"bundle"`
+	ArtifactChanges []snapshotLifecycleIndexArtifactDiff `json:"artifact_changes,omitempty"`
+	DecisionChanged bool                                 `json:"decision_changed,omitempty"`
+	OldDecision     string                               `json:"old_decision,omitempty"`
+	NewDecision     string                               `json:"new_decision,omitempty"`
+}
+
+type snapshotLifecycleIndexArtifactDiff struct {
+	Kind      string `json:"kind"`
+	Path      string `json:"path"`
+	Change    string `json:"change"`
+	OldBytes  int64  `json:"old_bytes,omitempty"`
+	NewBytes  int64  `json:"new_bytes,omitempty"`
+	OldSHA256 string `json:"old_sha256,omitempty"`
+	NewSHA256 string `json:"new_sha256,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishReport struct {
+	OK               bool                                 `json:"ok"`
+	DryRun           bool                                 `json:"dry_run"`
+	Published        bool                                 `json:"published"`
+	IndexFile        string                               `json:"index_file"`
+	PublishURL       string                               `json:"publish_url,omitempty"`
+	ReceiptFile      string                               `json:"receipt_file,omitempty"`
+	Method           string                               `json:"method,omitempty"`
+	Status           string                               `json:"status,omitempty"`
+	Response         string                               `json:"response,omitempty"`
+	Payload          snapshotLifecycleIndexPublishPayload `json:"payload"`
+	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishReceipt struct {
+	Kind          string                               `json:"kind"`
+	SchemaVersion int                                  `json:"schema_version"`
+	GeneratedAt   string                               `json:"generated_at"`
+	IndexFile     string                               `json:"index_file"`
+	PublishURL    string                               `json:"publish_url"`
+	Method        string                               `json:"method"`
+	Status        string                               `json:"status"`
+	Response      string                               `json:"response,omitempty"`
+	PayloadSHA256 string                               `json:"payload_sha256"`
+	Payload       snapshotLifecycleIndexPublishPayload `json:"payload"`
+}
+
+type snapshotLifecycleIndexPublishReceiptVerifyReport struct {
+	OK                    bool                                 `json:"ok"`
+	ReceiptFile           string                               `json:"receipt_file"`
+	IndexFile             string                               `json:"index_file"`
+	ReceiptKind           string                               `json:"receipt_kind"`
+	ReceiptGeneratedAt    string                               `json:"receipt_generated_at,omitempty"`
+	ReceiptIndexFile      string                               `json:"receipt_index_file,omitempty"`
+	ReceiptStatus         string                               `json:"receipt_status,omitempty"`
+	ReceiptPayloadSHA256  string                               `json:"receipt_payload_sha256,omitempty"`
+	ExpectedPayloadSHA256 string                               `json:"expected_payload_sha256,omitempty"`
+	ReceiptPayload        snapshotLifecycleIndexPublishPayload `json:"receipt_payload"`
+	ExpectedPayload       snapshotLifecycleIndexPublishPayload `json:"expected_payload"`
+	ValidationErrors      []string                             `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishDriftReport struct {
+	OK                        bool                                 `json:"ok"`
+	Drift                     bool                                 `json:"drift"`
+	IndexFile                 string                               `json:"index_file"`
+	PublishedURL              string                               `json:"published_url,omitempty"`
+	Method                    string                               `json:"method,omitempty"`
+	Status                    string                               `json:"status,omitempty"`
+	RecommendedPublishCommand string                               `json:"recommended_publish_command,omitempty"`
+	LocalPayload              snapshotLifecycleIndexPublishPayload `json:"local_payload"`
+	PublishedPayload          snapshotLifecycleIndexPublishPayload `json:"published_payload"`
+	Differences               []string                             `json:"differences,omitempty"`
+	ValidationErrors          []string                             `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishFreshnessReport struct {
+	OK               bool                                 `json:"ok"`
+	Fresh            bool                                 `json:"fresh"`
+	PublishedURL     string                               `json:"published_url,omitempty"`
+	Method           string                               `json:"method,omitempty"`
+	Status           string                               `json:"status,omitempty"`
+	GeneratedAt      string                               `json:"generated_at,omitempty"`
+	CheckedAt        string                               `json:"checked_at"`
+	MaxAgeSeconds    int64                                `json:"max_age_seconds"`
+	AgeSeconds       int64                                `json:"age_seconds,omitempty"`
+	PublishedPayload snapshotLifecycleIndexPublishPayload `json:"published_payload"`
+	ValidationErrors []string                             `json:"validation_errors,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleManifest struct {
+	Kind              string                                       `json:"kind"`
+	SchemaVersion     int                                          `json:"schema_version"`
+	ContextDBVersion  string                                       `json:"contextdb_version"`
+	GeneratedAt       string                                       `json:"generated_at"`
+	BundleDir         string                                       `json:"bundle_dir"`
+	ManifestFile      string                                       `json:"manifest_file,omitempty"`
+	OK                bool                                         `json:"ok"`
+	RequiredArtifacts int                                          `json:"required_artifacts"`
+	PresentArtifacts  int                                          `json:"present_artifacts"`
+	MissingArtifacts  int                                          `json:"missing_artifacts"`
+	TotalBytes        int64                                        `json:"total_bytes,omitempty"`
+	Artifacts         []publishedBackupRepairClosureBundleArtifact `json:"artifacts"`
+	ValidationErrors  []string                                     `json:"validation_errors,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleArtifact struct {
+	Step           int    `json:"step"`
+	Name           string `json:"name"`
+	Purpose        string `json:"purpose"`
+	Path           string `json:"path"`
+	Exists         bool   `json:"exists"`
+	Bytes          int64  `json:"bytes,omitempty"`
+	ChecksumSHA256 string `json:"checksum_sha256,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleVerifyReport struct {
+	Kind             string                                             `json:"kind"`
+	SchemaVersion    int                                                `json:"schema_version"`
+	ContextDBVersion string                                             `json:"contextdb_version"`
+	VerifiedAt       string                                             `json:"verified_at"`
+	ManifestFile     string                                             `json:"manifest_file"`
+	BundleDir        string                                             `json:"bundle_dir"`
+	OK               bool                                               `json:"ok"`
+	Artifacts        []publishedBackupRepairClosureBundleVerifyArtifact `json:"artifacts"`
+	ValidationErrors []string                                           `json:"validation_errors,omitempty"`
+}
+
+type publishedBackupRepairClosureBundleVerifyArtifact struct {
+	Step             int      `json:"step"`
+	Name             string   `json:"name"`
+	Purpose          string   `json:"purpose"`
+	Path             string   `json:"path"`
+	Exists           bool     `json:"exists"`
+	ExpectedBytes    int64    `json:"expected_bytes,omitempty"`
+	ActualBytes      int64    `json:"actual_bytes,omitempty"`
+	ExpectedSHA256   string   `json:"expected_sha256,omitempty"`
+	ActualSHA256     string   `json:"actual_sha256,omitempty"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
+}
+
+type snapshotLifecycleIndexPublishPayload struct {
+	Kind             string                                       `json:"kind"`
+	SchemaVersion    int                                          `json:"schema_version"`
+	IndexFile        string                                       `json:"index_file"`
+	GeneratedAt      string                                       `json:"generated_at"`
+	ContextDBVersion string                                       `json:"contextdb_version"`
+	Dir              string                                       `json:"dir"`
+	Namespace        string                                       `json:"namespace,omitempty"`
+	Keep             int                                          `json:"keep"`
+	TotalBundles     int                                          `json:"total_bundles"`
+	KeepBundles      int                                          `json:"keep_bundles"`
+	PruneableBundles int                                          `json:"pruneable_bundles"`
+	Bundles          []snapshotLifecycleIndexPublishBundleSummary `json:"bundles"`
+}
+
+type snapshotLifecycleIndexPublishBundleSummary struct {
+	Namespace      string `json:"namespace"`
+	CreatedAt      string `json:"created_at"`
+	Summary        string `json:"summary"`
+	Promoted       bool   `json:"promoted"`
+	Decision       string `json:"decision"`
+	ArtifactCount  int    `json:"artifact_count"`
+	ExistingBytes  int64  `json:"existing_bytes,omitempty"`
+	IndexedSHA256s int    `json:"indexed_sha256s,omitempty"`
+}
+
+func writeSnapshotArtifactManifest(path string, opts snapshotArtifactManifestOptions) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	manifest, err := buildSnapshotArtifactManifest(opts)
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode artifact manifest: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func writeSnapshotPromotionReceipt(path string, opts snapshotPromotionReceiptOptions) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	receipt := buildSnapshotPromotionReceipt(opts)
+	data, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode promotion receipt: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func buildSnapshotPromotionReceipt(opts snapshotPromotionReceiptOptions) snapshotPromotionReceipt {
+	return snapshotPromotionReceipt{
+		SchemaVersion:    1,
+		Namespace:        opts.Namespace,
+		BackupFile:       strings.TrimSpace(opts.BackupPath),
+		PromotedAt:       opts.ImportedAt.UTC().Format(time.RFC3339),
+		ContextDBVersion: buildinfo.Version,
+		PromotionNote:    strings.TrimSpace(opts.Note),
+		ImportReport:     opts.Report,
+	}
+}
+
+func verifySnapshotPromotionReceipt(promotionReportPath, manifestPath string) (snapshotPromotionReceiptVerifyReport, error) {
+	promotionReportPath = strings.TrimSpace(promotionReportPath)
+	manifestPath = strings.TrimSpace(manifestPath)
+	if promotionReportPath == "" {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("--promotion-report is required")
+	}
+	if manifestPath == "" {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("--manifest is required")
+	}
+	receiptData, err := os.ReadFile(promotionReportPath)
+	if err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("read promotion receipt: %w", err)
+	}
+	var receipt snapshotPromotionReceipt
+	if err := json.Unmarshal(receiptData, &receipt); err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("decode promotion receipt: %w", err)
+	}
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("read artifact manifest: %w", err)
+	}
+	var manifest snapshotArtifactManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return snapshotPromotionReceiptVerifyReport{}, fmt.Errorf("decode artifact manifest: %w", err)
+	}
+	importedRecords := snapshotArtifactCounts{
+		Lines:   receipt.ImportReport.Lines,
+		Nodes:   receipt.ImportReport.Nodes,
+		Edges:   receipt.ImportReport.Edges,
+		Sources: receipt.ImportReport.Sources,
+	}
+	report := snapshotPromotionReceiptVerifyReport{
+		PromotionReport:    promotionReportPath,
+		Manifest:           manifestPath,
+		ReceiptNamespace:   receipt.Namespace,
+		ImportNamespace:    receipt.ImportReport.Namespace,
+		ReceiptBackupFile:  receipt.BackupFile,
+		ManifestBackupFile: manifest.BackupFile,
+		ReceiptVersion:     receipt.ContextDBVersion,
+		ManifestVersion:    manifest.ContextDBVersion,
+		ImportedRecords:    importedRecords,
+		ManifestRecords:    manifest.Records,
+		PromotedAt:         receipt.PromotedAt,
+	}
+	if receipt.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported receipt schema_version %d", receipt.SchemaVersion))
+	}
+	if manifest.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported manifest schema_version %d", manifest.SchemaVersion))
+	}
+	if strings.TrimSpace(receipt.Namespace) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt namespace is empty")
+	}
+	if receipt.Namespace != receipt.ImportReport.Namespace {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt namespace does not match import report namespace")
+	}
+	if filepath.Base(strings.TrimSpace(receipt.BackupFile)) != strings.TrimSpace(manifest.BackupFile) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt backup_file does not match manifest backup_file")
+	}
+	if importedRecords != manifest.Records {
+		report.ValidationErrors = append(report.ValidationErrors, "import report record counts do not match manifest record counts")
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("promotion receipt verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func verifySnapshotLifecycleSummary(summaryPath string) (snapshotLifecycleVerifyReport, error) {
+	summaryPath = strings.TrimSpace(summaryPath)
+	if summaryPath == "" {
+		return snapshotLifecycleVerifyReport{}, fmt.Errorf("--summary is required")
+	}
+	summaryData, err := os.ReadFile(summaryPath)
+	if err != nil {
+		return snapshotLifecycleVerifyReport{}, fmt.Errorf("read lifecycle summary: %w", err)
+	}
+	var summary snapshotLifecycleSummary
+	if err := json.Unmarshal(summaryData, &summary); err != nil {
+		return snapshotLifecycleVerifyReport{}, fmt.Errorf("decode lifecycle summary: %w", err)
+	}
+	baseDir := filepath.Dir(summaryPath)
+	backupPath := resolveLifecycleSummaryPath(baseDir, summary.Backup)
+	manifestPath := resolveLifecycleSummaryPath(baseDir, summary.Manifest)
+	rehearsalPath := resolveLifecycleSummaryPath(baseDir, summary.Rehearsal)
+	promotionPath := resolveLifecycleSummaryPath(baseDir, summary.Promotion)
+	receiptCheckPath := resolveLifecycleSummaryPath(baseDir, summary.ReceiptCheck)
+	report := snapshotLifecycleVerifyReport{
+		Summary:      summaryPath,
+		Namespace:    summary.Namespace,
+		CreatedAt:    summary.CreatedAt,
+		Promoted:     summary.Promoted,
+		Backup:       backupPath,
+		Manifest:     manifestPath,
+		Rehearsal:    rehearsalPath,
+		Promotion:    promotionPath,
+		ReceiptCheck: receiptCheckPath,
+	}
+	if strings.TrimSpace(summary.Namespace) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "namespace is empty")
+	}
+	if strings.TrimSpace(summary.CreatedAt) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "created_at is empty")
+	}
+	report.BackupExists = lifecycleFileExists(backupPath)
+	if !report.BackupExists {
+		report.ValidationErrors = append(report.ValidationErrors, "backup file is missing")
+	}
+	report.ManifestExists = lifecycleFileExists(manifestPath)
+	if !report.ManifestExists {
+		report.ValidationErrors = append(report.ValidationErrors, "manifest file is missing")
+	}
+	if report.BackupExists && report.ManifestExists {
+		manifestReport, err := verifySnapshotArtifactManifest(manifestPath, backupPath)
+		report.ManifestOK = manifestReport.OK
+		if err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		}
+		if manifestReport.OK && strings.TrimSpace(manifestReport.Manifest) != "" {
+			var manifest snapshotArtifactManifest
+			if err := readJSONFile(manifestPath, &manifest); err != nil {
+				report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode artifact manifest: %v", err))
+			} else if strings.TrimSpace(manifest.Namespace) != "" && manifest.Namespace != summary.Namespace {
+				report.ValidationErrors = append(report.ValidationErrors, "manifest namespace does not match lifecycle namespace")
+			}
+		}
+	}
+	report.RehearsalExists = lifecycleFileExists(rehearsalPath)
+	if !report.RehearsalExists {
+		report.ValidationErrors = append(report.ValidationErrors, "rehearsal report is missing")
+	} else {
+		var rehearsal snapshotRehearsalReport
+		if err := readJSONFile(rehearsalPath, &rehearsal); err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode rehearsal report: %v", err))
+		} else {
+			report.RehearsalOK = rehearsal.OK && rehearsal.Verification.OK
+			if !report.RehearsalOK {
+				report.ValidationErrors = append(report.ValidationErrors, "rehearsal report is not ok")
+			}
+		}
+	}
+	if summary.Promoted {
+		report.PromotionExists = lifecycleFileExists(promotionPath)
+		if !report.PromotionExists {
+			report.ValidationErrors = append(report.ValidationErrors, "promotion receipt is missing")
+		}
+		report.ReceiptCheckOK = false
+		if !lifecycleFileExists(receiptCheckPath) {
+			report.ValidationErrors = append(report.ValidationErrors, "receipt verification report is missing")
+		} else {
+			var receiptCheck snapshotPromotionReceiptVerifyReport
+			if err := readJSONFile(receiptCheckPath, &receiptCheck); err != nil {
+				report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode receipt verification report: %v", err))
+			} else {
+				report.ReceiptCheckOK = receiptCheck.OK
+				if !receiptCheck.OK {
+					report.ValidationErrors = append(report.ValidationErrors, "receipt verification report is not ok")
+				}
+			}
+		}
+		if report.PromotionExists && report.ManifestExists {
+			promotionReport, err := verifySnapshotPromotionReceipt(promotionPath, manifestPath)
+			report.PromotionOK = promotionReport.OK
+			if err != nil {
+				report.ValidationErrors = append(report.ValidationErrors, err.Error())
+			}
+			if promotionReport.OK && promotionReport.ImportNamespace != summary.Namespace {
+				report.ValidationErrors = append(report.ValidationErrors, "promotion namespace does not match lifecycle namespace")
+			}
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("lifecycle summary verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func buildSnapshotLifecycleRetentionReport(dir, namespace string, keep int) (snapshotLifecycleRetentionReport, error) {
+	dir = strings.TrimSpace(dir)
+	namespace = strings.TrimSpace(namespace)
+	report := snapshotLifecycleRetentionReport{
+		Dir:       dir,
+		Namespace: namespace,
+		Keep:      keep,
+	}
+	if dir == "" {
+		return report, fmt.Errorf("--dir is required")
+	}
+	if keep < 1 {
+		report.ValidationErrors = append(report.ValidationErrors, "--keep must be at least 1")
+		report.OK = false
+		return report, fmt.Errorf("lifecycle retention report failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return report, fmt.Errorf("read lifecycle directory: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".lifecycle.json") {
+			continue
+		}
+		summaryPath := filepath.Join(dir, entry.Name())
+		var summary snapshotLifecycleSummary
+		if err := readJSONFile(summaryPath, &summary); err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode lifecycle summary %s: %v", summaryPath, err))
+			continue
+		}
+		if namespace != "" && summary.Namespace != namespace {
+			continue
+		}
+		info, _ := entry.Info()
+		report.Bundles = append(report.Bundles, buildSnapshotLifecycleRetentionBundle(dir, summaryPath, summary, info))
+	}
+	sort.SliceStable(report.Bundles, func(i, j int) bool {
+		if report.Bundles[i].sortTime.Equal(report.Bundles[j].sortTime) {
+			return report.Bundles[i].Summary > report.Bundles[j].Summary
+		}
+		return report.Bundles[i].sortTime.After(report.Bundles[j].sortTime)
+	})
+	for i := range report.Bundles {
+		if i < keep {
+			report.Bundles[i].Decision = "keep"
+			report.Bundles[i].Reason = "within newest lifecycle bundles to keep"
+			report.KeepBundles++
+		} else {
+			report.Bundles[i].Decision = "pruneable"
+			report.Bundles[i].Reason = "older than newest lifecycle bundles to keep"
+			report.PruneableBundles++
+		}
+	}
+	report.TotalBundles = len(report.Bundles)
+	report.DeleteCommands = snapshotLifecycleDeleteCommands(report.Bundles)
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("lifecycle retention report failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func snapshotLifecycleDeleteCommands(bundles []snapshotLifecycleRetentionBundle) []string {
+	seen := map[string]bool{}
+	var paths []string
+	for _, bundle := range bundles {
+		if bundle.Decision != "pruneable" {
+			continue
+		}
+		for _, artifact := range bundle.Artifacts {
+			path := strings.TrimSpace(artifact.Path)
+			if path == "" || !artifact.Exists || seen[path] {
+				continue
+			}
+			seen[path] = true
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	commands := make([]string, 0, len(paths))
+	for _, path := range paths {
+		commands = append(commands, "rm -- "+shellQuote(path))
+	}
+	return commands
+}
+
+func buildSnapshotLifecycleDeleteScript(report snapshotLifecycleRetentionReport) string {
+	var b strings.Builder
+	b.WriteString("#!/usr/bin/env bash\n")
+	b.WriteString("set -euo pipefail\n")
+	b.WriteString("# Dry-run deletion plan generated by contextdb snapshot lifecycle retention.\n")
+	b.WriteString("# Review every path before running these commands.\n")
+	if len(report.DeleteCommands) == 0 {
+		b.WriteString("# No pruneable artifacts were found.\n")
+		return b.String()
+	}
+	for _, command := range report.DeleteCommands {
+		b.WriteString(command)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func buildSnapshotLifecycleRetentionBundle(baseDir, summaryPath string, summary snapshotLifecycleSummary, info os.FileInfo) snapshotLifecycleRetentionBundle {
+	sortTime := time.Time{}
+	if createdAt, err := time.Parse(time.RFC3339, strings.TrimSpace(summary.CreatedAt)); err == nil {
+		sortTime = createdAt
+	} else if info != nil {
+		sortTime = info.ModTime()
+	}
+	return snapshotLifecycleRetentionBundle{
+		Namespace: summary.Namespace,
+		CreatedAt: summary.CreatedAt,
+		Summary:   summaryPath,
+		Promoted:  summary.Promoted,
+		Artifacts: []snapshotLifecycleRetentionArtifact{
+			snapshotLifecycleRetentionArtifactFor("summary", summaryPath),
+			snapshotLifecycleRetentionArtifactFor("backup", resolveLifecycleSummaryPath(baseDir, summary.Backup)),
+			snapshotLifecycleRetentionArtifactFor("manifest", resolveLifecycleSummaryPath(baseDir, summary.Manifest)),
+			snapshotLifecycleRetentionArtifactFor("rehearsal", resolveLifecycleSummaryPath(baseDir, summary.Rehearsal)),
+			snapshotLifecycleRetentionArtifactFor("promotion", resolveLifecycleSummaryPath(baseDir, summary.Promotion)),
+			snapshotLifecycleRetentionArtifactFor("receipt_check", resolveLifecycleSummaryPath(baseDir, summary.ReceiptCheck)),
+		},
+		sortTime: sortTime,
+	}
+}
+
+func snapshotLifecycleRetentionArtifactFor(kind, path string) snapshotLifecycleRetentionArtifact {
+	artifact := snapshotLifecycleRetentionArtifact{
+		Kind: kind,
+		Path: strings.TrimSpace(path),
+	}
+	if artifact.Path == "" {
+		return artifact
+	}
+	info, err := os.Stat(artifact.Path)
+	if err == nil && !info.IsDir() {
+		artifact.Exists = true
+		artifact.Bytes = info.Size()
+	}
+	return artifact
+}
+
+func writeSnapshotLifecycleIndex(path string, opts snapshotLifecycleIndexOptions) (snapshotLifecycleIndex, error) {
+	index, err := buildSnapshotLifecycleIndex(path, opts)
+	if err != nil {
+		return index, err
+	}
+	data, err := json.MarshalIndent(index, "", "  ")
+	if err != nil {
+		return index, fmt.Errorf("encode lifecycle index: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(index.IndexFile, data, 0o644); err != nil {
+		return index, fmt.Errorf("write lifecycle index: %w", err)
+	}
+	return index, nil
+}
+
+func buildSnapshotLifecycleIndex(path string, opts snapshotLifecycleIndexOptions) (snapshotLifecycleIndex, error) {
+	dir := strings.TrimSpace(opts.Dir)
+	index := snapshotLifecycleIndex{
+		SchemaVersion:    1,
+		Dir:              dir,
+		Namespace:        strings.TrimSpace(opts.Namespace),
+		Keep:             opts.Keep,
+		ContextDBVersion: buildinfo.Version,
+	}
+	if opts.CreatedAt.IsZero() {
+		opts.CreatedAt = time.Now()
+	}
+	index.GeneratedAt = opts.CreatedAt.UTC().Format(time.RFC3339)
+	path = strings.TrimSpace(path)
+	if path == "" && dir != "" {
+		path = filepath.Join(dir, "contextdb-backups.index.json")
+	}
+	index.IndexFile = path
+	if path == "" {
+		return index, fmt.Errorf("--out requires --dir or an explicit path")
+	}
+	report, err := buildSnapshotLifecycleRetentionReport(dir, opts.Namespace, opts.Keep)
+	if err != nil {
+		return index, err
+	}
+	index.Dir = report.Dir
+	index.Namespace = report.Namespace
+	index.Keep = report.Keep
+	index.TotalBundles = report.TotalBundles
+	index.KeepBundles = report.KeepBundles
+	index.PruneableBundles = report.PruneableBundles
+	index.DeleteCommands = report.DeleteCommands
+	index.Bundles = report.Bundles
+	addSnapshotLifecycleIndexHashes(index.Bundles)
+	return index, nil
+}
+
+func diffSnapshotLifecycleIndexes(oldPath, newPath string) (snapshotLifecycleIndexDiffReport, error) {
+	oldPath = strings.TrimSpace(oldPath)
+	newPath = strings.TrimSpace(newPath)
+	report := snapshotLifecycleIndexDiffReport{
+		OldIndex: oldPath,
+		NewIndex: newPath,
+	}
+	if oldPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--old is required")
+	}
+	if newPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--new is required")
+	}
+	if len(report.ValidationErrors) > 0 {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	oldIndex, err := readSnapshotLifecycleIndex(oldPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read old lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	newIndex, err := readSnapshotLifecycleIndex(newPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read new lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.OldBundles = len(oldIndex.Bundles)
+	report.NewBundles = len(newIndex.Bundles)
+	if oldIndex.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported old index schema_version %d", oldIndex.SchemaVersion))
+	}
+	if newIndex.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported new index schema_version %d", newIndex.SchemaVersion))
+	}
+
+	oldBundles := snapshotLifecycleBundleMap(oldIndex.Bundles)
+	newBundles := snapshotLifecycleBundleMap(newIndex.Bundles)
+	for _, key := range sortedStringKeys(newBundles) {
+		if _, ok := oldBundles[key]; !ok {
+			report.AddedBundles = append(report.AddedBundles, key)
+		}
+	}
+	for _, key := range sortedStringKeys(oldBundles) {
+		oldBundle := oldBundles[key]
+		newBundle, ok := newBundles[key]
+		if !ok {
+			report.RemovedBundles = append(report.RemovedBundles, key)
+			continue
+		}
+		if diff, changed := diffSnapshotLifecycleIndexBundle(key, oldBundle, newBundle); changed {
+			report.ChangedBundles = append(report.ChangedBundles, diff)
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0 &&
+		len(report.AddedBundles) == 0 &&
+		len(report.RemovedBundles) == 0 &&
+		len(report.ChangedBundles) == 0
+	if !report.OK {
+		parts := append([]string{}, report.ValidationErrors...)
+		if len(report.AddedBundles) > 0 {
+			parts = append(parts, fmt.Sprintf("%d added bundle(s)", len(report.AddedBundles)))
+		}
+		if len(report.RemovedBundles) > 0 {
+			parts = append(parts, fmt.Sprintf("%d removed bundle(s)", len(report.RemovedBundles)))
+		}
+		if len(report.ChangedBundles) > 0 {
+			parts = append(parts, fmt.Sprintf("%d changed bundle(s)", len(report.ChangedBundles)))
+		}
+		return report, fmt.Errorf("lifecycle index diff found changes: %s", strings.Join(parts, "; "))
+	}
+	return report, nil
+}
+
+func buildSnapshotLifecycleIndexPublishReport(ctx context.Context, client *http.Client, path string, opts snapshotLifecycleIndexPublishOptions) (snapshotLifecycleIndexPublishReport, error) {
+	path = strings.TrimSpace(path)
+	report := snapshotLifecycleIndexPublishReport{
+		DryRun:      opts.DryRun,
+		IndexFile:   path,
+		PublishURL:  strings.TrimSpace(opts.PublishURL),
+		ReceiptFile: strings.TrimSpace(opts.ReceiptOut),
+		Method:      strings.ToUpper(strings.TrimSpace(opts.Method)),
+	}
+	if report.Method == "" {
+		report.Method = http.MethodPost
+	}
+	if path == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--in is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	index, err := readSnapshotLifecycleIndex(path)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if index.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported index schema_version %d", index.SchemaVersion))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.Payload = buildSnapshotLifecycleIndexPublishPayload(index)
+	if opts.DryRun && report.ReceiptFile != "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--receipt-out requires --execute")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if opts.DryRun {
+		report.OK = true
+		return report, nil
+	}
+	if report.PublishURL == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--publish-url or CONTEXTDB_LIFECYCLE_INDEX_PUBLISH_URL is required when --execute is set")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	status, response, err := publishJSON(ctx, client, report.PublishURL, report.Method, strings.TrimSpace(opts.Token), report.Payload)
+	report.Status = status
+	report.Response = response
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	report.OK = true
+	report.Published = true
+	if report.ReceiptFile != "" {
+		receipt, err := buildSnapshotLifecycleIndexPublishReceipt(report)
+		if err != nil {
+			report.ValidationErrors = append(report.ValidationErrors, err.Error())
+			report.OK = false
+			return report, err
+		}
+		if err := writeJSONFile(report.ReceiptFile, receipt); err != nil {
+			err = fmt.Errorf("write publish receipt: %w", err)
+			report.ValidationErrors = append(report.ValidationErrors, err.Error())
+			report.OK = false
+			return report, err
+		}
+	}
+	return report, nil
+}
+
+func buildSnapshotLifecycleIndexPublishReceipt(report snapshotLifecycleIndexPublishReport) (snapshotLifecycleIndexPublishReceipt, error) {
+	payloadSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(report.Payload)
+	if err != nil {
+		return snapshotLifecycleIndexPublishReceipt{}, fmt.Errorf("encode publish receipt payload hash: %w", err)
+	}
+	return snapshotLifecycleIndexPublishReceipt{
+		Kind:          "contextdb.lifecycle.index.publish.receipt",
+		SchemaVersion: 1,
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+		IndexFile:     report.IndexFile,
+		PublishURL:    report.PublishURL,
+		Method:        report.Method,
+		Status:        report.Status,
+		Response:      report.Response,
+		PayloadSHA256: payloadSHA,
+		Payload:       report.Payload,
+	}, nil
+}
+
+func verifySnapshotLifecycleIndexPublishReceipt(receiptPath, indexPath string) (snapshotLifecycleIndexPublishReceiptVerifyReport, error) {
+	receiptPath = strings.TrimSpace(receiptPath)
+	indexPath = strings.TrimSpace(indexPath)
+	report := snapshotLifecycleIndexPublishReceiptVerifyReport{
+		ReceiptFile: receiptPath,
+		IndexFile:   indexPath,
+	}
+	if receiptPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--receipt is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if indexPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--in is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	receiptData, err := os.ReadFile(receiptPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read publish receipt: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	var receipt snapshotLifecycleIndexPublishReceipt
+	if err := json.Unmarshal(receiptData, &receipt); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("decode publish receipt: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	index, err := readSnapshotLifecycleIndex(indexPath)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	expectedPayload := buildSnapshotLifecycleIndexPublishPayload(index)
+	expectedSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(expectedPayload)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	receiptSHA, err := snapshotLifecycleIndexPublishPayloadSHA256(receipt.Payload)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.ReceiptKind = receipt.Kind
+	report.ReceiptGeneratedAt = receipt.GeneratedAt
+	report.ReceiptIndexFile = receipt.IndexFile
+	report.ReceiptStatus = receipt.Status
+	report.ReceiptPayloadSHA256 = strings.TrimSpace(receipt.PayloadSHA256)
+	report.ExpectedPayloadSHA256 = expectedSHA
+	report.ReceiptPayload = receipt.Payload
+	report.ExpectedPayload = expectedPayload
+	if receipt.Kind != "contextdb.lifecycle.index.publish.receipt" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported receipt kind %q", receipt.Kind))
+	}
+	if receipt.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported receipt schema_version %d", receipt.SchemaVersion))
+	}
+	if strings.TrimSpace(receipt.PayloadSHA256) == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt payload_sha256 is empty")
+	} else if !strings.EqualFold(strings.TrimSpace(receipt.PayloadSHA256), receiptSHA) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt payload_sha256 does not match receipt payload")
+	}
+	if !strings.EqualFold(receiptSHA, expectedSHA) || !reflect.DeepEqual(receipt.Payload, expectedPayload) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt payload does not match lifecycle index publish payload")
+	}
+	if filepath.Base(strings.TrimSpace(receipt.IndexFile)) != filepath.Base(indexPath) {
+		report.ValidationErrors = append(report.ValidationErrors, "receipt index_file does not match lifecycle index")
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("publish receipt verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func snapshotLifecycleIndexPublishPayloadSHA256(payload snapshotLifecycleIndexPublishPayload) (string, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode publish payload hash: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func buildSnapshotLifecycleIndexPublishPayload(index snapshotLifecycleIndex) snapshotLifecycleIndexPublishPayload {
+	payload := snapshotLifecycleIndexPublishPayload{
+		Kind:             "contextdb.lifecycle.index",
+		SchemaVersion:    index.SchemaVersion,
+		IndexFile:        filepath.Base(strings.TrimSpace(index.IndexFile)),
+		GeneratedAt:      index.GeneratedAt,
+		ContextDBVersion: index.ContextDBVersion,
+		Dir:              filepath.Base(strings.TrimSpace(index.Dir)),
+		Namespace:        index.Namespace,
+		Keep:             index.Keep,
+		TotalBundles:     index.TotalBundles,
+		KeepBundles:      index.KeepBundles,
+		PruneableBundles: index.PruneableBundles,
+	}
+	for _, bundle := range index.Bundles {
+		summary := snapshotLifecycleIndexPublishBundleSummary{
+			Namespace:     bundle.Namespace,
+			CreatedAt:     bundle.CreatedAt,
+			Summary:       filepath.Base(strings.TrimSpace(bundle.Summary)),
+			Promoted:      bundle.Promoted,
+			Decision:      bundle.Decision,
+			ArtifactCount: len(bundle.Artifacts),
+		}
+		for _, artifact := range bundle.Artifacts {
+			if artifact.Exists {
+				summary.ExistingBytes += artifact.Bytes
+			}
+			if strings.TrimSpace(artifact.ChecksumSHA256) != "" {
+				summary.IndexedSHA256s++
+			}
+		}
+		payload.Bundles = append(payload.Bundles, summary)
+	}
+	return payload
+}
+
+func buildSnapshotLifecycleIndexPublishDriftReport(ctx context.Context, client *http.Client, path string, opts snapshotLifecycleIndexPublishDriftOptions) (snapshotLifecycleIndexPublishDriftReport, error) {
+	path = strings.TrimSpace(path)
+	report := snapshotLifecycleIndexPublishDriftReport{
+		IndexFile:    path,
+		PublishedURL: strings.TrimSpace(opts.PublishedURL),
+		Method:       strings.ToUpper(strings.TrimSpace(opts.Method)),
+	}
+	if report.Method == "" {
+		report.Method = http.MethodGet
+	}
+	if path == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--in is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if report.PublishedURL == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--published-url or CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	index, err := readSnapshotLifecycleIndex(path)
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read lifecycle index: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if index.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported index schema_version %d", index.SchemaVersion))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.LocalPayload = buildSnapshotLifecycleIndexPublishPayload(index)
+	published, status, err := fetchSnapshotLifecycleIndexPublishedPayload(ctx, client, report.PublishedURL, report.Method, opts.Token)
+	report.Status = status
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	report.PublishedPayload = published
+	report.Differences = diffSnapshotLifecycleIndexPublishPayloads(report.LocalPayload, report.PublishedPayload)
+	report.Drift = len(report.Differences) > 0
+	report.OK = !report.Drift
+	if report.Drift {
+		report.RecommendedPublishCommand = recommendedSnapshotLifecycleIndexPublishCommand(path, report.PublishedURL)
+		return report, fmt.Errorf("published lifecycle index drift found: %s", strings.Join(report.Differences, "; "))
+	}
+	return report, nil
+}
+
+func recommendedSnapshotLifecycleIndexPublishCommand(indexPath, publishURL string) string {
+	command := "contextdb snapshot lifecycle index publish --in " + shellQuote(indexPath) + " --report"
+	if strings.TrimSpace(publishURL) != "" {
+		command += " --publish-url " + shellQuote(publishURL)
+	}
+	return command
+}
+
+func buildSnapshotLifecycleIndexPublishFreshnessReport(ctx context.Context, client *http.Client, opts snapshotLifecycleIndexPublishFreshnessOptions) (snapshotLifecycleIndexPublishFreshnessReport, error) {
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	maxAge := opts.MaxAge
+	if maxAge <= 0 {
+		maxAge = 24 * time.Hour
+	}
+	report := snapshotLifecycleIndexPublishFreshnessReport{
+		PublishedURL:  strings.TrimSpace(opts.PublishedURL),
+		Method:        strings.ToUpper(strings.TrimSpace(opts.Method)),
+		CheckedAt:     now.UTC().Format(time.RFC3339),
+		MaxAgeSeconds: int64(maxAge.Seconds()),
+	}
+	if report.Method == "" {
+		report.Method = http.MethodGet
+	}
+	if report.PublishedURL == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--published-url or CONTEXTDB_LIFECYCLE_INDEX_PUBLISHED_URL is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	published, status, err := fetchSnapshotLifecycleIndexPublishedPayload(ctx, client, report.PublishedURL, report.Method, opts.Token)
+	report.Status = status
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, err.Error())
+		return report, err
+	}
+	report.PublishedPayload = published
+	generatedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(published.GeneratedAt))
+	if err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("published generated_at is invalid: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	report.GeneratedAt = generatedAt.UTC().Format(time.RFC3339)
+	age := now.Sub(generatedAt)
+	if age < 0 {
+		age = 0
+	}
+	report.AgeSeconds = int64(age.Seconds())
+	report.Fresh = age <= maxAge
+	report.OK = report.Fresh
+	if !report.Fresh {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("published generated_at age %s exceeds max age %s", age.Round(time.Second), maxAge.Round(time.Second)))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func buildPublishedBackupRepairClosureBundleManifest(dir string, generatedAt time.Time) (publishedBackupRepairClosureBundleManifest, error) {
+	dir = strings.TrimSpace(dir)
+	if generatedAt.IsZero() {
+		generatedAt = time.Now()
+	}
+	manifest := publishedBackupRepairClosureBundleManifest{
+		Kind:             "contextdb.published_backup_repair.closure_bundle_manifest",
+		SchemaVersion:    1,
+		ContextDBVersion: buildinfo.Version,
+		GeneratedAt:      generatedAt.UTC().Format(time.RFC3339),
+		BundleDir:        dir,
+	}
+	if dir == "" {
+		manifest.ValidationErrors = append(manifest.ValidationErrors, "--dir is required")
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		manifest.ValidationErrors = append(manifest.ValidationErrors, fmt.Sprintf("stat bundle dir: %v", err))
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	if !info.IsDir() {
+		manifest.ValidationErrors = append(manifest.ValidationErrors, "--dir must point to a directory")
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	for _, expected := range publishedBackupRepairClosureBundleArtifacts() {
+		artifact := publishedBackupRepairClosureBundleArtifact{
+			Step:    expected.step,
+			Name:    expected.name,
+			Purpose: expected.purpose,
+			Path:    filepath.Join(dir, expected.name),
+		}
+		data, err := os.ReadFile(artifact.Path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				manifest.MissingArtifacts++
+				manifest.ValidationErrors = append(manifest.ValidationErrors, fmt.Sprintf("missing %s", expected.name))
+				manifest.Artifacts = append(manifest.Artifacts, artifact)
+				continue
+			}
+			manifest.ValidationErrors = append(manifest.ValidationErrors, fmt.Sprintf("read %s: %v", expected.name, err))
+			manifest.Artifacts = append(manifest.Artifacts, artifact)
+			continue
+		}
+		sum := sha256.Sum256(data)
+		artifact.Exists = true
+		artifact.Bytes = int64(len(data))
+		artifact.ChecksumSHA256 = hex.EncodeToString(sum[:])
+		manifest.PresentArtifacts++
+		manifest.TotalBytes += artifact.Bytes
+		manifest.Artifacts = append(manifest.Artifacts, artifact)
+	}
+	manifest.RequiredArtifacts = len(manifest.Artifacts)
+	manifest.OK = len(manifest.ValidationErrors) == 0
+	if !manifest.OK {
+		return manifest, errors.New(strings.Join(manifest.ValidationErrors, "; "))
+	}
+	return manifest, nil
+}
+
+func verifyPublishedBackupRepairClosureBundleManifest(manifestPath, bundleDirOverride string) (publishedBackupRepairClosureBundleVerifyReport, error) {
+	manifestPath = strings.TrimSpace(manifestPath)
+	report := publishedBackupRepairClosureBundleVerifyReport{
+		Kind:             "contextdb.published_backup_repair.closure_bundle_verify",
+		SchemaVersion:    1,
+		ContextDBVersion: buildinfo.Version,
+		VerifiedAt:       time.Now().UTC().Format(time.RFC3339),
+		ManifestFile:     manifestPath,
+	}
+	if manifestPath == "" {
+		report.ValidationErrors = append(report.ValidationErrors, "--manifest is required")
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	var manifest publishedBackupRepairClosureBundleManifest
+	if err := readJSONFile(manifestPath, &manifest); err != nil {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("read closure bundle manifest: %v", err))
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	if manifest.Kind != "contextdb.published_backup_repair.closure_bundle_manifest" {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("kind = %q, want contextdb.published_backup_repair.closure_bundle_manifest", manifest.Kind))
+	}
+	if manifest.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("schema_version = %d, want 1", manifest.SchemaVersion))
+	}
+	bundleDir := strings.TrimSpace(bundleDirOverride)
+	if bundleDir == "" {
+		bundleDir = strings.TrimSpace(manifest.BundleDir)
+	}
+	if bundleDir == "" {
+		bundleDir = filepath.Dir(manifestPath)
+	}
+	report.BundleDir = bundleDir
+	if len(manifest.Artifacts) == 0 {
+		report.ValidationErrors = append(report.ValidationErrors, "manifest has no artifacts")
+	}
+	for _, artifact := range manifest.Artifacts {
+		item := publishedBackupRepairClosureBundleVerifyArtifact{
+			Step:           artifact.Step,
+			Name:           artifact.Name,
+			Purpose:        artifact.Purpose,
+			Path:           artifact.Path,
+			ExpectedBytes:  artifact.Bytes,
+			ExpectedSHA256: artifact.ChecksumSHA256,
+		}
+		if strings.TrimSpace(bundleDirOverride) != "" || strings.TrimSpace(item.Path) == "" {
+			item.Path = filepath.Join(bundleDir, artifact.Name)
+		}
+		data, err := os.ReadFile(item.Path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				item.ValidationErrors = append(item.ValidationErrors, "artifact missing")
+			} else {
+				item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("read artifact: %v", err))
+			}
+			report.Artifacts = append(report.Artifacts, item)
+			continue
+		}
+		item.Exists = true
+		item.ActualBytes = int64(len(data))
+		sum := sha256.Sum256(data)
+		item.ActualSHA256 = hex.EncodeToString(sum[:])
+		if item.ExpectedBytes != item.ActualBytes {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("bytes = %d, want %d", item.ActualBytes, item.ExpectedBytes))
+		}
+		if strings.TrimSpace(item.ExpectedSHA256) == "" {
+			item.ValidationErrors = append(item.ValidationErrors, "missing expected checksum_sha256")
+		} else if !strings.EqualFold(item.ExpectedSHA256, item.ActualSHA256) {
+			item.ValidationErrors = append(item.ValidationErrors, fmt.Sprintf("checksum_sha256 = %s, want %s", item.ActualSHA256, item.ExpectedSHA256))
+		}
+		report.Artifacts = append(report.Artifacts, item)
+	}
+	for _, item := range report.Artifacts {
+		for _, validationErr := range item.ValidationErrors {
+			report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("%s: %s", item.Name, validationErr))
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, errors.New(strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+type publishedBackupRepairClosureBundleExpectedArtifact struct {
+	step    int
+	name    string
+	purpose string
+}
+
+func publishedBackupRepairClosureBundleArtifacts() []publishedBackupRepairClosureBundleExpectedArtifact {
+	return []publishedBackupRepairClosureBundleExpectedArtifact{
+		{step: 1, name: "01-doctor-freshness-before.json", purpose: "published backup freshness doctor report before repair"},
+		{step: 2, name: "02-doctor-drift-before.json", purpose: "local-vs-published backup catalog drift doctor report before repair"},
+		{step: 3, name: "03-publish-dry-run.json", purpose: "dry-run publish report reviewed before execute"},
+		{step: 4, name: "04-publish-execute.json", purpose: "executed publish report"},
+		{step: 4, name: "04-publish-receipt.json", purpose: "durable publish repair receipt"},
+		{step: 5, name: "05-receipt-verify.json", purpose: "standalone repair receipt verification report"},
+		{step: 6, name: "06-doctor-receipt-verify.json", purpose: "doctor report with published_backup_receipt_verify"},
+		{step: 7, name: "07-doctor-final.json", purpose: "final doctor freshness and drift report after repair"},
+	}
+}
+
+func fetchSnapshotLifecycleIndexPublishedPayload(ctx context.Context, client *http.Client, publishedURL, method, token string) (snapshotLifecycleIndexPublishPayload, string, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, method, publishedURL, nil)
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	if token = strings.TrimSpace(token); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, resp.Status, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return snapshotLifecycleIndexPublishPayload{}, resp.Status, fmt.Errorf("published metadata returned status %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	payload, err := decodeSnapshotLifecycleIndexPublishedPayload(body)
+	if err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, resp.Status, err
+	}
+	return payload, resp.Status, nil
+}
+
+func decodeSnapshotLifecycleIndexPublishedPayload(body []byte) (snapshotLifecycleIndexPublishPayload, error) {
+	var payload snapshotLifecycleIndexPublishPayload
+	if err := json.Unmarshal(body, &payload); err == nil && strings.TrimSpace(payload.Kind) != "" {
+		return payload, nil
+	}
+	var wrapped struct {
+		Payload snapshotLifecycleIndexPublishPayload `json:"payload"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err != nil {
+		return snapshotLifecycleIndexPublishPayload{}, fmt.Errorf("decode published metadata: %w", err)
+	}
+	if strings.TrimSpace(wrapped.Payload.Kind) == "" {
+		return snapshotLifecycleIndexPublishPayload{}, errors.New("decode published metadata: missing payload kind")
+	}
+	return wrapped.Payload, nil
+}
+
+func diffSnapshotLifecycleIndexPublishPayloads(local, published snapshotLifecycleIndexPublishPayload) []string {
+	var diffs []string
+	compareString := func(name, a, b string) {
+		if a != b {
+			diffs = append(diffs, fmt.Sprintf("%s differs: local=%q published=%q", name, a, b))
+		}
+	}
+	compareInt := func(name string, a, b int) {
+		if a != b {
+			diffs = append(diffs, fmt.Sprintf("%s differs: local=%d published=%d", name, a, b))
+		}
+	}
+	compareString("kind", local.Kind, published.Kind)
+	compareInt("schema_version", local.SchemaVersion, published.SchemaVersion)
+	compareString("contextdb_version", local.ContextDBVersion, published.ContextDBVersion)
+	compareString("namespace", local.Namespace, published.Namespace)
+	compareInt("keep", local.Keep, published.Keep)
+	compareInt("total_bundles", local.TotalBundles, published.TotalBundles)
+	compareInt("keep_bundles", local.KeepBundles, published.KeepBundles)
+	compareInt("pruneable_bundles", local.PruneableBundles, published.PruneableBundles)
+
+	localBundles := map[string]snapshotLifecycleIndexPublishBundleSummary{}
+	for _, bundle := range local.Bundles {
+		localBundles[publishBundleKey(bundle)] = bundle
+	}
+	publishedBundles := map[string]snapshotLifecycleIndexPublishBundleSummary{}
+	for _, bundle := range published.Bundles {
+		publishedBundles[publishBundleKey(bundle)] = bundle
+	}
+	for key, localBundle := range localBundles {
+		publishedBundle, ok := publishedBundles[key]
+		if !ok {
+			diffs = append(diffs, "bundle missing from published payload: "+key)
+			continue
+		}
+		if localBundle.Promoted != publishedBundle.Promoted {
+			diffs = append(diffs, fmt.Sprintf("bundle %s promoted differs: local=%t published=%t", key, localBundle.Promoted, publishedBundle.Promoted))
+		}
+		if localBundle.Decision != publishedBundle.Decision {
+			diffs = append(diffs, fmt.Sprintf("bundle %s decision differs: local=%q published=%q", key, localBundle.Decision, publishedBundle.Decision))
+		}
+		if localBundle.ArtifactCount != publishedBundle.ArtifactCount {
+			diffs = append(diffs, fmt.Sprintf("bundle %s artifact_count differs: local=%d published=%d", key, localBundle.ArtifactCount, publishedBundle.ArtifactCount))
+		}
+		if localBundle.ExistingBytes != publishedBundle.ExistingBytes {
+			diffs = append(diffs, fmt.Sprintf("bundle %s existing_bytes differs: local=%d published=%d", key, localBundle.ExistingBytes, publishedBundle.ExistingBytes))
+		}
+		if localBundle.IndexedSHA256s != publishedBundle.IndexedSHA256s {
+			diffs = append(diffs, fmt.Sprintf("bundle %s indexed_sha256s differs: local=%d published=%d", key, localBundle.IndexedSHA256s, publishedBundle.IndexedSHA256s))
+		}
+	}
+	for key := range publishedBundles {
+		if _, ok := localBundles[key]; !ok {
+			diffs = append(diffs, "bundle missing from local payload: "+key)
+		}
+	}
+	sort.Strings(diffs)
+	return diffs
+}
+
+func buildPublishedBackupFreshnessCheck(ctx context.Context, client *http.Client, opts snapshotLifecycleIndexPublishFreshnessOptions) doctor.CheckResult {
+	report, err := buildSnapshotLifecycleIndexPublishFreshnessReport(ctx, client, opts)
+	detail := fmt.Sprintf("url=%s status=%s generated_at=%s age_seconds=%d max_age_seconds=%d",
+		report.PublishedURL,
+		report.Status,
+		report.GeneratedAt,
+		report.AgeSeconds,
+		report.MaxAgeSeconds)
+	if err != nil {
+		if len(report.ValidationErrors) > 0 {
+			detail += ": " + strings.Join(report.ValidationErrors, "; ")
+		} else {
+			detail += ": " + err.Error()
+		}
+		return doctor.CheckResult{Name: "published_backup_freshness", OK: false, Detail: strings.TrimSpace(detail)}
+	}
+	return doctor.CheckResult{Name: "published_backup_freshness", OK: true, Detail: strings.TrimSpace(detail)}
+}
+
+func buildPublishedBackupDriftCheck(ctx context.Context, client *http.Client, path string, opts snapshotLifecycleIndexPublishDriftOptions) doctor.CheckResult {
+	report, err := buildSnapshotLifecycleIndexPublishDriftReport(ctx, client, path, opts)
+	detail := fmt.Sprintf("index=%s url=%s status=%s drift=%t differences=%d",
+		report.IndexFile,
+		report.PublishedURL,
+		report.Status,
+		report.Drift,
+		len(report.Differences))
+	if err != nil {
+		if len(report.Differences) > 0 {
+			detail += ": " + strings.Join(report.Differences, "; ")
+		} else if len(report.ValidationErrors) > 0 {
+			detail += ": " + strings.Join(report.ValidationErrors, "; ")
+		} else {
+			detail += ": " + err.Error()
+		}
+		if strings.TrimSpace(report.RecommendedPublishCommand) != "" {
+			detail += "; recommended_publish_command=" + report.RecommendedPublishCommand
+		}
+		return doctor.CheckResult{Name: "published_backup_drift", OK: false, Detail: strings.TrimSpace(detail)}
+	}
+	return doctor.CheckResult{Name: "published_backup_drift", OK: true, Detail: strings.TrimSpace(detail)}
+}
+
+func buildPublishedBackupReceiptVerifyCheck(receiptPath, indexPath string) doctor.CheckResult {
+	report, err := verifySnapshotLifecycleIndexPublishReceipt(receiptPath, indexPath)
+	detail := fmt.Sprintf("receipt=%s index=%s receipt_status=%s payload_sha256=%s",
+		report.ReceiptFile,
+		report.IndexFile,
+		report.ReceiptStatus,
+		report.ReceiptPayloadSHA256)
+	if err != nil {
+		if len(report.ValidationErrors) > 0 {
+			detail += ": " + strings.Join(report.ValidationErrors, "; ")
+		} else {
+			detail += ": " + err.Error()
+		}
+		return doctor.CheckResult{Name: "published_backup_receipt_verify", OK: false, Detail: strings.TrimSpace(detail)}
+	}
+	return doctor.CheckResult{Name: "published_backup_receipt_verify", OK: true, Detail: strings.TrimSpace(detail)}
+}
+
+func readSnapshotLifecycleIndex(path string) (snapshotLifecycleIndex, error) {
+	var index snapshotLifecycleIndex
+	data, err := os.ReadFile(strings.TrimSpace(path))
+	if err != nil {
+		return index, err
+	}
+	if err := json.Unmarshal(data, &index); err != nil {
+		return index, fmt.Errorf("decode lifecycle index: %w", err)
+	}
+	return index, nil
+}
+
+func snapshotLifecycleBundleMap(bundles []snapshotLifecycleRetentionBundle) map[string]snapshotLifecycleRetentionBundle {
+	out := make(map[string]snapshotLifecycleRetentionBundle, len(bundles))
+	for _, bundle := range bundles {
+		out[snapshotLifecycleBundleKey(bundle)] = bundle
+	}
+	return out
+}
+
+func snapshotLifecycleBundleKey(bundle snapshotLifecycleRetentionBundle) string {
+	parts := []string{
+		strings.TrimSpace(bundle.Namespace),
+		strings.TrimSpace(bundle.CreatedAt),
+		filepath.Base(strings.TrimSpace(bundle.Summary)),
+	}
+	key := strings.Join(parts, "|")
+	if strings.Trim(key, "|") != "" {
+		return key
+	}
+	return strings.TrimSpace(bundle.Summary)
+}
+
+func diffSnapshotLifecycleIndexBundle(key string, oldBundle, newBundle snapshotLifecycleRetentionBundle) (snapshotLifecycleIndexBundleDiff, bool) {
+	diff := snapshotLifecycleIndexBundleDiff{Bundle: key}
+	if oldBundle.Decision != newBundle.Decision {
+		diff.DecisionChanged = true
+		diff.OldDecision = oldBundle.Decision
+		diff.NewDecision = newBundle.Decision
+	}
+	oldArtifacts := snapshotLifecycleArtifactMap(oldBundle.Artifacts)
+	newArtifacts := snapshotLifecycleArtifactMap(newBundle.Artifacts)
+	for _, artifactKey := range sortedStringKeys(newArtifacts) {
+		newArtifact := newArtifacts[artifactKey]
+		oldArtifact, ok := oldArtifacts[artifactKey]
+		if !ok {
+			diff.ArtifactChanges = append(diff.ArtifactChanges, snapshotLifecycleArtifactChange(newArtifact, "added", snapshotLifecycleRetentionArtifact{}))
+			continue
+		}
+		if oldArtifact.Bytes != newArtifact.Bytes || !strings.EqualFold(oldArtifact.ChecksumSHA256, newArtifact.ChecksumSHA256) {
+			diff.ArtifactChanges = append(diff.ArtifactChanges, snapshotLifecycleArtifactChange(newArtifact, "changed", oldArtifact))
+		}
+	}
+	for _, artifactKey := range sortedStringKeys(oldArtifacts) {
+		if _, ok := newArtifacts[artifactKey]; !ok {
+			diff.ArtifactChanges = append(diff.ArtifactChanges, snapshotLifecycleArtifactChange(oldArtifacts[artifactKey], "removed", snapshotLifecycleRetentionArtifact{}))
+		}
+	}
+	return diff, diff.DecisionChanged || len(diff.ArtifactChanges) > 0
+}
+
+func snapshotLifecycleArtifactMap(artifacts []snapshotLifecycleRetentionArtifact) map[string]snapshotLifecycleRetentionArtifact {
+	out := make(map[string]snapshotLifecycleRetentionArtifact, len(artifacts))
+	for _, artifact := range artifacts {
+		out[snapshotLifecycleArtifactKey(artifact)] = artifact
+	}
+	return out
+}
+
+func snapshotLifecycleArtifactKey(artifact snapshotLifecycleRetentionArtifact) string {
+	return strings.TrimSpace(artifact.Kind) + "|" + filepath.Base(strings.TrimSpace(artifact.Path))
+}
+
+func snapshotLifecycleArtifactChange(artifact snapshotLifecycleRetentionArtifact, change string, oldArtifact snapshotLifecycleRetentionArtifact) snapshotLifecycleIndexArtifactDiff {
+	diff := snapshotLifecycleIndexArtifactDiff{
+		Kind:      artifact.Kind,
+		Path:      filepath.Base(strings.TrimSpace(artifact.Path)),
+		Change:    change,
+		NewBytes:  artifact.Bytes,
+		NewSHA256: artifact.ChecksumSHA256,
+	}
+	if change == "changed" {
+		diff.OldBytes = oldArtifact.Bytes
+		diff.OldSHA256 = oldArtifact.ChecksumSHA256
+	}
+	if change == "removed" {
+		diff.OldBytes = artifact.Bytes
+		diff.OldSHA256 = artifact.ChecksumSHA256
+		diff.NewBytes = 0
+		diff.NewSHA256 = ""
+	}
+	return diff
+}
+
+func verifySnapshotLifecycleIndex(path string) (snapshotLifecycleIndexVerifyReport, error) {
+	path = strings.TrimSpace(path)
+	report := snapshotLifecycleIndexVerifyReport{IndexFile: path}
+	if path == "" {
+		return report, fmt.Errorf("--in is required")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return report, fmt.Errorf("read lifecycle index: %w", err)
+	}
+	var index snapshotLifecycleIndex
+	if err := json.Unmarshal(data, &index); err != nil {
+		return report, fmt.Errorf("decode lifecycle index: %w", err)
+	}
+	report.SchemaVersion = index.SchemaVersion
+	report.ContextDBVersion = index.ContextDBVersion
+	report.TotalBundles = len(index.Bundles)
+	if index.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported index schema_version %d", index.SchemaVersion))
+	}
+	for _, bundle := range index.Bundles {
+		for _, artifact := range bundle.Artifacts {
+			check := verifySnapshotLifecycleIndexArtifact(artifact)
+			report.TotalArtifacts++
+			if len(check.Errors) == 0 {
+				report.VerifiedArtifacts++
+			} else {
+				report.ValidationErrors = append(report.ValidationErrors, check.Errors...)
+			}
+			report.Artifacts = append(report.Artifacts, check)
+		}
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("lifecycle index verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func verifySnapshotLifecycleIndexArtifact(artifact snapshotLifecycleRetentionArtifact) snapshotLifecycleIndexArtifactCheck {
+	check := snapshotLifecycleIndexArtifactCheck{
+		Kind:           artifact.Kind,
+		Path:           strings.TrimSpace(artifact.Path),
+		ExpectedBytes:  artifact.Bytes,
+		ExpectedSHA256: strings.TrimSpace(artifact.ChecksumSHA256),
+	}
+	if check.Path == "" {
+		if artifact.Exists {
+			check.Errors = append(check.Errors, "indexed artifact path is empty")
+		}
+		return check
+	}
+	info, err := os.Stat(check.Path)
+	if err != nil || info.IsDir() {
+		if artifact.Exists {
+			check.Errors = append(check.Errors, fmt.Sprintf("indexed artifact missing: %s", check.Path))
+		}
+		return check
+	}
+	check.Exists = true
+	check.ActualBytes = info.Size()
+	if artifact.Exists && artifact.Bytes != check.ActualBytes {
+		check.Errors = append(check.Errors, fmt.Sprintf("artifact size mismatch for %s: index=%d actual=%d", check.Path, artifact.Bytes, check.ActualBytes))
+	}
+	if check.ExpectedSHA256 != "" {
+		data, err := os.ReadFile(check.Path)
+		if err != nil {
+			check.Errors = append(check.Errors, fmt.Sprintf("read indexed artifact %s: %v", check.Path, err))
+			return check
+		}
+		sum := sha256.Sum256(data)
+		check.ActualSHA256 = hex.EncodeToString(sum[:])
+		if !strings.EqualFold(check.ExpectedSHA256, check.ActualSHA256) {
+			check.Errors = append(check.Errors, fmt.Sprintf("artifact checksum mismatch for %s", check.Path))
+		}
+	}
+	return check
+}
+
+func addSnapshotLifecycleIndexHashes(bundles []snapshotLifecycleRetentionBundle) {
+	for i := range bundles {
+		for j := range bundles[i].Artifacts {
+			if !bundles[i].Artifacts[j].Exists || strings.TrimSpace(bundles[i].Artifacts[j].Path) == "" {
+				continue
+			}
+			data, err := os.ReadFile(bundles[i].Artifacts[j].Path)
+			if err != nil {
+				continue
+			}
+			sum := sha256.Sum256(data)
+			bundles[i].Artifacts[j].ChecksumSHA256 = hex.EncodeToString(sum[:])
+		}
+	}
+}
+
+func resolveLifecycleSummaryPath(baseDir, path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(baseDir, path)
+}
+
+func lifecycleFileExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func buildSnapshotArtifactManifest(opts snapshotArtifactManifestOptions) (snapshotArtifactManifest, error) {
+	backupPath := strings.TrimSpace(opts.BackupPath)
+	if backupPath == "" || backupPath == "-" {
+		return snapshotArtifactManifest{}, fmt.Errorf("--manifest requires --out to be a file path")
+	}
+	data, err := os.ReadFile(backupPath)
+	if err != nil {
+		return snapshotArtifactManifest{}, fmt.Errorf("read backup for artifact manifest: %w", err)
+	}
+	counts, err := countSnapshotArtifactRecords(data)
+	if err != nil {
+		return snapshotArtifactManifest{}, err
+	}
+	sum := sha256.Sum256(data)
+	return snapshotArtifactManifest{
+		SchemaVersion:    1,
+		Namespace:        opts.Namespace,
+		BackupFile:       filepath.Base(backupPath),
+		BackupBytes:      int64(len(data)),
+		ChecksumSHA256:   hex.EncodeToString(sum[:]),
+		CreatedAt:        opts.CreatedAt.UTC().Format(time.RFC3339),
+		ContextDBVersion: buildinfo.Version,
+		BackupMarker:     strings.TrimSpace(opts.BackupMarker),
+		Records:          counts,
+	}, nil
+}
+
+func verifySnapshotArtifactManifest(manifestPath, backupPath string) (snapshotArtifactVerifyReport, error) {
+	manifestPath = strings.TrimSpace(manifestPath)
+	if manifestPath == "" {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("--manifest is required")
+	}
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("read artifact manifest: %w", err)
+	}
+	var manifest snapshotArtifactManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("decode artifact manifest: %w", err)
+	}
+	backupPath = strings.TrimSpace(backupPath)
+	if backupPath == "" {
+		if strings.TrimSpace(manifest.BackupFile) == "" {
+			return snapshotArtifactVerifyReport{}, fmt.Errorf("manifest backup_file is empty; pass --in")
+		}
+		backupPath = filepath.Join(filepath.Dir(manifestPath), manifest.BackupFile)
+	}
+	backupData, err := os.ReadFile(backupPath)
+	if err != nil {
+		return snapshotArtifactVerifyReport{}, fmt.Errorf("read backup: %w", err)
+	}
+	counts, err := countSnapshotArtifactRecords(backupData)
+	if err != nil {
+		return snapshotArtifactVerifyReport{}, err
+	}
+	sum := sha256.Sum256(backupData)
+	actualSHA := hex.EncodeToString(sum[:])
+	report := snapshotArtifactVerifyReport{
+		Manifest:         manifestPath,
+		BackupFile:       backupPath,
+		ExpectedBytes:    manifest.BackupBytes,
+		ActualBytes:      int64(len(backupData)),
+		ExpectedSHA256:   manifest.ChecksumSHA256,
+		ActualSHA256:     actualSHA,
+		ExpectedRecords:  manifest.Records,
+		ActualRecords:    counts,
+		ContextDBVersion: buildinfo.Version,
+		ManifestVersion:  manifest.ContextDBVersion,
+		SchemaVersion:    manifest.SchemaVersion,
+	}
+	if manifest.SchemaVersion != 1 {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("unsupported schema_version %d", manifest.SchemaVersion))
+	}
+	if manifest.BackupBytes != report.ActualBytes {
+		report.ValidationErrors = append(report.ValidationErrors, fmt.Sprintf("backup_bytes mismatch: manifest=%d actual=%d", manifest.BackupBytes, report.ActualBytes))
+	}
+	if !strings.EqualFold(strings.TrimSpace(manifest.ChecksumSHA256), actualSHA) {
+		report.ValidationErrors = append(report.ValidationErrors, "checksum_sha256 mismatch")
+	}
+	if manifest.Records != counts {
+		report.ValidationErrors = append(report.ValidationErrors, "record counts mismatch")
+	}
+	report.OK = len(report.ValidationErrors) == 0
+	if !report.OK {
+		return report, fmt.Errorf("artifact manifest verification failed: %s", strings.Join(report.ValidationErrors, "; "))
+	}
+	return report, nil
+}
+
+func rehearseSnapshotRestore(ctx context.Context, db *client.DB, namespace, manifestPath, backupPath string) (snapshotRehearsalReport, error) {
+	verifyReport, err := verifySnapshotArtifactManifest(manifestPath, backupPath)
+	report := snapshotRehearsalReport{
+		Namespace:       namespace,
+		RehearsedAt:     time.Now().UTC().Format(time.RFC3339),
+		TargetNamespace: namespace,
+		Verification:    verifyReport,
+	}
+	if err != nil {
+		return report, err
+	}
+	report.RecommendedImportCommand = recommendedSnapshotImportCommand(namespace, verifyReport.BackupFile)
+	in, closeIn, err := inputReader(verifyReport.BackupFile)
+	if err != nil {
+		return report, err
+	}
+	defer closeIn()
+	restoreReport, err := db.ValidateSnapshotReport(ctx, namespace, in)
+	report.Restore = restoreReport
+	report.OK = err == nil
+	if err != nil {
+		return report, err
+	}
+	return report, nil
+}
+
+func recommendedSnapshotImportCommand(namespace, backupPath string) string {
+	return "contextdb snapshot import --namespace " + shellQuote(namespace) + " --in " + shellQuote(backupPath) + " --report"
+}
+
+func countSnapshotArtifactRecords(data []byte) (snapshotArtifactCounts, error) {
+	var counts snapshotArtifactCounts
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var rec struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			return counts, fmt.Errorf("count artifact manifest record line %d: %w", counts.Lines+1, err)
+		}
+		counts.Lines++
+		switch rec.Type {
+		case "node":
+			counts.Nodes++
+		case "edge":
+			counts.Edges++
+		case "source":
+			counts.Sources++
+		default:
+			return counts, fmt.Errorf("count artifact manifest record line %d: unknown record type %q", counts.Lines, rec.Type)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return counts, fmt.Errorf("count artifact manifest records: %w", err)
+	}
+	return counts, nil
+}

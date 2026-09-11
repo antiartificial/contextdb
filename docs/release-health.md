@@ -24,24 +24,30 @@ Run these checks before tagging a release:
 
 The CI workflow now writes `release-health/release-health.json` and `release-health/release-health-row.md` from the actual `test`, `build`, `durability`, `postgres integration`, and `docker` job results. Use the generated Markdown row as the source for release recap updates so the table follows verified CI evidence rather than hand-maintained status text.
 
+The v0.109–v0.122 recaps are [unverified historical proposals](releases/index#unverified-historical-proposals), not passed releases. Implementation evidence is tracked in the [work unit plan](plans/reliability-review-work-unit).
+
+## v0.123.0 local verification
+
+The [reliability and review work unit](plans/reliability-review-work-unit) ships as v0.123.0 after v0.108.0. The local verification below is separate from CI-generated release summary rows and historical release claims.
+
+| Gate | Result | Evidence |
+|:--|:--|:--|
+| Go suite | Passed | `go test -count=1 ./...` |
+| Static analysis | Passed | `go vet ./...` |
+| Race checks | Passed | Ingest, retrieval, client, and server packages |
+| Postgres | Passed | Live Docker-backed write/retrieve and two-handle advisory lease tests |
+| Workflow integration | Passed | Authenticated HTTP acquisition, repeated candidate execution, approval retry, worker dry run/execution, durable summaries, empty recovery backlog |
+| Authentication | Passed | Real gRPC anonymous/forged/read-only rejection and valid-token tests |
+| SDK contracts | Passed | TypeScript mocked contracts/build; Python sync/async mocks; existing opt-in live SDK cases remain separately skipped |
+| Admin/docs builds | Passed | `npm run admin:build`, `npm run docs:build` |
+| Container | Passed | Native arm64 Docker build; Postgres backend metadata; doctor sample write/retrieve; worker CLI dry run |
+| Browser | Passed | Correct fixture claim/evidence render, nullable-array regression, baseline reload persistence and deletion |
+| Independent review | Reviewed | Sol re-review cleared verified correctness findings after fixes |
+
 ## Release Summary
 
 | Release | Unit and integration | Docs build | Ranking | Durability | API contract | Notes |
 |:--------|:---------------------|:-----------|:--------|:-----------|:-------------|:------|
-| v0.122.0 | Passed | Passed | Ranking dashboard local baselines added | Postgres fault injection, scheduled soak, and Norn smoke passed | Worker, review ops, SDK, REST, GraphQL, admin, and Hermes surfaces covered | Adds centralized review worker deployment, evaluator smoke, admin review operations, and Norn release-candidate evidence |
-| v0.121.0 | Passed | Passed | Corpus coverage present | Scheduled extended soak lane added | CI workflow dispatch and soak configuration covered | Adds longer configurable storage/retrieval concurrency soak for scheduled and manual CI |
-| v0.120.0 | Passed | Passed | Corpus coverage present | Postgres fault injection added | Docker-backed Postgres integration cases covered | Adds malformed DSN, unreachable Postgres, read-only migration, and write/retrieve smoke coverage |
-| v0.119.0 | Passed | Passed | Ranking dashboard local baselines added | Corpus coverage present | Admin ranking dashboard coverage added | Adds browser-local ranking baseline history for repeatable release comparisons |
-| v0.118.0 | Passed | Passed | Corpus coverage present | Debugger graph context coverage added | Admin belief API filter coverage added | Adds relation and source-trust filters for graph context around belief debugger nodes |
-| v0.117.0 | Passed | Passed | Corpus coverage present | Source quarantine admin coverage added | Review ops and source quarantine API coverage added | Adds dry-run source quarantine candidates and one-source reviewed label execution |
-| v0.116.0 | Passed | Passed | Corpus coverage present | Hermes review integration coverage added | Hermes review tool coverage added | Adds Hermes review queue inspection and review-note annotation while keeping mutation in the worker |
-| v0.115.0 | Passed | Passed | Corpus coverage present | Review operations dashboard coverage added | Admin review-ops API coverage added | Adds queue posture, stale claims, source trust drops, action counts, recent runs, and manual-review lanes |
-| v0.114.0 | Passed | Passed | Corpus coverage present | Evaluator smoke failure fixture coverage added | Provider failure smoke coverage added | Adds missing-key, rate-limit, and malformed decision fixtures for evaluator smoke checks |
-| v0.113.0 | Passed | Passed | Corpus coverage present | Policy preset coverage added | Worker CLI and JSON policy preset coverage added | Adds observe-only, stale-only, and provider-assisted validation presets |
-| v0.112.0 | Passed | Passed | Corpus coverage present | Async Python review coverage added | Python async review workflow coverage added | Adds async review queue, decision, and worker run summary parity |
-| v0.111.0 | Passed | Passed | Corpus coverage present | Evaluator smoke coverage added | Worker smoke report coverage added | Adds synthetic non-mutating evaluator checks before worker database access |
-| v0.110.0 | Passed | Passed | Corpus coverage present | Namespace policy coverage added | Review worker policy configuration coverage added | Adds per-namespace dry-run, threshold, owner, evaluator, review type, and action policies |
-| v0.109.0 | Passed | Passed | Corpus coverage present | Worker run summary coverage added | Go, REST, GraphQL, TypeScript, and Python run summary surfaces covered | Adds durable review worker run summaries with evaluator, dry-run, counts, and planned decisions |
 | v0.108.0 | Passed | Passed | Corpus coverage present | Race/soak and Docker-backed Postgres CI lanes added | Schema catalog, closure bundle, fixture catalog, and source quarantine tests added | Adds CI-backed release health, reliability verifiers, and dry-run-first source quarantine |
 | v0.107.0 | Passed | Passed | Corpus coverage present | Acquisition retry receipt coverage added | Connector retry execution and receipt tests added | Adds retry receipts and idempotency keys for acquisition connector execution |
 | v0.106.0 | Passed | Passed | Corpus coverage present | Provider connector normalization coverage added | CLI connector server and provider adapter tests added | Adds OpenAI, xAI, and Anthropic acquisition connector adapters |

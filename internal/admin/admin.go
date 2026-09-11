@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,9 +32,12 @@ import (
 
 // adminHandler serves the admin dashboard.
 type adminHandler struct {
-	db    *client.DB
-	graph store.GraphStore
-	mux   *http.ServeMux
+	db              *client.DB
+	graph           store.GraphStore
+	mux             *http.ServeMux
+	evalMu          sync.Mutex
+	evaluations     map[string]store.GraphStore
+	evaluationOrder []string
 }
 
 //go:embed dist/index.html dist/assets/*
@@ -43,9 +47,10 @@ var adminDist embed.FS
 func New(db *client.DB) http.Handler {
 	graph, _, _, _ := db.Stores()
 	h := &adminHandler{
-		db:    db,
-		graph: graph,
-		mux:   http.NewServeMux(),
+		db:          db,
+		graph:       graph,
+		mux:         http.NewServeMux(),
+		evaluations: make(map[string]store.GraphStore),
 	}
 	staticFS, err := fs.Sub(adminDist, "dist")
 	if err == nil {
@@ -67,6 +72,7 @@ func New(db *client.DB) http.Handler {
 }
 
 type adminRankingEvalReport struct {
+	EvaluationID     string                     `json:"evaluation_id,omitempty"`
 	SchemaVersion    int                        `json:"schema_version"`
 	GeneratedAt      string                     `json:"generated_at"`
 	ContextDBVersion string                     `json:"contextdb_version"`
@@ -213,23 +219,36 @@ func (h *adminHandler) handleRankingEval(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "top_k must be 25 or less", http.StatusBadRequest)
 		return
 	}
-	report, err := buildAdminRankingEvalReport(r.Context(), topK, time.Now().UTC())
+	corpus := testdata.Build()
+	report, err := buildAdminRankingEvalReportForCorpus(r.Context(), topK, time.Now().UTC(), corpus)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	report.EvaluationID = uuid.NewString()
+	h.evalMu.Lock()
+	h.evaluations[report.EvaluationID] = corpus.Graph
+	h.evaluationOrder = append(h.evaluationOrder, report.EvaluationID)
+	if len(h.evaluationOrder) > 3 {
+		delete(h.evaluations, h.evaluationOrder[0])
+		h.evaluationOrder = h.evaluationOrder[1:]
+	}
+	h.evalMu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(report)
 }
 
 func buildAdminRankingEvalReport(ctx context.Context, topK int, generatedAt time.Time) (adminRankingEvalReport, error) {
+	return buildAdminRankingEvalReportForCorpus(ctx, topK, generatedAt, testdata.Build())
+}
+
+func buildAdminRankingEvalReportForCorpus(ctx context.Context, topK int, generatedAt time.Time, corpus *testdata.Corpus) (adminRankingEvalReport, error) {
 	if topK <= 0 {
 		topK = 5
 	}
 	if generatedAt.IsZero() {
 		generatedAt = time.Now().UTC()
 	}
-	corpus := testdata.Build()
 	engine := retrieval.Engine{
 		Graph:   corpus.Graph,
 		Vectors: corpus.Vecs,
@@ -551,7 +570,19 @@ func (h *adminHandler) handleBeliefAudit(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	audit, err := observe.AuditBelief(r.Context(), h.graph, ns, nodeID)
+	graph := h.graph
+	evaluationID := strings.TrimSpace(r.URL.Query().Get("evaluation_id"))
+	if evaluationID != "" {
+		h.evalMu.Lock()
+		graph = h.evaluations[evaluationID]
+		if graph == nil {
+			h.evalMu.Unlock()
+			http.Error(w, "ranking evaluation context not found or expired", http.StatusNotFound)
+			return
+		}
+		defer h.evalMu.Unlock()
+	}
+	audit, err := observe.AuditBelief(r.Context(), graph, ns, nodeID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -560,7 +591,7 @@ func (h *adminHandler) handleBeliefAudit(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "node not found", http.StatusNotFound)
 		return
 	}
-	response, err := h.buildBeliefAuditResponse(r.Context(), ns, audit)
+	response, err := h.buildBeliefAuditResponse(r.Context(), ns, audit, graph, evaluationID == "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -570,8 +601,8 @@ func (h *adminHandler) handleBeliefAudit(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(response)
 }
 
-func (h *adminHandler) buildBeliefAuditResponse(ctx context.Context, ns string, audit *observe.BeliefAudit) (adminBeliefAuditResponse, error) {
-	summary, err := h.buildEpistemicsSummary(ctx, ns, audit)
+func (h *adminHandler) buildBeliefAuditResponse(ctx context.Context, ns string, audit *observe.BeliefAudit, graph store.GraphStore, includeSourceTimeline bool) (adminBeliefAuditResponse, error) {
+	summary, err := h.buildEpistemicsSummary(ctx, ns, audit, graph, includeSourceTimeline)
 	if err != nil {
 		return adminBeliefAuditResponse{}, err
 	}
@@ -587,7 +618,7 @@ func (h *adminHandler) buildBeliefAuditResponse(ctx context.Context, ns string, 
 	}, nil
 }
 
-func (h *adminHandler) buildEpistemicsSummary(ctx context.Context, ns string, audit *observe.BeliefAudit) (adminEpistemicsSummary, error) {
+func (h *adminHandler) buildEpistemicsSummary(ctx context.Context, ns string, audit *observe.BeliefAudit, graph store.GraphStore, includeSourceTimeline bool) (adminEpistemicsSummary, error) {
 	summary := adminEpistemicsSummary{
 		NodeID:    audit.Node.ID.String(),
 		Namespace: audit.Node.Namespace,
@@ -614,19 +645,14 @@ func (h *adminHandler) buildEpistemicsSummary(ctx context.Context, ns string, au
 			ClaimsRefuted:        audit.Source.ClaimsRefuted,
 			UpdatedAt:            formatOptionalTime(audit.Source.UpdatedAt),
 		}
-		timeline, err := h.db.Namespace(ns, "").SourceTrustTimeline(ctx, audit.Source.ExternalID, time.Time{})
-		if err != nil {
-			return summary, err
-		}
-		for _, point := range timeline {
-			summary.SourceTrustTimeline = append(summary.SourceTrustTimeline, adminSourceTrustPoint{
-				Time:              point.TxTime.Format(time.RFC3339),
-				SourceID:          point.SourceID,
-				NodeID:            point.NodeID.String(),
-				Action:            point.Action,
-				SourceCredibility: point.SourceCredibility,
-				Reason:            point.Reason,
-			})
+		if includeSourceTimeline {
+			timeline, err := h.db.Namespace(ns, "").SourceTrustTimeline(ctx, audit.Source.ExternalID, time.Time{})
+			if err != nil {
+				return summary, err
+			}
+			for _, point := range timeline {
+				summary.SourceTrustTimeline = append(summary.SourceTrustTimeline, adminSourceTrustPoint{Time: point.TxTime.Format(time.RFC3339), SourceID: point.SourceID, NodeID: point.NodeID.String(), Action: point.Action, SourceCredibility: point.SourceCredibility, Reason: point.Reason})
+			}
 		}
 		summary.Counts.SourceTrustPoints = len(summary.SourceTrustTimeline)
 	}
@@ -640,7 +666,7 @@ func (h *adminHandler) buildEpistemicsSummary(ctx context.Context, ns string, au
 	for _, contradictor := range audit.Contradictors {
 		summary.ContradictionPaths = append(summary.ContradictionPaths, buildAdminContradictionPath(audit.Node, contradictor))
 	}
-	graphContext, err := h.buildAdminGraphContext(ctx, ns, audit.Node.ID)
+	graphContext, err := buildAdminGraphContext(ctx, graph, ns, audit.Node.ID)
 	if err != nil {
 		return summary, err
 	}
@@ -649,18 +675,18 @@ func (h *adminHandler) buildEpistemicsSummary(ctx context.Context, ns string, au
 	return summary, nil
 }
 
-func (h *adminHandler) buildAdminGraphContext(ctx context.Context, ns string, nodeID uuid.UUID) ([]adminGraphContextNode, error) {
-	outgoing, err := h.graph.EdgesFrom(ctx, ns, nodeID, nil)
+func buildAdminGraphContext(ctx context.Context, graph store.GraphStore, ns string, nodeID uuid.UUID) ([]adminGraphContextNode, error) {
+	outgoing, err := graph.EdgesFrom(ctx, ns, nodeID, nil)
 	if err != nil {
 		return nil, err
 	}
-	incoming, err := h.graph.EdgesTo(ctx, ns, nodeID, nil)
+	incoming, err := graph.EdgesTo(ctx, ns, nodeID, nil)
 	if err != nil {
 		return nil, err
 	}
 	context := make([]adminGraphContextNode, 0, len(outgoing)+len(incoming))
 	for _, edge := range outgoing {
-		node, err := h.graph.GetNode(ctx, ns, edge.Dst)
+		node, err := graph.GetNode(ctx, ns, edge.Dst)
 		if err != nil {
 			return nil, err
 		}
@@ -670,7 +696,7 @@ func (h *adminHandler) buildAdminGraphContext(ctx context.Context, ns string, no
 		context = append(context, buildAdminGraphContextNode(*node, edge, "outgoing"))
 	}
 	for _, edge := range incoming {
-		node, err := h.graph.GetNode(ctx, ns, edge.Src)
+		node, err := graph.GetNode(ctx, ns, edge.Src)
 		if err != nil {
 			return nil, err
 		}

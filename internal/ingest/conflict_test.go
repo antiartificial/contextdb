@@ -141,9 +141,9 @@ func TestTemporalOverlap(t *testing.T) {
 	// Helper to build a minimal node with given valid window.
 	node := func(from time.Time, until *time.Time) core.Node {
 		return core.Node{
-			ID:        uuid.New(),
-			Namespace: "test",
-			ValidFrom: from,
+			ID:         uuid.New(),
+			Namespace:  "test",
+			ValidFrom:  from,
 			ValidUntil: until,
 		}
 	}
@@ -269,7 +269,7 @@ func TestConflictDetector_ConfidenceDecay(t *testing.T) {
 	// Confidence of the contradicted node should have decayed.
 	updated, err := graph.GetNode(ctx, "test", existingID)
 	is.NoErr(err)
-	is.True(updated.Confidence < 0.9) // must be lower than original 0.9
+	is.True(updated.Confidence < 0.9)  // must be lower than original 0.9
 	is.True(updated.Confidence >= 0.1) // must not go below floor
 }
 

@@ -9,4 +9,6 @@ export type {
   AcquisitionConnector,
   AcquisitionExecutionPlan,
   AcquisitionExecutionRequest,
+  AcquisitionReviewCandidate,
+  ReviewWorkerRequest,
 } from './types';

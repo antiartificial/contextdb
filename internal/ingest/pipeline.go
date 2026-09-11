@@ -52,16 +52,22 @@ type IngestRequest struct {
 
 // IngestResult describes the outcome of a pipeline run.
 type IngestResult struct {
-	NodesWritten          int
-	EdgesWritten          int
-	Rejected              int
-	Entities              []extract.Entity
-	AnomalySignals        []AnomalySignal // non-nil when write-rate anomalies were detected
+	NodesWritten           int
+	EdgesWritten           int
+	Rejected               int
+	Entities               []extract.Entity
+	AnomalySignals         []AnomalySignal // non-nil when write-rate anomalies were detected
 	ConflictBudgetExceeded bool            // true when conflict detection was skipped due to budget
 }
 
 // Ingest runs raw text through extraction, admission, and persistence.
 func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) (*IngestResult, error) {
+	// An earlier process may have stopped between graph, vector, or edge writes.
+	// Repair it before extracting new work; failures remain visible to callers.
+	if err := Recover(ctx, p.graph, p.vecs, p.log, req.Namespace); err != nil {
+		return nil, fmt.Errorf("recover pending writes: %w", err)
+	}
+
 	// Step 1: Extract entities and relations
 	result, err := p.extractor.Extract(ctx, extract.ExtractionRequest{
 		Text:      req.Text,
@@ -128,27 +134,26 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) (*IngestResult
 
 		node.Confidence *= decision.ConfidenceMultiplier
 
-		if err := p.graph.UpsertNode(ctx, node); err != nil {
-			return nil, fmt.Errorf("upsert node: %w", err)
-		}
-
-		// Index vector if present
+		// Assign the vector ID before recording the intent so retrying the
+		// operation replaces the same index record.
+		var vector *core.VectorEntry
 		if len(node.Vector) > 0 {
 			nID := node.ID
-			if err := p.vecs.Index(ctx, core.VectorEntry{
+			vector = &core.VectorEntry{
 				ID:        uuid.New(),
 				Namespace: req.Namespace,
 				NodeID:    &nID,
 				Vector:    node.Vector,
 				Text:      fmt.Sprintf("%v", node.Properties["text"]),
 				CreatedAt: time.Now(),
-			}); err != nil {
-				return nil, fmt.Errorf("index vector: %w", err)
 			}
-			// Register node for search assembly if supported
-			if reg, ok := p.vecs.(interface{ RegisterNode(core.Node) }); ok {
-				reg.RegisterNode(node)
-			}
+		}
+		if err := PersistNew(ctx, p.graph, p.vecs, p.log, WritePlan{
+			ID:     uuid.New(),
+			Node:   &node,
+			Vector: vector,
+		}); err != nil {
+			return nil, fmt.Errorf("persist node: %w", err)
 		}
 
 		nodeIDMap[origID] = node.ID
@@ -164,8 +169,11 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) (*IngestResult
 		if _, dstOK := nodeIDMap[edge.Dst]; !dstOK {
 			continue
 		}
-		if err := p.graph.UpsertEdge(ctx, edge); err != nil {
-			return nil, fmt.Errorf("upsert edge: %w", err)
+		if err := PersistNew(ctx, p.graph, p.vecs, p.log, WritePlan{
+			ID:    uuid.New(),
+			Edges: []core.Edge{edge},
+		}); err != nil {
+			return nil, fmt.Errorf("persist edge: %w", err)
 		}
 		edgesWritten++
 	}
@@ -179,11 +187,11 @@ func (p *Pipeline) Ingest(ctx context.Context, req IngestRequest) (*IngestResult
 	}
 
 	return &IngestResult{
-		NodesWritten:          written,
-		EdgesWritten:          edgesWritten,
-		Rejected:              rejected,
-		Entities:              result.Entities,
-		AnomalySignals:        p.anomalyDetector.Signals(),
+		NodesWritten:           written,
+		EdgesWritten:           edgesWritten,
+		Rejected:               rejected,
+		Entities:               result.Entities,
+		AnomalySignals:         p.anomalyDetector.Signals(),
 		ConflictBudgetExceeded: !conflictAllowed,
 	}, nil
 }

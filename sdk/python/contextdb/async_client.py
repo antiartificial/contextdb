@@ -7,6 +7,7 @@ Mirror of client.py using httpx.AsyncClient for use in async contexts
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -32,9 +33,10 @@ class AsyncContextDB:
             results = await ns.retrieve(text="What is Go?", top_k=5)
     """
 
-    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, *, timeout: float = 30.0, token: str = "") -> None:
         self._base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=timeout)
+        headers = {"Authorization": f"Bearer {token}"} if token else None
+        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=timeout, headers=headers)
 
     def namespace(self, name: str, mode: str = "general") -> AsyncNamespace:
         """Return an async namespace handle."""
@@ -199,6 +201,7 @@ class AsyncNamespace:
         max_results: int = 0,
         max_attempts: int = 0,
         execute: bool = False,
+        review_before_admission: bool = False,
     ) -> dict[str, Any]:
         """Preview or execute connector-specific acquisition workflows."""
         body: dict[str, Any] = {
@@ -215,6 +218,7 @@ class AsyncNamespace:
                 for c in connectors
             ],
             "execute": execute,
+            "review_before_admission": review_before_admission,
         }
         if top_k:
             body["top_k"] = top_k
@@ -234,10 +238,32 @@ class AsyncNamespace:
             body["max_attempts"] = max_attempts
 
         resp = await self._client.post(
-            f"/v1/namespaces/{self._name}/acquisition/execute", json=body
+            f"/v1/namespaces/{quote(self._name, safe='')}/acquisition/execute", json=body
         )
         resp.raise_for_status()
         return resp.json()
+
+    async def acquisition_review_candidates(self) -> list[dict[str, Any]]:
+        resp = await self._client.get(f"/v1/namespaces/{quote(self._name, safe='')}/acquisition/review/candidates", params={"mode": self._mode})
+        resp.raise_for_status()
+        return resp.json()["candidates"]
+
+    async def decide_acquisition_candidate(self, candidate_id: str, action: str, *, actor: str = "", note: str = "") -> dict[str, Any]:
+        if action not in ("approve", "reject"):
+            raise ValueError("action must be approve or reject")
+        resp = await self._client.post(f"/v1/namespaces/{quote(self._name, safe='')}/acquisition/review/candidates/{quote(candidate_id, safe='')}/{action}", json={"mode": self._mode, "actor": actor, "note": note})
+        resp.raise_for_status()
+        return resp.json()
+
+    async def run_review_worker(self, *, execute: bool = False, limit: int = 25, allowed_actions: list[str] | None = None, evaluator: str = "rules") -> dict[str, Any]:
+        resp = await self._client.post(f"/v1/namespaces/{quote(self._name, safe='')}/review/worker/cycle", json={"execute": execute, "limit": limit, "allowed_actions": allowed_actions or [], "evaluator": evaluator})
+        resp.raise_for_status()
+        return resp.json()
+
+    async def review_worker_runs(self) -> list[dict[str, Any]]:
+        resp = await self._client.get(f"/v1/namespaces/{quote(self._name, safe='')}/review/worker/runs")
+        resp.raise_for_status()
+        return resp.json()["runs"]
 
     async def acquisition_execution_receipts(self, after: str = "") -> list[dict[str, Any]]:
         """Return append-only acquisition connector execution receipts."""

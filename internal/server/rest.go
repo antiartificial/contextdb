@@ -66,6 +66,8 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/review/decisions", s.handleReviewDecisions)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/review/decisions", s.handleRecordReviewDecision)
 
+	s.registerReviewWorkerRoutes(mux)
+
 	// POST /v1/namespaces/{ns}/consensus/{claimID}
 	mux.HandleFunc("POST /v1/namespaces/{ns}/consensus/{claimID}", s.handleConsensus)
 
@@ -83,8 +85,14 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/namespaces/{ns}/acquisition/retry-candidates", s.handleAcquisitionRetryCandidates)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/acquisition/retry-recommendations", s.handleAcquisitionRetryRecommendations)
 
+	s.registerAcquisitionReviewRoutes(mux)
+	s.registerRecoveryRoutes(mux)
+
 	// GET /v1/stats
 	mux.HandleFunc("GET /v1/stats", s.handleStats)
+	mux.HandleFunc("GET /v1/backends", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, s.db.Backends())
+	})
 
 	// GET /v1/ping
 	mux.HandleFunc("GET /v1/ping", s.handlePing)
@@ -256,12 +264,13 @@ type acquisitionPlanRequest struct {
 
 type acquisitionExecuteRequest struct {
 	acquisitionPlanRequest
-	TaskIDs          []string                      `json:"task_ids,omitempty"`
-	Connectors       []client.AcquisitionConnector `json:"connectors,omitempty"`
-	AllowedSourceIDs []string                      `json:"allowed_source_ids,omitempty"`
-	MaxResults       int                           `json:"max_results,omitempty"`
-	MaxAttempts      int                           `json:"max_attempts,omitempty"`
-	Execute          bool                          `json:"execute,omitempty"`
+	TaskIDs               []string                      `json:"task_ids,omitempty"`
+	Connectors            []client.AcquisitionConnector `json:"connectors,omitempty"`
+	AllowedSourceIDs      []string                      `json:"allowed_source_ids,omitempty"`
+	MaxResults            int                           `json:"max_results,omitempty"`
+	MaxAttempts           int                           `json:"max_attempts,omitempty"`
+	Execute               bool                          `json:"execute,omitempty"`
+	ReviewBeforeAdmission bool                          `json:"review_before_admission,omitempty"`
 }
 
 type acquisitionReceiptsResponse struct {
@@ -1443,12 +1452,13 @@ func (s *RESTServer) handleAcquisitionExecute(w http.ResponseWriter, r *http.Req
 			MaxGaps:    req.MaxGaps,
 			Budget:     req.Budget,
 		},
-		TaskIDs:          req.TaskIDs,
-		Connectors:       req.Connectors,
-		AllowedSourceIDs: req.AllowedSourceIDs,
-		MaxResults:       req.MaxResults,
-		MaxAttempts:      req.MaxAttempts,
-		Execute:          req.Execute,
+		TaskIDs:               req.TaskIDs,
+		Connectors:            req.Connectors,
+		AllowedSourceIDs:      req.AllowedSourceIDs,
+		MaxResults:            req.MaxResults,
+		MaxAttempts:           req.MaxAttempts,
+		Execute:               req.Execute,
+		ReviewBeforeAdmission: req.ReviewBeforeAdmission,
 	}
 	var plan *client.AcquisitionExecutionPlan
 	var err error

@@ -10,6 +10,7 @@ import (
 
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/retrieval"
+	badgerstore "github.com/antiartificial/contextdb/internal/store/badger"
 	memstore "github.com/antiartificial/contextdb/internal/store/memory"
 )
 
@@ -87,6 +88,70 @@ func TestEngine_VectorOnlyRetrieval(t *testing.T) {
 	}
 }
 
+func TestEngineHydratesCachedANNNodeAfterFeedbackAndRetraction(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	now := time.Now().Add(-time.Second)
+	node := core.Node{ID: uuid.New(), Namespace: testNS, Labels: []string{"Claim"}, Properties: map[string]any{"text": "cached"}, Vector: makeVec(0, 8), Confidence: 0.2, ValidFrom: now, TxTime: now}
+	is.NoErr(graph.UpsertNode(ctx, node))
+	vecs.RegisterNode(node)
+	is.NoErr(vecs.Index(ctx, core.VectorEntry{ID: uuid.New(), Namespace: testNS, NodeID: &node.ID, Vector: node.Vector, Text: "cached", CreatedAt: now}))
+	engine := &retrieval.Engine{Graph: graph, Vectors: vecs}
+	query := retrieval.Query{Namespace: testNS, Vector: node.Vector, TopK: 1, ScoreParams: core.GeneralParams()}
+	query.ScoreParams.AsOf = time.Now()
+	results, err := engine.Retrieve(ctx, query)
+	is.NoErr(err)
+	is.Equal(len(results), 1)
+	is.Equal(results[0].Confidence, 0.2)
+	node.Confidence = 0.9
+	node.TxTime = time.Now()
+	is.NoErr(graph.UpsertNode(ctx, node))
+	query.ScoreParams.AsOf = time.Now().Add(time.Millisecond)
+	results, err = engine.Retrieve(ctx, query)
+	is.NoErr(err)
+	is.Equal(len(results), 1)
+	is.Equal(results[0].Confidence, 0.9)
+	is.NoErr(graph.RetractNode(ctx, testNS, node.ID, "retracted", time.Now()))
+	query.ScoreParams.AsOf = time.Now().Add(time.Millisecond)
+	results, err = engine.Retrieve(ctx, query)
+	is.NoErr(err)
+	is.Equal(len(results), 0)
+	// A temporal query before the retraction still hydrates the historical version.
+	query.ScoreParams.AsOf = now.Add(500 * time.Millisecond)
+	results, err = engine.Retrieve(ctx, query)
+	is.NoErr(err)
+	is.Equal(len(results), 1)
+	is.Equal(results[0].Confidence, 0.2)
+}
+
+func TestEngineHydratesBadgerANNNodeAfterRetraction(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	db, err := badgerstore.Open(t.TempDir())
+	is.NoErr(err)
+	defer db.Close()
+	graph := badgerstore.NewGraphStore(db.Inner())
+	vecs := badgerstore.NewVectorIndex(db.Inner(), badgerstore.HNSWConfig{})
+	now := time.Now().Add(-time.Second)
+	node := core.Node{ID: uuid.New(), Namespace: testNS, Labels: []string{"Claim"}, Properties: map[string]any{"text": "badger"}, Vector: makeVec(1, 8), Confidence: .8, ValidFrom: now, TxTime: now}
+	is.NoErr(graph.UpsertNode(ctx, node))
+	vecs.RegisterNode(node)
+	is.NoErr(vecs.Index(ctx, core.VectorEntry{ID: uuid.New(), Namespace: testNS, NodeID: &node.ID, Vector: node.Vector, Text: "badger", CreatedAt: now}))
+	engine := &retrieval.Engine{Graph: graph, Vectors: vecs}
+	query := retrieval.Query{Namespace: testNS, Vector: node.Vector, TopK: 1, ScoreParams: core.GeneralParams()}
+	query.ScoreParams.AsOf = time.Now()
+	results, err := engine.Retrieve(ctx, query)
+	is.NoErr(err)
+	is.Equal(len(results), 1)
+	is.NoErr(graph.RetractNode(ctx, testNS, node.ID, "retracted", time.Now()))
+	query.ScoreParams.AsOf = time.Now().Add(time.Millisecond)
+	results, err = engine.Retrieve(ctx, query)
+	is.NoErr(err)
+	is.Equal(len(results), 0)
+}
+
 func TestEngine_GraphWalkRetrieval(t *testing.T) {
 	is := is.New(t)
 	graph := memstore.NewGraphStore()
@@ -118,6 +183,45 @@ func TestEngine_GraphWalkRetrieval(t *testing.T) {
 		inResults[r.ID] = true
 	}
 	is.True(inResults[ids[0]] || inResults[ids[2]])
+}
+
+func TestEngine_GraphWalkRespectsEdgeTypes(t *testing.T) {
+	graph := memstore.NewGraphStore()
+	vecs := memstore.NewVectorIndex()
+	ctx := context.Background()
+	ids := seedFixtures(t, graph, vecs)
+
+	for _, edge := range []core.Edge{
+		{ID: uuid.New(), Namespace: testNS, Src: ids[0], Dst: ids[1], Type: "supports", Weight: 1, ValidFrom: time.Now()},
+		{ID: uuid.New(), Namespace: testNS, Src: ids[0], Dst: ids[2], Type: "contradicts", Weight: 1, ValidFrom: time.Now()},
+	} {
+		if err := graph.UpsertEdge(ctx, edge); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	results, err := (&retrieval.Engine{Graph: graph, Vectors: vecs}).Retrieve(ctx, retrieval.Query{
+		Namespace: testNS,
+		SeedIDs:   []uuid.UUID{ids[0]},
+		TopK:      10,
+		Strategy: retrieval.HybridStrategy{
+			GraphWeight: 1, Traversal: "bfs", MaxDepth: 2, EdgeTypes: []string{"supports"},
+		},
+		ScoreParams: core.GeneralParams(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[uuid.UUID]bool)
+	for _, result := range results {
+		got[result.ID] = true
+	}
+	if !got[ids[1]] {
+		t.Fatal("supports target missing from traversal")
+	}
+	if got[ids[2]] {
+		t.Fatal("contradicts target returned despite supports edge filter")
+	}
 }
 
 func TestEngine_StrategyComparison(t *testing.T) {

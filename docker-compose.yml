@@ -11,9 +11,11 @@ services:
     ports:
       - "7700:7700"   # gRPC (Phase 5)
       - "7701:7701"   # REST gateway (Phase 5)
+      - "7702:7702"   # observability and health
     volumes:
       - contextdb-data:/data
     environment:
+      - CONTEXTDB_MODE=standard
       - CONTEXTDB_DATA_DIR=/data
       - CONTEXTDB_LOG_LEVEL=debug
       - CONTEXTDB_DSN=postgres://contextdb:contextdb@postgres:5432/contextdb?sslmode=disable
@@ -21,10 +23,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "[ -f /contextdb ]"]
+      test: ["CMD", "/contextdb", "doctor", "--url", "http://127.0.0.1:7701"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 20s
 
   postgres:
     image: pgvector/pgvector:pg16

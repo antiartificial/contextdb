@@ -22,7 +22,9 @@ RUN go mod download
 # Copy source and build a statically linked binary
 COPY . .
 COPY --from=admin-ui-builder /src/internal/admin/dist ./internal/admin/dist
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath -ldflags="-s -w -extldflags=-static" \
     -o /out/contextdb ./cmd/contextdb
 
@@ -38,6 +40,6 @@ COPY --from=builder /out/contextdb /contextdb
 # Data directory for embedded BadgerDB (mounted as a volume in production)
 VOLUME ["/data"]
 
-EXPOSE 7700 7701
+EXPOSE 7700 7701 7702
 
 ENTRYPOINT ["/contextdb"]

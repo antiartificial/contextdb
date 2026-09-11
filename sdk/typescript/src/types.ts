@@ -80,6 +80,7 @@ export interface AcquisitionExecutionRequest {
   maxResults?: number;
   maxAttempts?: number;
   execute?: boolean;
+  reviewBeforeAdmission?: boolean;
 }
 
 /** Result returned by acquisition connector workflows. */
@@ -92,4 +93,21 @@ export interface AcquisitionExecutionPlan {
   connectors: Record<string, unknown>[];
   runs: Record<string, unknown>[];
   summary: Record<string, number>;
+}
+
+export interface ReviewWorkerRequest {
+  execute?: boolean;
+  limit?: number;
+  allowed_actions?: string[];
+  evaluator?: 'rules' | 'webhook';
+}
+
+export interface AcquisitionReviewCandidate {
+  candidate_id: string;
+  namespace: string;
+  node_id: string;
+  content: string;
+  source_id: string;
+  created_at: string;
+  [key: string]: unknown;
 }

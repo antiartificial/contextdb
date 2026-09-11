@@ -11,7 +11,7 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Embedded mode | Implemented | v0.1 | `runtime` | `client.ModeEmbedded`, memory stores, Badger persistence |
 | Standard mode | Implemented | v0.1 | `runtime` | Postgres graph/KV/event/vector stores and migrations |
 | Remote mode | Implemented | v0.1 | `runtime` | JSON-over-gRPC remote stores |
-| Scaled mode | Partial | v0.2 | `runtime`, `scale` | Config surface exists; Qdrant/Redis paths require integration setup |
+| Scaled mode | Unavailable | v0.2 | `runtime`, `scale` | Reserved configuration; current build rejects it explicitly. Use standard mode. |
 | Score breakdown | Implemented | v0.3 | `inspectability`, `non-breaking` | SDK, REST, gRPC, GraphQL expose weighted score contributions |
 | Write deduplication | Implemented, opt-in | v0.3 | `cost`, `non-breaking` | Content fingerprints skip repeat embedding and touch existing nodes when enabled per request or server |
 | GraphQL search | Implemented | v0.3 | `inspectability`, `product-surface` | `/graphql` search, filters, edge and source resolvers |
@@ -29,6 +29,9 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Feedback event log | Implemented | v0.5 | `feedback-loop`, `audit`, `non-breaking` | Go SDK, REST, and GraphQL expose durable feedback events |
 | Source trust timeline | Implemented | v0.6 | `audit`, `epistemics`, `feedback-loop` | Go SDK, REST, and GraphQL expose credibility points from feedback events |
 | Claim review queue | Implemented | v0.7 | `feedback-loop`, `epistemics`, `operations` | Go SDK, REST, and GraphQL expose ranked review tasks for refuted, stale, low-confidence, and contradictory claims |
+| Central review worker | Implemented, opt-in | v0.123.0 | `review`, `operations`, `audit` | Server-owned dry-run-first rules and trusted webhook cycles persist decisions and manual-assignment lanes |
+| Optional token registry | Implemented, opt-in | v0.123.0 | `security`, `deployment` | Exact configured bearer tokens protect REST, gRPC, observability, and admin surfaces; `/health` stays public |
+| Recoverable write intents | Implemented | v0.123.0 | `durability`, `audit` | Pending-write inspection and recovery surfaces persist staged write intent; conflicts require manual recovery |
 | Review workflow persistence | Implemented | v0.12 | `feedback-loop`, `operations`, `audit` | Go SDK, REST, and GraphQL expose append-only review decisions for assignment, snooze, resolution, and notes |
 | Source trust anomaly alerts | Implemented | v0.13 | `feedback-loop`, `epistemics`, `operations` | Review queues emit source-trust anomaly tasks for credibility drops, low trust, and repeated refutations |
 | Review queue filters | Implemented | v0.15 | `feedback-loop`, `operations`, `inspectability` | Go SDK, REST, and GraphQL filter review queues by task type, source, workflow status, and owner |
@@ -135,11 +138,17 @@ This matrix is the implementation contract for the current codebase. "Introduced
 | Debugger explain-rank compare | Implemented | v0.93 | `inspectability`, `ranking`, `ui` | `/admin/api/explain-rank` and the Svelte dashboard compare two nodes with rank summary and factor deltas |
 | Ranking evaluation dashboard | Implemented | v0.103 | `inspectability`, `ranking`, `ui` | `/admin/api/ranking-eval` and `/admin/` surface MRR, pass/fail, category health, query evidence, score components, and baseline deltas |
 | Rich epistemics debugger visualization | Implemented | v0.104 | `inspectability`, `epistemics`, `ui` | `/admin/api/belief` includes an additive `epistemics` envelope and `/admin/` renders source trust timelines, confidence history, contradiction paths, and graph/source context |
+| Deferred acquisition review | Implemented, opt-in | v0.123.0 | `review`, `acquisition` | Candidates remain outside the graph until approved; repeat execution and admission are coordinated |
+| Ranking result investigation | Implemented | v0.123.0 | `ranking`, `ui` | Evaluation IDs retain fixture context for direct debugger inspection |
+| Browser ranking baselines | Implemented | v0.123.0 | `ranking`, `ui` | Validated bounded local history with selection, deletion, and storage-error handling |
+| Current graph hydration | Implemented | v0.123.0 | `retrieval`, `correctness` | ANN candidates load current/as-of graph state before ranking |
 
 ## Next Candidates
 
-1. Filter debugger graph context by relation and source trust bands.
-2. Persist ranking dashboard baseline runs locally so operators can compare without selecting a file every time.
-3. Failure-injection variants for the Postgres integration harness.
-4. Longer scheduled soak lanes for storage and retrieval concurrency.
-5. UI affordances for reviewing and executing source quarantine plans.
+1. Index pending-intent and idempotency-key lookups for large namespaces.
+2. Add candidate decisions, worker summaries, and manual recovery tasks to the reviewer UI.
+3. Extend Postgres failure injection and scheduled soak coverage.
+4. Filter debugger graph context by relation/source trust and add source quarantine affordances.
+5. Evaluate provider adapters on reviewed task corpora before enabling automatic evidence acquisition.
+
+See the [v0.123.0 recap](releases/v0.123.0) for completed changes and the current release plan.

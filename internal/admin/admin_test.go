@@ -147,6 +147,9 @@ func TestAdminDashboardIncludesDebugger(t *testing.T) {
 	is.True(strings.Contains(assetW.Body.String(), "Ranking Evaluation"))
 	is.True(strings.Contains(assetW.Body.String(), "Belief Debugger"))
 	is.True(strings.Contains(assetW.Body.String(), "Explain Rank Compare"))
+	is.True(strings.Contains(assetW.Body.String(), "Inspect top result"))
+	is.True(strings.Contains(assetW.Body.String(), "Saved browser baseline"))
+	is.True(strings.Contains(assetW.Body.String(), "contextdb.admin.ranking-baselines.v1"))
 }
 
 func TestAdminMetricsAPI(t *testing.T) {
@@ -219,6 +222,40 @@ func TestAdminRankingEvalAPIRejectsHugeTopK(t *testing.T) {
 	New(db).ServeHTTP(w, req)
 
 	is.Equal(w.Code, http.StatusBadRequest)
+}
+
+func TestAdminRankingEvaluationContextInspectsFixtureResult(t *testing.T) {
+	is := is.New(t)
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+	handler := New(db)
+	evalRequest := httptest.NewRequest(http.MethodGet, "/admin/api/ranking-eval?top_k=3", nil)
+	evalResponse := httptest.NewRecorder()
+	handler.ServeHTTP(evalResponse, evalRequest)
+	is.Equal(evalResponse.Code, http.StatusOK)
+	var report adminRankingEvalReport
+	is.NoErr(json.Unmarshal(evalResponse.Body.Bytes(), &report))
+	is.True(report.EvaluationID != "")
+	is.True(len(report.Queries) > 0)
+	is.True(len(report.Queries[0].TopResults) > 0)
+	result := report.Queries[0].TopResults[0]
+	inspectRequest := httptest.NewRequest(http.MethodGet, "/admin/api/belief?ns="+report.Queries[0].Namespace+"&id="+result.NodeID+"&evaluation_id="+report.EvaluationID, nil)
+	inspectResponse := httptest.NewRecorder()
+	handler.ServeHTTP(inspectResponse, inspectRequest)
+	is.Equal(inspectResponse.Code, http.StatusOK)
+	var audit adminBeliefAuditResponse
+	is.NoErr(json.Unmarshal(inspectResponse.Body.Bytes(), &audit))
+	is.Equal(audit.Node.ID.String(), result.NodeID)
+
+	staleRequest := httptest.NewRequest(http.MethodGet, "/admin/api/belief?ns="+report.Queries[0].Namespace+"&id="+result.NodeID+"&evaluation_id=missing", nil)
+	staleResponse := httptest.NewRecorder()
+	handler.ServeHTTP(staleResponse, staleRequest)
+	is.Equal(staleResponse.Code, http.StatusNotFound)
+
+	isolationRequest := httptest.NewRequest(http.MethodGet, "/admin/api/belief?ns=wrong-namespace&id="+result.NodeID+"&evaluation_id="+report.EvaluationID, nil)
+	isolationResponse := httptest.NewRecorder()
+	handler.ServeHTTP(isolationResponse, isolationRequest)
+	is.Equal(isolationResponse.Code, http.StatusNotFound)
 }
 
 func TestAdminSearchAPI(t *testing.T) {

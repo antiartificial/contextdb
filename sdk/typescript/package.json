@@ -1,13 +1,14 @@
 {
   "name": "contextdb",
-  "version": "0.108.0",
+  "version": "0.123.0",
   "description": "TypeScript SDK for contextdb — temporal graph-vector database",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "node --test tests/client.test.ts"
+    "test": "npm run build && node --test tests/client.test.mjs"
   },
+  "type": "module",
   "files": ["dist"],
   "license": "MIT",
   "devDependencies": {

@@ -44,6 +44,82 @@ func startGRPCTestServer(t *testing.T, db *client.DB) string {
 	return lis.Addr().String()
 }
 
+func freeTCPAddr(t *testing.T) string {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := lis.Addr().String()
+	if err := lis.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return addr
+}
+
+func TestServerStartPrebindsListenersAndStopReleasesThem(t *testing.T) {
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	grpcAddr, restAddr, observeAddr := freeTCPAddr(t), freeTCPAddr(t), freeTCPAddr(t)
+	srv := server.New(db, db.Registry(), server.Config{
+		GRPCAddr: grpcAddr, RESTAddr: restAddr, ObserveAddr: observeAddr,
+	}, nil)
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Stop)
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		resp, err := http.Get("http://" + restAddr + "/v1/ping")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("ping status = %d", resp.StatusCode)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("REST server did not start: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	srv.Stop()
+	for _, addr := range []string{grpcAddr, restAddr, observeAddr} {
+		lis, err := net.Listen("tcp", addr)
+		if err != nil {
+			t.Fatalf("listener %s was not released: %v", addr, err)
+		}
+		_ = lis.Close()
+	}
+}
+
+func TestServerStartReturnsPrebindErrorWithoutStartingOtherListeners(t *testing.T) {
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+
+	grpcAddr := freeTCPAddr(t)
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	srv := server.New(db, nil, server.Config{
+		GRPCAddr: grpcAddr, RESTAddr: occupied.Addr().String(),
+	}, nil)
+	if err := srv.Start(); err == nil {
+		t.Fatal("Start succeeded with an occupied REST address")
+	}
+
+	lis, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		t.Fatalf("gRPC listener was left bound after REST prebind failure: %v", err)
+	}
+	_ = lis.Close()
+}
+
 func TestRESTServer_Ping(t *testing.T) {
 	is := is.New(t)
 

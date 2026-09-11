@@ -44,9 +44,9 @@ func TestTopoSort_LinearChain(t *testing.T) {
 			DependsOn:  []uuid.UUID{idA},
 		},
 		{ // index 2: C — depends on B
-			Content:   "c",
+			Content:    "c",
 			Properties: map[string]any{"node_id": idC},
-			DependsOn: []uuid.UUID{idB},
+			DependsOn:  []uuid.UUID{idB},
 		},
 	}
 	order, err := topoSort(reqs)

@@ -7,7 +7,7 @@ import (
 // AnomalySignal represents an anomalous pattern detected during ingestion.
 type AnomalySignal struct {
 	Namespace  string
-	Type       string  // "rate_spike", "confidence_drop", "source_burst"
+	Type       string // "rate_spike", "confidence_drop", "source_burst"
 	Message    string
 	Severity   float64 // 0-1
 	DetectedAt time.Time

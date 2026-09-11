@@ -34,6 +34,19 @@ button:hover {
   background: #2ea043;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid #58a6ff;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 input,
 select {
   width: 100%;
@@ -196,6 +209,23 @@ h3 {
   grid-template-columns: 6rem minmax(11rem, 14rem) auto;
   gap: 0.75rem;
   align-items: end;
+}
+
+.baseline-history {
+  display: grid;
+  grid-template-columns: minmax(14rem, 24rem) auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: end;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #101820;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+}
+
+.baseline-history p {
+  margin: 0;
+  padding-bottom: 0.55rem;
 }
 
 .file-control input {
@@ -420,6 +450,10 @@ h3 {
 .result-title {
   color: #e1e4e8;
   overflow-wrap: anywhere;
+}
+
+.inspect-top-result {
+  justify-self: start;
 }
 
 .score-bars {
@@ -1012,6 +1046,7 @@ label input {
   .epistemics-grid,
   .epistemics-main,
   .ranking-actions,
+  .baseline-history,
   .ranking-grid,
   .ranking-main,
   .search-row,

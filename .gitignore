@@ -4,6 +4,7 @@ bin/
 /tmp/
 *.html
 !internal/admin/ui/index.html
+!internal/admin/dist/index.html
 !docs/**/*.html
 !docs/**/*.scss
 
@@ -21,3 +22,8 @@ Thumbs.db
 node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+
+# SDK build and test outputs
+sdk/typescript/dist/
+__pycache__/
+.pytest_cache/

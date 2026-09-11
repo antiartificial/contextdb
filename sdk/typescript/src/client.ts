@@ -6,31 +6,41 @@ import type {
   IngestResult,
   AcquisitionExecutionPlan,
   AcquisitionExecutionRequest,
+  AcquisitionReviewCandidate,
+  ReviewWorkerRequest,
 } from './types';
 
 /** Top-level client for a contextdb server. */
 export class ContextDB {
   private baseUrl: string;
+  private token: string;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, options: { token?: string } = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.token = options.token ?? '';
   }
 
   /** Return a namespace handle. */
   namespace(name: string, mode: string = 'general'): Namespace {
-    return new Namespace(this.baseUrl, name, mode);
+    return new Namespace(this.baseUrl, name, mode, this.token);
+  }
+
+  private fetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+    return globalThis.fetch(input, { ...init, headers });
   }
 
   /** Health check. */
   async ping(): Promise<{ status: string }> {
-    const resp = await fetch(`${this.baseUrl}/v1/ping`);
+    const resp = await this.fetch(`${this.baseUrl}/v1/ping`);
     if (!resp.ok) throw new Error(`ping failed: ${resp.status}`);
     return resp.json();
   }
 
   /** Get server stats. */
   async stats(): Promise<Record<string, unknown>> {
-    const resp = await fetch(`${this.baseUrl}/v1/stats`);
+    const resp = await this.fetch(`${this.baseUrl}/v1/stats`);
     if (!resp.ok) throw new Error(`stats failed: ${resp.status}`);
     return resp.json();
   }
@@ -41,11 +51,19 @@ export class Namespace {
   private baseUrl: string;
   private name: string;
   private mode: string;
+  private token: string;
 
-  constructor(baseUrl: string, name: string, mode: string) {
+  constructor(baseUrl: string, name: string, mode: string, token = '') {
     this.baseUrl = baseUrl;
     this.name = name;
     this.mode = mode;
+    this.token = token;
+  }
+
+  private fetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+    return globalThis.fetch(input, { ...init, headers });
   }
 
   /** Write a node to this namespace. */
@@ -61,7 +79,7 @@ export class Namespace {
     if (req.modelId) body.model_id = req.modelId;
     if (req.confidence) body.confidence = req.confidence;
 
-    const resp = await fetch(
+    const resp = await this.fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/write`,
       {
         method: 'POST',
@@ -100,7 +118,7 @@ export class Namespace {
       };
     }
 
-    const resp = await fetch(
+    const resp = await this.fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/retrieve`,
       {
         method: 'POST',
@@ -133,7 +151,7 @@ export class Namespace {
       source_id: sourceId,
     };
 
-    const resp = await fetch(
+    const resp = await this.fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/ingest`,
       {
         method: 'POST',
@@ -159,7 +177,7 @@ export class Namespace {
       labels,
     };
 
-    const resp = await fetch(
+    const resp = await this.fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/sources/label`,
       {
         method: 'POST',
@@ -183,6 +201,7 @@ export class Namespace {
         headers: connector.headers,
       })),
       execute: req.execute ?? false,
+      review_before_admission: req.reviewBeforeAdmission ?? false,
     };
     if (req.topK) body.top_k = req.topK;
     if (req.minGapSize) body.min_gap_size = req.minGapSize;
@@ -193,8 +212,8 @@ export class Namespace {
     if (req.maxResults) body.max_results = req.maxResults;
     if (req.maxAttempts) body.max_attempts = req.maxAttempts;
 
-    const resp = await fetch(
-      `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/execute`,
+    const resp = await this.fetch(
+      `${this.baseUrl}/v1/namespaces/${encodeURIComponent(this.name)}/acquisition/execute`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,10 +224,41 @@ export class Namespace {
     return resp.json();
   }
 
+  async acquisitionReviewCandidates(): Promise<AcquisitionReviewCandidate[]> {
+    const response = await this.fetch(`${this.baseUrl}/v1/namespaces/${encodeURIComponent(this.name)}/acquisition/review/candidates?mode=${encodeURIComponent(this.mode)}`);
+    if (!response.ok) throw new Error(`acquisitionReviewCandidates failed: ${response.status}`);
+    return (await response.json()).candidates;
+  }
+
+  async decideAcquisitionCandidate(id: string, action: 'approve' | 'reject', actor = '', note = ''): Promise<Record<string, unknown>> {
+    if (action !== 'approve' && action !== 'reject') throw new Error('Invalid acquisition decision');
+    const response = await this.fetch(`${this.baseUrl}/v1/namespaces/${encodeURIComponent(this.name)}/acquisition/review/candidates/${encodeURIComponent(id)}/${action}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: this.mode, actor, note }),
+    });
+    if (!response.ok) throw new Error(`decideAcquisitionCandidate failed: ${response.status}`);
+    return response.json();
+  }
+
+  async runReviewWorker(request: ReviewWorkerRequest = {}): Promise<Record<string, unknown>> {
+    const response = await this.fetch(`${this.baseUrl}/v1/namespaces/${encodeURIComponent(this.name)}/review/worker/cycle`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...request, execute: request.execute ?? false }),
+    });
+    if (!response.ok) throw new Error(`runReviewWorker failed: ${response.status}`);
+    return response.json();
+  }
+
+  async reviewWorkerRuns(): Promise<Record<string, unknown>[]> {
+    const response = await this.fetch(`${this.baseUrl}/v1/namespaces/${encodeURIComponent(this.name)}/review/worker/runs`);
+    if (!response.ok) throw new Error(`reviewWorkerRuns failed: ${response.status}`);
+    return (await response.json()).runs;
+  }
+
   async acquisitionExecutionReceipts(after?: string): Promise<Record<string, unknown>[]> {
     const params = new URLSearchParams({ mode: this.mode });
     if (after) params.set('after', after);
-    const resp = await fetch(
+    const resp = await this.fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/receipts?${params.toString()}`
     );
     if (!resp.ok) throw new Error(`acquisitionExecutionReceipts failed: ${resp.status}`);
@@ -219,7 +269,7 @@ export class Namespace {
   async acquisitionRetryCandidates(after?: string): Promise<Record<string, unknown>[]> {
     const params = new URLSearchParams({ mode: this.mode });
     if (after) params.set('after', after);
-    const resp = await fetch(
+    const resp = await this.fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/retry-candidates?${params.toString()}`
     );
     if (!resp.ok) throw new Error(`acquisitionRetryCandidates failed: ${resp.status}`);
@@ -230,7 +280,7 @@ export class Namespace {
   async acquisitionRetryRecommendations(after?: string): Promise<Record<string, unknown>[]> {
     const params = new URLSearchParams({ mode: this.mode });
     if (after) params.set('after', after);
-    const resp = await fetch(
+    const resp = await this.fetch(
       `${this.baseUrl}/v1/namespaces/${this.name}/acquisition/retry-recommendations?${params.toString()}`
     );
     if (!resp.ok) throw new Error(`acquisitionRetryRecommendations failed: ${resp.status}`);

@@ -87,4 +87,7 @@ func TestToRetrieveRequestGraph(t *testing.T) {
 	if req.Strategy.GraphWeight == 0 {
 		t.Error("expected nonzero GraphWeight")
 	}
+	if len(req.Strategy.EdgeTypes) != 1 || req.Strategy.EdgeTypes[0] != "contradicts" {
+		t.Errorf("EdgeTypes = %v", req.Strategy.EdgeTypes)
+	}
 }

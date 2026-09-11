@@ -2,6 +2,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -29,11 +30,14 @@ type Query struct {
 
 // HybridStrategy controls the relative contribution of each retrieval path.
 type HybridStrategy struct {
-	VectorWeight    float64
-	GraphWeight     float64
-	SessionWeight   float64
-	Traversal       store.TraversalStrategy
-	MaxDepth        int
+	VectorWeight  float64
+	GraphWeight   float64
+	SessionWeight float64
+	Traversal     store.TraversalStrategy
+	MaxDepth      int
+	// EdgeTypes restricts graph traversal to the listed edge types. A nil or
+	// empty slice traverses every edge type.
+	EdgeTypes       []string
 	DiversityLambda float64 // MMR lambda: 0 = disabled, 0.7 = typical diversity
 }
 
@@ -64,7 +68,7 @@ type fanResult struct {
 
 // Retrieve fans out to all backends concurrently then fuses results.
 func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, error) {
-	if q.Strategy == (HybridStrategy{}) {
+	if q.Strategy.IsZero() {
 		q.Strategy = defaultStrategy()
 	}
 	if q.TopK <= 0 {
@@ -114,6 +118,7 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 			res, err := e.Graph.Walk(ctx, store.WalkQuery{
 				Namespace: q.Namespace,
 				SeedIDs:   q.SeedIDs,
+				EdgeTypes: q.Strategy.EdgeTypes,
 				MaxDepth:  q.Strategy.MaxDepth,
 				Strategy:  q.Strategy.Traversal,
 				AsOf:      q.ScoreParams.AsOf,
@@ -135,7 +140,11 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 		}
 		switch r.source {
 		case "vector":
-			allVectorResults = append(allVectorResults, r.vectorResults...)
+			hydrated, err := e.hydrateVectorResults(ctx, q, r.vectorResults)
+			if err != nil {
+				return nil, err
+			}
+			allVectorResults = append(allVectorResults, hydrated...)
 		case "graph":
 			graphResults = r.graphResults
 		}
@@ -173,6 +182,72 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 	}
 
 	return results, nil
+}
+
+// hydrateVectorResults replaces the vector index's cached node with the graph
+// version valid at the query anchor. Vector indexes intentionally cache nodes
+// for ANN assembly, so graph-only feedback and retractions must be refreshed
+// before confidence scoring and fusion.
+func (e *Engine) hydrateVectorResults(ctx context.Context, q Query, candidates []core.ScoredNode) ([]core.ScoredNode, error) {
+	if e.Graph == nil || len(candidates) == 0 {
+		return candidates, nil
+	}
+	result := make([]core.ScoredNode, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Node.ID == uuid.Nil {
+			continue
+		}
+		// Check the current record first. AsOf intentionally falls back through
+		// versions, which would otherwise resurrect a pre-retraction version.
+		latest, err := e.Graph.GetNode(ctx, q.Namespace, candidate.Node.ID)
+		if err != nil {
+			return nil, fmt.Errorf("hydrate vector candidate %s: %w", candidate.Node.ID, err)
+		}
+		if latest == nil || !latest.IsValidAt(q.ScoreParams.AsOf) {
+			continue
+		}
+		node, err := e.Graph.AsOf(ctx, q.Namespace, candidate.Node.ID, q.ScoreParams.AsOf)
+		if err != nil {
+			return nil, fmt.Errorf("hydrate vector candidate %s as-of: %w", candidate.Node.ID, err)
+		}
+		// Writes may declare a past valid-time while being committed now. In that
+		// case there is no transaction-time version at the anchor, but the latest
+		// graph record is still the correct valid-time candidate.
+		if node == nil && latest.IsValidAt(q.ScoreParams.AsOf) {
+			node = latest
+		}
+		if node == nil || !node.IsValidAt(q.ScoreParams.AsOf) || !matchesLabels(*node, q.Labels) {
+			continue
+		}
+		// Graph backends may store vector entries separately. Preserve the ANN
+		// vector only for similarity/MMR while all mutable metadata is hydrated.
+		if len(node.Vector) == 0 {
+			node.Vector = candidate.Node.Vector
+		}
+		candidate.Node = *node
+		result = append(result, candidate)
+	}
+	return result, nil
+}
+
+func matchesLabels(node core.Node, labels []string) bool {
+	for _, label := range labels {
+		if !node.HasLabel(label) {
+			return false
+		}
+	}
+	return true
+}
+
+// IsZero reports whether no retrieval strategy fields were configured.
+func (s HybridStrategy) IsZero() bool {
+	return s.VectorWeight == 0 &&
+		s.GraphWeight == 0 &&
+		s.SessionWeight == 0 &&
+		s.Traversal == "" &&
+		s.MaxDepth == 0 &&
+		len(s.EdgeTypes) == 0 &&
+		s.DiversityLambda == 0
 }
 
 func (e *Engine) fuse(

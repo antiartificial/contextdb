@@ -8,18 +8,18 @@ import (
 	"sort"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/antiartificial/contextdb/internal/core"
 	"github.com/antiartificial/contextdb/internal/store"
+	"github.com/google/uuid"
 )
 
 // TruthEstimate represents the inferred truth of a claim based on source consensus.
 type TruthEstimate struct {
-	ClaimID      uuid.UUID
-	Probability  float64 // P(claim is true) in [0, 1]
-	Confidence   float64 // uncertainty in the estimate
-	SourceCount  int     // number of sources considered
-	Method       string  // "majority", "weighted", "em"
+	ClaimID     uuid.UUID
+	Probability float64 // P(claim is true) in [0, 1]
+	Confidence  float64 // uncertainty in the estimate
+	SourceCount int     // number of sources considered
+	Method      string  // "majority", "weighted", "em"
 }
 
 // MultiSourceConsensus performs truth inference across multiple sources asserting
@@ -80,14 +80,14 @@ func MultiSourceConsensus(claims []ClaimAssertion) TruthEstimate {
 
 // ClaimAssertion represents a source's position on a claim.
 type ClaimAssertion struct {
-	ClaimID            uuid.UUID
-	SourceID           uuid.UUID
-	SourceCredibility  float64 // mean of Beta distribution (optionally domain-scoped)
-	SourceVariance     float64 // uncertainty in credibility
-	AssertionType      string  // "supports", "contradicts", "abstains"
-	EpistemicType      string  // mirrors core.Node.EpistemicType
-	Domain             string  // optional domain scope for credibility lookup
-	Timestamp          time.Time
+	ClaimID           uuid.UUID
+	SourceID          uuid.UUID
+	SourceCredibility float64 // mean of Beta distribution (optionally domain-scoped)
+	SourceVariance    float64 // uncertainty in credibility
+	AssertionType     string  // "supports", "contradicts", "abstains"
+	EpistemicType     string  // mirrors core.Node.EpistemicType
+	Domain            string  // optional domain scope for credibility lookup
+	Timestamp         time.Time
 }
 
 // VoteValue returns numeric value for voting calculation.
@@ -330,10 +330,10 @@ type AnomalyDetector struct {
 
 // SourceAnomaly represents a detected anomaly in source behavior.
 type SourceAnomaly struct {
-	SourceID       uuid.UUID
-	Type           string  // "credibility_drop", "burst_activity", "contradiction_spike"
-	Severity       float64 // 0-1
-	Details        string
+	SourceID          uuid.UUID
+	Type              string  // "credibility_drop", "burst_activity", "contradiction_spike"
+	Severity          float64 // 0-1
+	Details           string
 	RecommendedAction string
 }
 

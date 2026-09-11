@@ -80,6 +80,13 @@ type GraphStore interface {
 	ValidAt(ctx context.Context, ns string, t time.Time, labels []string) ([]core.Node, error)
 }
 
+// ReviewLeaseStore is optionally implemented by graph backends that can
+// serialize review-worker cycles across processes. A busy lease returns
+// ErrReviewLeaseBusy. The caller must invoke the returned release function.
+type ReviewLeaseStore interface {
+	AcquireReviewLease(ctx context.Context, namespace string) (release func() error, err error)
+}
+
 // NodeDiff represents a change between two points in time.
 type NodeDiff struct {
 	Node   core.Node
@@ -168,6 +175,23 @@ const (
 	EventReviewEscalationDigest EventType = "review_escalation_digest"
 	EventReviewHandoffReceipt   EventType = "review_handoff_delivery_receipt"
 	EventAcquisitionReceipt     EventType = "acquisition_execution_receipt"
+	// EventAcquisitionReviewCandidate holds acquisition output awaiting an explicit
+	// operator decision. It never creates a graph node on its own.
+	EventAcquisitionReviewCandidate EventType = "acquisition_review_candidate"
+	EventAcquisitionReviewDecision  EventType = "acquisition_review_decision"
+	// EventWriteIntent is a durable description of a cross-store write that
+	// must be replayed until a matching EventWriteComplete is recorded.
+	// It is deliberately distinct from compaction input events.
+	EventWriteIntent EventType = "write_intent"
+	// EventWriteComplete acknowledges that every side effect described by a
+	// EventWriteIntent has completed.
+	EventWriteComplete EventType = "write_complete"
+	// EventWriteStage records an acknowledged individual side effect of a write
+	// intent. It keeps replay from creating another graph node version.
+	EventWriteStage       EventType = "write_stage"
+	EventFeedbackIntent   EventType = "feedback_intent"
+	EventFeedbackComplete EventType = "feedback_complete"
+	EventFeedbackStage    EventType = "feedback_stage"
 )
 
 // Event is a single append-only log record.
