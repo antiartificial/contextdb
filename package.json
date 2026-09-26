@@ -27,6 +27,8 @@
   "homepage": "https://github.com/antiartificial/contextdb#readme",
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "mermaid": "^11.13.0",
     "svelte": "^5.56.0",
     "typescript": "^6.0.3",
@@ -34,6 +36,8 @@
     "vitepress-plugin-mermaid": "^2.0.17"
   },
   "dependencies": {
-    "motion": "^12.38.0"
+    "motion": "^12.38.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

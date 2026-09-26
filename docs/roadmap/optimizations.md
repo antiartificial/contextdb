@@ -1,204 +1,47 @@
-# Planned Optimizations
+# ContextDB roadmap: retrieval, evidence, and memory quality
 
-## 1. Write Deduplication Fingerprinting
+Updated 2026-09-26. This reconciles the earlier optimization proposals with current code and the proposed agent-memory work. It is a plan, not a release claim. The [feature matrix](../feature-matrix.md) is the implementation inventory; the [v0.123.0 follow-ups](../releases/v0.123.0.md#next-steps) remain operational work.
 
-**Priority:** High — cost savings at scale
-**Effort:** ~1 afternoon
+## Earlier proposals: disposition
 
-### Problem
+| Proposal | Finding | Decision |
+|:--|:--|:--|
+| Write deduplication fingerprinting | Shipped as opt-in. A duplicate skips embedding and touches an existing node. | Remove the old implementation plan. Audit whether a repeat from a different source should record independent evidence; current dedup returns before source resolution. Keep the default opt-in until this is resolved. |
+| Confidence floor by age | Not implemented. Recency already decays with age; utility is separate. | Do not add the proposed ceiling. Evidence strength and freshness have different meanings. Evaluate explicit freshness or verification signals while preserving historical query behavior. |
+| Query result score breakdown | Shipped across retrieval surfaces. | Remove from the active queue. Extend explanations as new stages are added. |
+| Namespace warm/cold tiering | Not implemented; no scale threshold is documented here. | Defer pending a latency and capacity profile. Historical queries, conflict checks, and summary refresh must retain a complete-evidence path. |
 
-Embedding is the most expensive operation per write. Real-world ingestion frequently re-ingests the same content (session replays, repeated crawls, agent retry loops). Every duplicate pays the full embedding cost.
+The old designs remain in Git history. The old dedup plan assumed a unique fingerprint index, but the current Postgres index is non-unique. The old confidence-floor plan also conflated utility and recency decay. Neither assumption should guide implementation.
 
-### Design
+## Ranked work
 
-Before the embedding pass, hash the content (normalized — lowercased, whitespace-collapsed, punctuation stripped) using SHA-256. If the fingerprint exists in the namespace, skip embedding entirely and update `transaction_time` on the existing node.
+Priority reflects correctness, user value, and dependency order. New capabilities stay opt-in until representative evaluations and supported-backend checks justify a default.
 
-```
-Write path:
-  content → normalize(content) → SHA-256 → fingerprint
+### P0 — Retrieval and evidence correctness
 
-  IF fingerprint exists in namespace:
-    update node.tx_time = now()
-    return existing node_id (admitted: true, reason: "deduplicated")
-  ELSE:
-    proceed with normal write (embed → ingest → conflict check → admit)
-```
+**Temporal contract.** Specify separately how valid time (when a claim was true) and transaction time (when ContextDB knew it) apply to candidate selection, graph hydration, filters, and ranking. Today `RetrieveRequest` exposes one `AsOf`; the DSL parses `KnownAt` but does not carry it into that request. Resolve this before interpreting natural-language dates. Test late-arriving facts, corrections, retractions, and historical reads on memory, BadgerDB, and Postgres.
 
-### Implementation
+**Dedup provenance.** Decide whether identical content from another source is corroborating evidence. If so, record that source assertion or event without paying for another embedding, while retaining idempotent retries and historical transaction information. Verify attribution and credibility behavior before changing the opt-in default.
 
-1. Add `fingerprint TEXT` column to `nodes` table (Postgres) / field to BadgerDB node encoding
-2. Add `idx_nodes_ns_fingerprint` unique index on `(namespace, fingerprint)` — rejects dupes at the DB level
-3. In `NamespaceHandle.Write()`, compute fingerprint before calling embedder
-4. Lookup by fingerprint; if found, touch `tx_time` and return early
-5. Store fingerprint on new nodes
+**Evaluation baseline.** Add exact-term, temporal, contradiction, and source-dispute cases to the existing ranking workflow. Capture relevance, evidence completeness, latency, and backend parity before changing fusion or query interpretation. Include current and optional reranker paths; the reranker currently returns its own scores, so define what its score explanation means.
 
-### Normalization function
+### P1 — Retrieval coverage and agent consumption
 
-```go
-func contentFingerprint(s string) string {
-    s = strings.ToLower(s)
-    s = strings.Join(strings.Fields(s), " ")  // collapse whitespace
-    s = stripPunctuation(s)                     // remove non-alphanumeric
-    h := sha256.Sum256([]byte(s))
-    return hex.EncodeToString(h[:])
-}
-```
+**Exact-term retrieval.** Add a namespace-scoped lexical candidate path for names, identifiers, technical terms, and quoted phrases alongside vector, graph, and session candidates. Apply label, source, retraction, and temporal filters consistently. Keep enough candidates until fusion and optional reranking finish. Compare current weighted fusion against reciprocal rank fusion (RRF); adopt RRF only if evaluation shows better quality without unacceptable latency or loss of credibility-aware ranking. Expose path attribution without presenting rank consensus as source trust.
 
-### Edge cases
+**Token-budgeted results.** Add an optional output token budget alongside `TopK`. Select ranked results within the budget, report the counting method and any omission or truncation, and preserve IDs, citations, score breakdowns, and freshness metadata. Define whether metadata counts and how an oversized first result behaves. A token budget limits returned context, not search depth. Since the Go `Retrieve` method returns a slice, use a compatible result-envelope method or equivalent response design to expose budget metadata; define incremental counting for streams and consistent SDK/API behavior. Keep existing `TopK` behavior when no budget is supplied.
 
-- Content that differs only in whitespace/punctuation → same fingerprint (intended)
-- Same content, different source → dedup (fingerprint is content-only, source tracked separately)
-- Same content, different confidence → dedup, keep higher confidence? Or keep existing? Design decision.
-- Non-breaking opt-in: `WriteRequest.Dedup` or `Options.DedupWrites` enables deduplication; `WriteRequest.SkipDedup` bypasses it when the default is enabled.
+### P2 — Query-aware temporal retrieval
 
----
+After the P0 temporal contract is verified, parse explicit and relative time expressions into bounded intervals. Require a clear valid-time or transaction-time interpretation; explicit caller filters take precedence over inferred dates. For broad periods, select relevant evidence across the interval rather than letting one dense ingestion batch dominate. Test time zones, ambiguous expressions, open intervals, and late-arriving evidence against explicit API queries.
 
-## 2. Confidence Floor by Age
+### P3 — Evidence-backed, refreshable derived summaries
 
-**Priority:** Medium — correctness improvement
-**Effort:** ~2 hours
+Extend existing episodic-to-semantic consolidation with optional, evidence-backed **derived summaries** of related claims. `Observation` already names a raw claim type in ContextDB, so do not reuse it for synthesized knowledge. Track supporting and contradicting node IDs, source lineage, covered transaction time, generation version, and freshness. Mark affected summaries stale on relevant writes, corrections, retractions, or source-trust changes; refresh asynchronously and preserve prior versions. Prevent generated summaries from citing themselves or each other as independent proof. Start with reviewed, opt-in namespaces; use evaluation to decide whether summaries belong in default retrieval.
 
-### Problem
+## Sequencing and gates
 
-A high-credibility source writes a claim once with 0.9 confidence. It never gets validated or refuted. Current exponential decay is utility-feedback-driven — if the node is never accessed, its utility decays, but confidence stays at 0.9 indefinitely. Stale high-confidence claims can mislead retrieval ranking.
-
-### Design
-
-Add a hard ceiling on confidence based on age:
-
-```
-effective_confidence = min(confidence, 1.0 - (age / max_age))
-```
-
-Where:
-- `age` = `now - valid_from` (in hours)
-- `max_age` = configurable per namespace mode (default: 8760 hours = 1 year)
-- Floor clamps at a minimum (e.g., 0.05) so very old claims don't go to zero
-
-### Implementation
-
-1. Add `ConfidenceFloor` to `namespace.Config` with per-mode defaults:
-   - `ModeBeliefSystem`: max_age = 8760h (1 year), min_floor = 0.1
-   - `ModeAgentMemory`: max_age = 720h (30 days), min_floor = 0.05
-   - `ModeGeneral`: max_age = 4380h (6 months), min_floor = 0.1
-   - `ModeProcedural`: max_age = 17520h (2 years), min_floor = 0.2
-
-2. Apply in the scoring pipeline (`internal/retrieval/scorer.go`) when computing `confidence_score`:
-   ```go
-   ageHours := time.Since(node.ValidFrom).Hours()
-   ceiling := max(cfg.MinFloor, 1.0 - (ageHours / cfg.MaxAgeHours))
-   effectiveConf := min(node.Confidence, ceiling)
-   ```
-
-3. This is a **read-time computation** — no schema changes, no migration. The stored confidence is untouched; the floor is applied during scoring only.
-
-### Interaction with existing decay
-
-- Exponential decay (utility-based) and confidence floor (age-based) are independent
-- The final confidence score is `min(decayed_confidence, age_floor)` — whichever is lower wins
-- This means a frequently-accessed old node still gets capped by age, and a rarely-accessed new node still decays from lack of utility
-
----
-
-## 3. Query Result Score Breakdown
-
-**Priority:** High — zero cost, high debugging value
-**Effort:** ~1 hour
-
-### Problem
-
-Retrieval results return a single composite `score` but don't expose the per-dimension contributions. Debugging "why did this result rank here?" requires re-deriving the math manually. Building narrative retrieval or explanation features later requires this data.
-
-### Design
-
-Add `ScoreBreakdown` to `Result`:
-
-```go
-type ScoreBreakdown struct {
-    Similarity  float64 `json:"similarity"`   // weighted similarity contribution
-    Confidence  float64 `json:"confidence"`   // weighted confidence contribution
-    Recency     float64 `json:"recency"`      // weighted recency contribution
-    Utility     float64 `json:"utility"`      // weighted utility contribution
-}
-```
-
-### Implementation
-
-1. Add `ScoreBreakdown` field to `core.ScoredNode` and `client.Result`
-2. In `internal/retrieval/scorer.go`, the weighted components are already computed individually before summing — just capture them:
-   ```go
-   breakdown := ScoreBreakdown{
-       Similarity: params.SimilarityWeight * simScore,
-       Confidence: params.ConfidenceWeight * confScore,
-       Recency:    params.RecencyWeight * recScore,
-       Utility:    params.UtilityWeight * utilScore,
-   }
-   ```
-3. Include in REST API response (already returned per-result via `similarity_score`, `confidence_score`, etc. — but those are raw scores, not weighted contributions)
-4. The breakdown shows `weight * raw_score` for each dimension, summing to the final `score`
-
-### Distinction from existing fields
-
-- `similarity_score` = raw cosine similarity (0-1)
-- `breakdown.similarity` = `similarity_weight * similarity_score` (the actual contribution to ranking)
-- Both are useful; the breakdown answers "how much did similarity matter for this result's rank?"
-
----
-
-## 4. Namespace Warm/Cold Storage Tiering
-
-**Priority:** Medium — latency stability at scale
-**Effort:** ~1 day
-
-### Problem
-
-As namespaces accumulate claims, retrieval latency grows linearly with node count (brute-force in memory, index size in pgvector). Old, low-confidence claims that will never rank highly still participate in every retrieval query. Deletion loses data; decay alone doesn't remove from the search path.
-
-### Design
-
-Add a retrieval partition: nodes below a confidence threshold AND older than an age threshold are marked "cold" and excluded from default retrieval but remain queryable with an explicit flag.
-
-```
-Warm (default retrieval): confidence > cold_threshold OR age < cold_age
-Cold (explicit only):     confidence <= cold_threshold AND age >= cold_age
-```
-
-### Implementation
-
-1. Add `is_cold BOOLEAN DEFAULT false` to `nodes` table
-2. Add a background job (or lazy check on write) that marks nodes cold when they cross both thresholds
-3. Default retrieval adds `WHERE is_cold = false` (Postgres) or skips cold nodes in memory scan
-4. `RetrieveRequest.IncludeCold bool` overrides to search everything
-5. Cold nodes are still returned by `ValidAt()` and graph traversal — only vector/scored retrieval excludes them
-
-### Configuration (per namespace)
-
-```go
-type ColdTierConfig struct {
-    Enabled           bool
-    ConfidenceThreshold float64       // e.g., 0.2
-    AgeThreshold      time.Duration   // e.g., 720h (30 days)
-    CheckInterval     time.Duration   // how often the background sweep runs
-}
-```
-
-### Defaults by mode
-
-| Mode | Confidence threshold | Age threshold |
-|------|---------------------|---------------|
-| BeliefSystem | 0.15 | 90 days |
-| AgentMemory | 0.1 | 30 days |
-| General | 0.2 | 180 days |
-| Procedural | 0.1 | 365 days |
-
-### Migration path
-
-- `is_cold` defaults to `false` — all existing nodes start warm
-- First sweep after enabling marks eligible nodes cold
-- Reversible: set `Enabled: false` to include everything again, or `UPDATE nodes SET is_cold = false`
-
-### Interaction with other features
-
-- Confidence floor (feature #2) reduces effective confidence over time → more nodes cross the cold threshold naturally
-- Deduplication (feature #1) prevents cold nodes from being re-created by re-ingestion
-- Score breakdown (feature #3) shows when a result was pulled from cold storage (`retrieval_source: "cold"`)
+1. Complete P0 time and provenance decisions and establish baseline cases. Continue the [v0.123.0 follow-ups](../releases/v0.123.0.md#next-steps) on indexed intent lookup, Postgres fault coverage, reviewer UI, and evaluator usefulness in their operational track.
+2. Ship lexical retrieval and token budgets as independent P1 slices. Compare fusion approaches; keep final ranking explainable after any reranker.
+3. Add natural-language temporal intervals after explicit time queries are correct. Add derived summaries after change detection, provenance, and refresh recovery have a verified design.
+4. Reconsider age penalties or storage tiering only when evaluations show a concrete failure or capacity threshold. Prefer explicit freshness/review signals and indexing before excluding evidence.

@@ -6,6 +6,7 @@ import CredibilityEvolution from '../components/CredibilityEvolution.vue'
 import KnowledgeGaps from '../components/KnowledgeGaps.vue'
 import VersionHistory from '../components/VersionHistory.vue'
 import RecencyDecay from '../components/RecencyDecay.vue'
+import ContextDBFlow from '../components/ContextDBFlow.vue'
 
 export default {
   extends: DefaultTheme,
@@ -16,5 +17,6 @@ export default {
     app.component('KnowledgeGaps', KnowledgeGaps)
     app.component('VersionHistory', VersionHistory)
     app.component('RecencyDecay', RecencyDecay)
+    app.component('ContextDBFlow', ContextDBFlow)
   }
 }
