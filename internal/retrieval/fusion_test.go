@@ -120,6 +120,7 @@ func TestEngineHydratesCachedANNNodeAfterFeedbackAndRetraction(t *testing.T) {
 	is.Equal(len(results), 0)
 	// A temporal query before the retraction still hydrates the historical version.
 	query.ScoreParams.AsOf = now.Add(500 * time.Millisecond)
+	query.KnownAt = now.Add(500 * time.Millisecond)
 	results, err = engine.Retrieve(ctx, query)
 	is.NoErr(err)
 	is.Equal(len(results), 1)

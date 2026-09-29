@@ -90,17 +90,19 @@ fmt.Printf("System held %d beliefs on June 1st\n", len(snapshot))
 
 ## Point-in-time queries
 
-Use `AsOf` to pin retrieval to a historical timestamp:
+Use `ValidAt` and `KnownAt` to pin the two independent time axes:
 
 ```go
-// What did we know as of January 10th?
+// Which facts were valid on January 10th, using only evidence recorded by January 11th?
 results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
     Vector: embed("API rate limit"),
     TopK:   1,
-    AsOf:   time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC),
+    ValidAt: time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC),
+    KnownAt: time.Date(2025, 1, 11, 0, 0, 0, 0, time.UTC),
 })
-// Returns: "API rate limit is 100 req/s"
 ```
+
+`ValidAt` asks when a claim was true; `KnownAt` asks what had been recorded by then. A fact backfilled today with `ValidFrom` in January appears in a January `ValidAt` query with the default current `KnownAt`, but is excluded when `KnownAt` is also in January. `AsOf` remains a compatibility shorthand for `ValidAt`; an explicit `ValidAt` takes precedence. An omitted axis defaults to now. A correction or retraction recorded by `KnownAt` supersedes the earlier version even if its earlier version was valid at `ValidAt`.
 
 ## Node validity
 

@@ -42,6 +42,11 @@ class RetrieveRequest:
     top_k: int = 10
     labels: list[str] = field(default_factory=list)
     score_params: ScoreParams | None = None
+    as_of: str | None = None
+    valid_at: str | None = None
+    known_at: str | None = None
+    include_source_ids: list[str] = field(default_factory=list)
+    exclude_source_ids: list[str] = field(default_factory=list)
 
 
 @dataclass

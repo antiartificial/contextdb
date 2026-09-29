@@ -26,6 +26,14 @@ export interface RetrieveRequest {
   topK?: number;
   labels?: string[];
   scoreParams?: ScoreParams;
+  /** Legacy valid-time anchor. */
+  asOf?: string;
+  /** ISO 8601 valid-time anchor. */
+  validAt?: string;
+  /** ISO 8601 transaction-time cutoff. */
+  knownAt?: string;
+  includeSourceIds?: string[];
+  excludeSourceIds?: string[];
 }
 
 /** Scoring parameter overrides. */

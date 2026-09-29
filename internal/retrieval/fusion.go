@@ -23,9 +23,11 @@ type Query struct {
 	SessionNodeIDs   []uuid.UUID // IDs of recently-retrieved nodes from the current session
 	TopK             int
 	Labels           []string
+	IncludeSourceIDs []string // return nodes supported by at least one of these sources
 	ExcludeSourceIDs []string // source IDs to exclude from results (counterfactual queries)
 	Strategy         HybridStrategy
 	ScoreParams      core.ScoreParams
+	KnownAt          time.Time // transaction-time cutoff; zero defaults to now
 }
 
 // HybridStrategy controls the relative contribution of each retrieval path.
@@ -77,6 +79,9 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 	if q.ScoreParams.AsOf.IsZero() {
 		q.ScoreParams.AsOf = time.Now()
 	}
+	if q.KnownAt.IsZero() {
+		q.KnownAt = time.Now()
+	}
 
 	// Collect all query vectors (primary + multi-vector)
 	var queryVectors [][]float32
@@ -105,6 +110,7 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 					TopK:      candidateK,
 					Labels:    q.Labels,
 					AsOf:      q.ScoreParams.AsOf,
+					KnownAt:   q.KnownAt,
 				})
 				resultCh <- fanResult{vectorResults: res, err: err, source: "vector"}
 			}(vec)
@@ -122,6 +128,7 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 				MaxDepth:  q.Strategy.MaxDepth,
 				Strategy:  q.Strategy.Traversal,
 				AsOf:      q.ScoreParams.AsOf,
+				KnownAt:   q.KnownAt,
 			})
 			resultCh <- fanResult{graphResults: res, err: err, source: "graph"}
 		}()
@@ -154,7 +161,7 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 	var sessionNodes []core.Node
 	if len(q.SessionNodeIDs) > 0 && e.Graph != nil {
 		for _, sid := range q.SessionNodeIDs {
-			n, err := e.Graph.GetNode(ctx, q.Namespace, sid)
+			n, err := e.Graph.At(ctx, q.Namespace, sid, q.ScoreParams.AsOf, q.KnownAt)
 			if err == nil && n != nil {
 				sessionNodes = append(sessionNodes, *n)
 			}
@@ -197,24 +204,9 @@ func (e *Engine) hydrateVectorResults(ctx context.Context, q Query, candidates [
 		if candidate.Node.ID == uuid.Nil {
 			continue
 		}
-		// Check the current record first. AsOf intentionally falls back through
-		// versions, which would otherwise resurrect a pre-retraction version.
-		latest, err := e.Graph.GetNode(ctx, q.Namespace, candidate.Node.ID)
+		node, err := e.Graph.At(ctx, q.Namespace, candidate.Node.ID, q.ScoreParams.AsOf, q.KnownAt)
 		if err != nil {
-			return nil, fmt.Errorf("hydrate vector candidate %s: %w", candidate.Node.ID, err)
-		}
-		if latest == nil || !latest.IsValidAt(q.ScoreParams.AsOf) {
-			continue
-		}
-		node, err := e.Graph.AsOf(ctx, q.Namespace, candidate.Node.ID, q.ScoreParams.AsOf)
-		if err != nil {
-			return nil, fmt.Errorf("hydrate vector candidate %s as-of: %w", candidate.Node.ID, err)
-		}
-		// Writes may declare a past valid-time while being committed now. In that
-		// case there is no transaction-time version at the anchor, but the latest
-		// graph record is still the correct valid-time candidate.
-		if node == nil && latest.IsValidAt(q.ScoreParams.AsOf) {
-			node = latest
+			return nil, fmt.Errorf("hydrate vector candidate %s at valid/known time: %w", candidate.Node.ID, err)
 		}
 		if node == nil || !node.IsValidAt(q.ScoreParams.AsOf) || !matchesLabels(*node, q.Labels) {
 			continue
@@ -317,15 +309,23 @@ func (e *Engine) fuse(
 		}
 	}
 
-	// Counterfactual: exclude nodes from specific sources
-	if len(q.ExcludeSourceIDs) > 0 {
+	// Source constraints are applied to evidence identities. A corroborated
+	// claim survives exclusion of one source when another source still supports it.
+	if len(q.IncludeSourceIDs) > 0 || len(q.ExcludeSourceIDs) > 0 {
+		includeSet := make(map[string]bool, len(q.IncludeSourceIDs))
+		for _, id := range q.IncludeSourceIDs {
+			includeSet[id] = true
+		}
 		excludeSet := make(map[string]bool, len(q.ExcludeSourceIDs))
 		for _, id := range q.ExcludeSourceIDs {
 			excludeSet[id] = true
 		}
 		for id, c := range seen {
-			if sourceID, ok := c.node.Properties["source_id"].(string); ok && excludeSet[sourceID] {
+			projected, matched := projectSourceEvidence(c.node, includeSet, excludeSet)
+			if !matched {
 				delete(seen, id)
+			} else {
+				c.node = projected
 			}
 		}
 	}
@@ -346,6 +346,69 @@ func (e *Engine) fuse(
 		result = result[:q.TopK]
 	}
 	return result
+}
+
+// projectSourceEvidence changes only the query result. Stored node versions
+// remain intact, while counterfactual scoring uses the surviving evidence.
+func projectSourceEvidence(n core.Node, include, exclude map[string]bool) (core.Node, bool) {
+	allowed := func(sourceID string) bool {
+		return sourceID != "" && !exclude[sourceID] && (len(include) == 0 || include[sourceID])
+	}
+	primary, _ := n.Properties["source_id"].(string)
+	hadSources := primary != ""
+	primaryAllowed := allowed(primary)
+	selectedSource := ""
+	selectedConfidence := -1.0
+	if primaryAllowed {
+		selectedSource = primary
+		selectedConfidence = n.Confidence
+	}
+	var selectedRecords []any
+	if records, ok := n.Properties["corroborating_sources"].([]any); ok {
+		for _, item := range records {
+			record, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			sourceID, _ := record["source_id"].(string)
+			if sourceID != "" {
+				hadSources = true
+			}
+			if !allowed(sourceID) {
+				continue
+			}
+			selectedRecords = append(selectedRecords, item)
+			if confidence, ok := record["confidence"].(float64); ok && confidence > selectedConfidence {
+				selectedSource = sourceID
+				selectedConfidence = confidence
+			} else if selectedSource == "" {
+				selectedSource = sourceID
+			}
+		}
+	}
+	if selectedSource == "" {
+		// Preserve the prior behavior for nodes with no source when only an
+		// exclusion is requested; inclusion requires affirmative evidence.
+		return n, !hadSources && len(include) == 0
+	}
+	props := make(map[string]any, len(n.Properties)+1)
+	for key, value := range n.Properties {
+		props[key] = value
+	}
+	if selectedSource != primary {
+		props["canonical_source_id"] = primary
+	}
+	props["source_id"] = selectedSource
+	if len(selectedRecords) > 0 {
+		props["corroborating_sources"] = selectedRecords
+	} else {
+		delete(props, "corroborating_sources")
+	}
+	n.Properties = props
+	if selectedConfidence >= 0 {
+		n.Confidence = selectedConfidence
+	}
+	return n, true
 }
 
 func nodeUtility(n core.Node) float64 {

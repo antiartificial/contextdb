@@ -61,6 +61,17 @@ Use `--baseline-dir` when you want release-friendly baseline artifacts. The comm
 
 Use `--baseline-retention-dir` when you want a read-only retention report for versioned ranking baselines. The report marks the newest baseline as current, retains the newest `--baseline-retention-keep` versions, and lists older versions as pruneable without deleting files. Add `--emit-delete-script` to print a shell script containing only `rm -- ...` commands for existing pruneable JSON and Markdown artifacts; review the script before running it. Add `--baseline-manifest-out` to write a JSON artifact inventory with bytes and SHA-256 hashes for CI retention evidence. Later, run `contextdb eval ranking baseline manifest verify --manifest ranking-baseline-manifest.json --report` to verify inventory paths, byte sizes, and hashes. Add `--bundle-dir` when CI should keep JSON, Markdown, and annotation artifacts with stable names, then run `contextdb eval ranking baseline manifest bundle verify --index ranking-baseline-verification/ranking-baseline-manifest-verification-index.json --report` when an archived bundle needs to be re-checked. Add `--markdown` or `--markdown-out` when CI needs a compact release recap for manifest verification, and `--annotations` or `--annotations-out` when CI should highlight failed artifact checks directly. See the [ranking baseline retention cookbook](/deployment/ranking-baseline-retention-cookbook) for keep-count and CI artifact recipes.
 
+### P0 retrieval evaluation workload
+
+The separate `TestP0RetrievalEvaluation` workload uses stable node IDs, a fixed UTC clock, and a small synthetic vector corpus. It exercises an exact identifier whose vector deliberately points elsewhere; valid-time before and after a change; transaction-time before and after a late correction; a contradiction; and a source dispute. Each case logs the expected node's rank and hit-at-5. The test logs aggregate MRR@5 and local p50/p95 retrieval durations, and requires matching ranks from memory and BadgerDB. An intended quality miss is reported rather than silently removed from the corpus.
+
+```bash
+go test ./internal/retrieval -run TestP0RetrievalEvaluation -v -count=1
+go test ./internal/retrieval -run '^$' -bench BenchmarkP0Retrieval -benchmem
+```
+
+This is a regression fixture, not a benchmark of natural-language understanding. The query vectors are prescribed, the source-dispute case uses node confidence as a stand-in for already assessed source trust, and the contradiction case measures retrieval ordering rather than conflict explanation. Durations from one local run depend on host load and corpus size; compare repeated runs on the same host before drawing a latency conclusion. The test covers memory and BadgerDB; Postgres and remote backend parity still require an integration environment with the matching schema and vector extension. The older `contextdb eval ranking` snapshots use a different corpus and remain comparable to their own historical baselines.
+
 ## MTEB retrieval quality
 
 The MTEB benchmark (`bench/mteb/`) evaluates retrieval quality using standard information retrieval metrics:

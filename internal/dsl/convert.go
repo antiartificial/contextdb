@@ -19,7 +19,10 @@ func ToRetrieveRequest(q *Query) client.RetrieveRequest {
 	// Temporal
 	if q.ValidAt != nil {
 		req.AsOf = *q.ValidAt
-		req.ScoreParams.AsOf = *q.ValidAt
+		req.ValidAt = *q.ValidAt
+	}
+	if q.KnownAt != nil {
+		req.KnownAt = *q.KnownAt
 	}
 
 	// Score weights

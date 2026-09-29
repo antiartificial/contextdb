@@ -116,13 +116,31 @@ func (g *GraphStore) TouchNode(_ context.Context, ns string, id uuid.UUID, at ti
 func (g *GraphStore) AsOf(_ context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-
 	versions := g.nodes[nodeKey(ns, id)]
-	// Walk newest to oldest, return first version valid at t.
 	for i := len(versions) - 1; i >= 0; i-- {
 		v := versions[i]
 		if v.IsValidAt(t) && !v.TxTime.After(t) {
 			return &v, nil
+		}
+	}
+	return nil, nil
+}
+
+// At returns the version known at knownAt only when it was valid at validAt.
+func (g *GraphStore) At(_ context.Context, ns string, id uuid.UUID, validAt, knownAt time.Time) (*core.Node, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	versions := g.nodes[nodeKey(ns, id)]
+	// A newer known correction supersedes older versions even if it is no
+	// longer valid at the requested valid time.
+	for i := len(versions) - 1; i >= 0; i-- {
+		v := versions[i]
+		if !v.TxTime.After(knownAt) {
+			if v.IsValidAt(validAt) {
+				return &v, nil
+			}
+			return nil, nil
 		}
 	}
 	return nil, nil
@@ -231,6 +249,10 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 	if asOf.IsZero() {
 		asOf = time.Now()
 	}
+	knownAt := q.KnownAt
+	if knownAt.IsZero() {
+		knownAt = time.Now()
+	}
 	typeSet := sliceToSet(q.EdgeTypes)
 	maxDepth := q.MaxDepth
 	if maxDepth <= 0 {
@@ -255,10 +277,13 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 			versions := g.nodes[nodeKey(q.Namespace, id)]
 			for i := len(versions) - 1; i >= 0; i-- {
 				v := versions[i]
+				if v.TxTime.After(knownAt) {
+					continue
+				}
 				if v.IsValidAt(asOf) {
 					result = append(result, v)
-					break
 				}
+				break
 			}
 
 			// expand edges
@@ -266,7 +291,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 				if e.Namespace != q.Namespace || e.Src != id {
 					continue
 				}
-				if !e.IsActiveAt(asOf) {
+				if e.TxTime.After(knownAt) || !e.IsActiveAt(asOf) {
 					continue
 				}
 				if len(typeSet) > 0 && !typeSet[e.Type] {
