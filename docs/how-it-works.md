@@ -21,7 +21,7 @@ An application writes “Deploys use canary rollout” with a source. ContextDB 
   <figcaption>Try Submit, Check, and Persist. A contradiction links competing claims for inspection.</figcaption>
 </figure>
 
-Opt-in fingerprint deduplication can return an existing node before resolving a second source. The [roadmap](/roadmap/optimizations#p0-retrieval-and-evidence-correctness) tracks how to retain independent corroboration in that case. [Write path details](/architecture/write-path)
+With opt-in fingerprint deduplication, a repeat from the same source touches the existing node. A different source adds versioned corroborating evidence to that node without another embedding. [Write path details](/architecture/write-path)
 
 ## 2. A question finds evidence
 
