@@ -1,12 +1,12 @@
 # ContextDB roadmap: retrieval, evidence, and memory quality
 
-Updated 2026-09-26. This reconciles the earlier optimization proposals with current code and the proposed agent-memory work. It is a plan, not a release claim. The [feature matrix](../feature-matrix.md) is the implementation inventory; the [v0.123.0 follow-ups](../releases/v0.123.0.md#next-steps) remain operational work.
+Updated 2026-09-29. This reconciles the earlier optimization proposals with current code and the proposed agent-memory work. It is a plan, not a release claim. The [feature matrix](../feature-matrix.md) is the implementation inventory; the [v0.123.0 follow-ups](../releases/v0.123.0.md#next-steps) remain operational work.
 
 ## Earlier proposals: disposition
 
 | Proposal | Finding | Decision |
 |:--|:--|:--|
-| Write deduplication fingerprinting | Shipped as opt-in. A duplicate skips embedding and touches an existing node. | Remove the old implementation plan. Audit whether a repeat from a different source should record independent evidence; current dedup returns before source resolution. Keep the default opt-in until this is resolved. |
+| Write deduplication fingerprinting | Shipped as opt-in. A duplicate skips embedding; a different source now adds versioned corroborating evidence to the canonical node. | Remove the old implementation plan. Keep the default opt-in until representative evidence and source-filter evaluations justify changing it. |
 | Confidence floor by age | Not implemented. Recency already decays with age; utility is separate. | Do not add the proposed ceiling. Evidence strength and freshness have different meanings. Evaluate explicit freshness or verification signals while preserving historical query behavior. |
 | Query result score breakdown | Shipped across retrieval surfaces. | Remove from the active queue. Extend explanations as new stages are added. |
 | Namespace warm/cold tiering | Not implemented; no scale threshold is documented here. | Defer pending a latency and capacity profile. Historical queries, conflict checks, and summary refresh must retain a complete-evidence path. |
@@ -19,11 +19,11 @@ Priority reflects correctness, user value, and dependency order. New capabilitie
 
 ### P0 — Retrieval and evidence correctness
 
-**Temporal contract.** Specify separately how valid time (when a claim was true) and transaction time (when ContextDB knew it) apply to candidate selection, graph hydration, filters, and ranking. Today `RetrieveRequest` exposes one `AsOf`; the DSL parses `KnownAt` but does not carry it into that request. Resolve this before interpreting natural-language dates. Test late-arriving facts, corrections, retractions, and historical reads on memory, BadgerDB, and Postgres.
+**Temporal contract — implemented foundation, validation remains.** `RetrieveRequest` now has separate `ValidAt` and `KnownAt`; the DSL, APIs, SDKs, vector hydration, and graph walks carry them through. `AsOf` remains a valid-time shorthand with current knowledge. Memory and Badger conformance tests cover late arrivals, corrections, and edges learned after their valid time; the Postgres CI smoke covers a late arrival. Next, add Postgres correction/retraction parity and version edge invalidations so a historical `KnownAt` can reconstruct an edge before it was invalidated. Measure historical vector recall when bounded ANN overfetch filters out many newer candidates.
 
-**Dedup provenance.** Decide whether identical content from another source is corroborating evidence. If so, record that source assertion or event without paying for another embedding, while retaining idempotent retries and historical transaction information. Verify attribution and credibility behavior before changing the opt-in default.
+**Dedup provenance — implemented foundation, evaluation remains.** Identical content from another source now records versioned corroborating evidence on the canonical node without another embedding. Source filters project surviving attribution and confidence into query results. Memory and Badger tests cover retries, history, and source filters. Next, evaluate the effect of corroboration on ranking and source credibility, and test correction or retraction of one source's assertion without removing independent evidence. Keep dedup opt-in meanwhile.
 
-**Evaluation baseline.** Add exact-term, temporal, contradiction, and source-dispute cases to the existing ranking workflow. Capture relevance, evidence completeness, latency, and backend parity before changing fusion or query interpretation. Include current and optional reranker paths; the reranker currently returns its own scores, so define what its score explanation means.
+**Evaluation baseline — deterministic core added, coverage remains.** A separate seven-case corpus now records exact-term, temporal, contradiction, and source-dispute outcomes with rank, MRR, local latency, and memory/Badger parity. The exact-identifier miss is an explicit baseline. Next, connect it to the broader ranking workflow, add evidence-completeness and Postgres/remote runs, and compare both default and optional reranker paths. Define how reranker scores relate to the current score breakdown before changing fusion defaults.
 
 ### P1 — Retrieval coverage and agent consumption
 
@@ -41,7 +41,7 @@ Extend existing episodic-to-semantic consolidation with optional, evidence-backe
 
 ## Sequencing and gates
 
-1. Complete P0 time and provenance decisions and establish baseline cases. Continue the [v0.123.0 follow-ups](../releases/v0.123.0.md#next-steps) on indexed intent lookup, Postgres fault coverage, reviewer UI, and evaluator usefulness in their operational track.
+1. Close the remaining P0 validation gaps: Postgres correction/retraction parity, historical edge invalidation, corroboration ranking and source-specific corrections, evidence-completeness evaluation, and reranker interpretation. Continue the [v0.123.0 follow-ups](../releases/v0.123.0.md#next-steps) on indexed intent lookup, Postgres fault coverage, reviewer UI, and evaluator usefulness in their operational track.
 2. Ship lexical retrieval and token budgets as independent P1 slices. Compare fusion approaches; keep final ranking explainable after any reranker.
 3. Add natural-language temporal intervals after explicit time queries are correct. Add derived summaries after change detection, provenance, and refresh recovery have a verified design.
 4. Reconsider age penalties or storage tiering only when evaluations show a concrete failure or capacity threshold. Prefer explicit freshness/review signals and indexing before excluding evidence.
