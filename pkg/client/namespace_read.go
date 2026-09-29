@@ -48,13 +48,22 @@ type RetrieveRequest struct {
 	// Strategy overrides the namespace default retrieval strategy.
 	Strategy retrieval.HybridStrategy
 
-	// AsOf pins retrieval to a historical time (temporal query).
-	// Zero value = now.
+	// AsOf is the legacy valid-time anchor. KnownAt defaults to now.
+	// ValidAt overrides AsOf when both are set.
 	AsOf time.Time
+
+	// ValidAt selects facts valid at this time. Zero value = AsOf or now.
+	ValidAt time.Time
+
+	// KnownAt limits evidence to versions committed by this time.
+	// Zero value = AsOf or now.
+	KnownAt time.Time
 
 	// ExcludeSourceIDs filters out nodes from specific sources.
 	// Supports counterfactual queries: "what if source X didn't exist?"
 	ExcludeSourceIDs []string
+	// IncludeSourceIDs returns nodes with evidence from at least one listed source.
+	IncludeSourceIDs []string
 }
 
 // Retrieve runs a hybrid retrieval query against the namespace.
@@ -82,11 +91,18 @@ func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]
 	if params == (core.ScoreParams{}) {
 		params = h.cfg.ScoreParams
 	}
-	if req.AsOf.IsZero() {
-		params.AsOf = time.Now()
-	} else {
-		params.AsOf = req.AsOf
+	now := time.Now()
+	validAt, knownAt := req.AsOf, req.KnownAt
+	if !req.ValidAt.IsZero() {
+		validAt = req.ValidAt
 	}
+	if validAt.IsZero() {
+		validAt = now
+	}
+	if knownAt.IsZero() {
+		knownAt = now
+	}
+	params.AsOf = validAt
 
 	strategy := req.Strategy
 	if strategy.IsZero() {
@@ -108,8 +124,10 @@ func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]
 		TopK:             topK,
 		Labels:           req.Labels,
 		ExcludeSourceIDs: req.ExcludeSourceIDs,
+		IncludeSourceIDs: req.IncludeSourceIDs,
 		Strategy:         strategy,
 		ScoreParams:      params,
+		KnownAt:          knownAt,
 	}
 
 	scored, err := h.engine.Retrieve(ctx, q)

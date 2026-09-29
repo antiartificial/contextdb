@@ -276,6 +276,106 @@ func TestNamespace_WriteDedupIsOptIn(t *testing.T) {
 	is.Equal(embedder.calls, 2)
 }
 
+func TestNamespace_WriteDedupCorroborationSurvivesRestart(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	var nodeID uuid.UUID
+	{
+		db := client.MustOpen(client.Options{Mode: client.ModeEmbedded, DataDir: dir, DedupWrites: true})
+		ns := db.Namespace("test:dedup-restart", namespace.ModeGeneral)
+		first, err := ns.Write(ctx, client.WriteRequest{Content: "Shared fact", SourceID: "source-a", Vector: vec8(0)})
+		is.NoErr(err)
+		nodeID = first.NodeID
+		second, err := ns.Write(ctx, client.WriteRequest{Content: "Shared fact", SourceID: "source-b"})
+		is.NoErr(err)
+		is.Equal(second.NodeID, nodeID)
+		is.NoErr(db.Close())
+	}
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded, DataDir: dir, DedupWrites: true})
+	defer db.Close()
+	ns := db.Namespace("test:dedup-restart", namespace.ModeGeneral)
+	node, err := ns.GetNode(ctx, nodeID)
+	is.NoErr(err)
+	evidence, ok := node.Properties["corroborating_sources"].([]any)
+	is.True(ok)
+	is.Equal(len(evidence), 1)
+	is.Equal(evidence[0].(map[string]any)["source_id"], "source-b")
+	results, err := ns.Retrieve(ctx, client.RetrieveRequest{Vector: vec8(0), TopK: 3, IncludeSourceIDs: []string{"source-b"}})
+	is.NoErr(err)
+	is.Equal(len(results), 1)
+}
+
+func TestNamespace_WriteDedupPreservesIndependentSourceEvidence(t *testing.T) {
+	is := is.New(t)
+	ctx := context.Background()
+	embedder := &countingEmbedder{vec: vec8(0)}
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded, Embedder: embedder})
+	defer db.Close()
+	ns := db.Namespace("test:dedup-corroboration", namespace.ModeGeneral)
+
+	first, err := ns.Write(ctx, client.WriteRequest{
+		Content: "The launch is Tuesday", SourceID: "calendar", Labels: []string{"Fact"}, Dedup: true, Confidence: 0.9,
+	})
+	is.NoErr(err)
+	is.True(first.Admitted)
+	second, err := ns.Write(ctx, client.WriteRequest{
+		Content: "The launch is Tuesday", SourceID: "release-notes", Labels: []string{"Fact"}, Dedup: true, Confidence: 0.6,
+		IdempotencyKey: "release-notes-launch-tuesday",
+	})
+	is.NoErr(err)
+	is.True(second.Admitted)
+	is.Equal(second.NodeID, first.NodeID)
+	is.Equal(embedder.calls, 1)
+
+	node, err := ns.GetNode(ctx, first.NodeID)
+	is.NoErr(err)
+	is.Equal(node.Properties["source_id"], "calendar")
+	evidence, ok := node.Properties["corroborating_sources"].([]any)
+	is.True(ok)
+	is.Equal(len(evidence), 1)
+	entry := evidence[0].(map[string]any)
+	is.Equal(entry["source_id"], "release-notes")
+	is.True(entry["observed_at"] != "")
+	is.True(entry["valid_from"] != "")
+	retry, err := ns.Write(ctx, client.WriteRequest{
+		Content: "The launch is Tuesday", SourceID: "release-notes", Labels: []string{"Fact"}, Dedup: true, Confidence: 0.6,
+		IdempotencyKey: "release-notes-launch-tuesday",
+	})
+	is.NoErr(err)
+	is.Equal(retry.NodeID, first.NodeID)
+	node, err = ns.GetNode(ctx, first.NodeID)
+	is.NoErr(err)
+	evidence, ok = node.Properties["corroborating_sources"].([]any)
+	is.True(ok)
+	is.Equal(len(evidence), 1)
+	history, err := ns.History(ctx, first.NodeID)
+	is.NoErr(err)
+	is.True(len(history) >= 2)
+
+	releaseResults, err := ns.Retrieve(ctx, client.RetrieveRequest{
+		Vector: vec8(0), TopK: 3, IncludeSourceIDs: []string{"release-notes"},
+	})
+	is.NoErr(err)
+	is.Equal(len(releaseResults), 1)
+	is.Equal(releaseResults[0].Node.ID, first.NodeID)
+	is.Equal(releaseResults[0].Node.Properties["source_id"], "release-notes")
+	is.Equal(releaseResults[0].Node.Properties["canonical_source_id"], "calendar")
+	is.Equal(releaseResults[0].Node.Confidence, 0.6)
+	withoutCalendar, err := ns.Retrieve(ctx, client.RetrieveRequest{
+		Vector: vec8(0), TopK: 3, ExcludeSourceIDs: []string{"calendar"},
+	})
+	is.NoErr(err)
+	is.Equal(len(withoutCalendar), 1)
+	is.Equal(withoutCalendar[0].Node.Properties["source_id"], "release-notes")
+	is.Equal(withoutCalendar[0].Node.Confidence, 0.6)
+	withoutBoth, err := ns.Retrieve(ctx, client.RetrieveRequest{
+		Vector: vec8(0), TopK: 3, ExcludeSourceIDs: []string{"calendar", "release-notes"},
+	})
+	is.NoErr(err)
+	is.Equal(len(withoutBoth), 0)
+}
+
 func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

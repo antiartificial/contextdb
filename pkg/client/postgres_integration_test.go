@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/store"
@@ -28,11 +29,14 @@ func TestPostgresStandardModeWriteRetrieveSmoke(t *testing.T) {
 	defer db.Close()
 
 	ns := db.Namespace("test:postgres-integration:"+uuid.NewString(), namespace.ModeGeneral)
+	validAt := time.Now().Add(-24 * time.Hour)
+	knownBeforeWrite := time.Now()
 	written, err := ns.Write(ctx, client.WriteRequest{
-		Content:  "Postgres integration smoke verifies durable graph and vector paths",
-		SourceID: "ci:postgres",
-		Labels:   []string{"Smoke"},
-		Vector:   vec8(1),
+		Content:   "Postgres integration smoke verifies durable graph and vector paths",
+		SourceID:  "ci:postgres",
+		Labels:    []string{"Smoke"},
+		Vector:    vec8(1),
+		ValidFrom: validAt,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +54,24 @@ func TestPostgresStandardModeWriteRetrieveSmoke(t *testing.T) {
 	}
 	if len(results) == 0 || results[0].Node.ID != written.NodeID {
 		t.Fatalf("retrieve did not return written node: got %d results", len(results))
+	}
+	before, err := ns.Retrieve(ctx, client.RetrieveRequest{
+		Vector: vec8(1), TopK: 1, ValidAt: validAt.Add(time.Hour), KnownAt: knownBeforeWrite,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != 0 {
+		t.Fatalf("late-arriving fact leaked into pre-write knowledge view: %d results", len(before))
+	}
+	after, err := ns.Retrieve(ctx, client.RetrieveRequest{
+		Vector: vec8(1), TopK: 1, ValidAt: validAt.Add(time.Hour), KnownAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].Node.ID != written.NodeID {
+		t.Fatalf("late-arriving fact missing from post-write knowledge view: %d results", len(after))
 	}
 }
 

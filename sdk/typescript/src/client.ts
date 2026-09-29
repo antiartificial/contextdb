@@ -108,6 +108,11 @@ export class Namespace {
     if (req.text) body.text = req.text;
     if (req.seedIds) body.seed_ids = req.seedIds;
     if (req.labels) body.labels = req.labels;
+    if (req.asOf) body.as_of = req.asOf;
+    if (req.validAt) body.valid_at = req.validAt;
+    if (req.knownAt) body.known_at = req.knownAt;
+    if (req.includeSourceIds) body.include_source_ids = req.includeSourceIds;
+    if (req.excludeSourceIds) body.exclude_source_ids = req.excludeSourceIds;
     if (req.scoreParams) {
       body.score_params = {
         similarity_weight: req.scoreParams.similarityWeight ?? 0,

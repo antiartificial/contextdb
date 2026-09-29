@@ -203,7 +203,11 @@ Raw component fields (`similarity_score`, `confidence_score`, `recency_score`, `
 | `top_k` | int | No | Max results (default: 10) |
 | `labels` | string[] | No | Filter to nodes with all specified labels |
 | `score_params` | object | No | Override scoring weights |
-| `as_of` | string | No | ISO 8601 timestamp for point-in-time query |
+| `as_of` | string | No | Legacy ISO 8601 valid-time anchor |
+| `valid_at` | string | No | ISO 8601 valid-time anchor; overrides `as_of` |
+| `known_at` | string | No | ISO 8601 transaction-time cutoff; defaults to now |
+| `include_source_ids` | string[] | No | Keep results supported by a listed source |
+| `exclude_source_ids` | string[] | No | Remove listed sources from the result evidence and ranking |
 
 ## Introspection
 
