@@ -231,6 +231,30 @@ func (g *GraphStore) AsOf(_ context.Context, ns string, id uuid.UUID, t time.Tim
 		opts.Prefix = prefix
 		it := txn.NewIterator(opts)
 		defer it.Close()
+		for it.Seek(append(prefix, 0xFF)); it.ValidForPrefix(prefix); it.Next() {
+			var n core.Node
+			if err := it.Item().Value(func(val []byte) error { return json.Unmarshal(val, &n) }); err != nil {
+				return err
+			}
+			if n.IsValidAt(t) && !n.TxTime.After(t) {
+				result = &n
+				break
+			}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func (g *GraphStore) At(_ context.Context, ns string, id uuid.UUID, validAt, knownAt time.Time) (*core.Node, error) {
+	var result *core.Node
+	err := g.db.View(func(txn *badgerdb.Txn) error {
+		prefix := nodePrefix(ns, id)
+		opts := badgerdb.DefaultIteratorOptions
+		opts.Reverse = true
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
 
 		// seek to end of prefix range
 		seekKey := append(prefix, 0xFF)
@@ -241,8 +265,10 @@ func (g *GraphStore) AsOf(_ context.Context, ns string, id uuid.UUID, t time.Tim
 			}); err != nil {
 				return err
 			}
-			if n.IsValidAt(t) && !n.TxTime.After(t) {
-				result = &n
+			if !n.TxTime.After(knownAt) {
+				if n.IsValidAt(validAt) {
+					result = &n
+				}
 				return nil
 			}
 		}
@@ -398,6 +424,10 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 	if asOf.IsZero() {
 		asOf = time.Now()
 	}
+	knownAt := q.KnownAt
+	if knownAt.IsZero() {
+		knownAt = time.Now()
+	}
 	maxDepth := q.MaxDepth
 	if maxDepth <= 0 {
 		maxDepth = 3
@@ -417,7 +447,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 			visited[id] = struct{}{}
 
 			// resolve node
-			n, err := g.AsOf(ctx, q.Namespace, id, asOf)
+			n, err := g.At(ctx, q.Namespace, id, asOf, knownAt)
 			if err != nil {
 				return nil, err
 			}
@@ -431,7 +461,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 				return nil, err
 			}
 			for _, e := range edges {
-				if !e.IsActiveAt(asOf) {
+				if e.TxTime.After(knownAt) || !e.IsActiveAt(asOf) {
 					continue
 				}
 				if q.MinWeight > 0 && e.Weight < q.MinWeight {

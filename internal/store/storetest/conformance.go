@@ -149,6 +149,76 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 		is.True(got == nil)
 	})
 
+	t.Run("AtSeparatesValidAndKnownTime", func(t *testing.T) {
+		g := factory(t)
+		ctx := context.Background()
+		id := uuid.New()
+		base := time.Now().Add(-6 * time.Hour).Truncate(time.Second)
+		first := core.Node{ID: id, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": "original"}, ValidFrom: base, TxTime: base.Add(time.Hour)}
+		if err := g.UpsertNode(ctx, first); err != nil {
+			t.Fatal(err)
+		}
+		correction := first
+		correction.Properties = map[string]any{"text": "corrected"}
+		correction.TxTime = base.Add(3 * time.Hour)
+		if err := g.UpsertNode(ctx, correction); err != nil {
+			t.Fatal(err)
+		}
+		validAt := base.Add(30 * time.Minute)
+		before, err := g.At(ctx, "test", id, validAt, base.Add(30*time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if before != nil {
+			t.Fatalf("fact should not be known yet: %+v", before)
+		}
+		original, err := g.At(ctx, "test", id, validAt, base.Add(2*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if original == nil || core.NodeText(*original) != "original" {
+			t.Fatalf("original as known then: %+v", original)
+		}
+		corrected, err := g.At(ctx, "test", id, validAt, base.Add(4*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if corrected == nil || core.NodeText(*corrected) != "corrected" {
+			t.Fatalf("corrected as known later: %+v", corrected)
+		}
+	})
+
+	t.Run("WalkRespectsKnowledgeOfNodesAndEdges", func(t *testing.T) {
+		g := factory(t)
+		ctx := context.Background()
+		base := time.Now().Add(-6 * time.Hour).Truncate(time.Second)
+		src, dst := uuid.New(), uuid.New()
+		for _, id := range []uuid.UUID{src, dst} {
+			if err := g.UpsertNode(ctx, core.Node{ID: id, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": id.String()}, ValidFrom: base, TxTime: base.Add(time.Hour)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := g.UpsertEdge(ctx, core.Edge{ID: uuid.New(), Namespace: "test", Src: src, Dst: dst, Type: "supports", Weight: 1, ValidFrom: base, TxTime: base.Add(3 * time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+		q := store.WalkQuery{Namespace: "test", SeedIDs: []uuid.UUID{src}, MaxDepth: 3, AsOf: base.Add(30 * time.Minute), KnownAt: base.Add(2 * time.Hour)}
+		before, err := g.Walk(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(before) != 1 || before[0].ID != src {
+			t.Fatalf("before edge was known: %+v", before)
+		}
+		q.KnownAt = base.Add(4 * time.Hour)
+		after, err := g.Walk(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after) != 2 {
+			t.Fatalf("after edge was known: %+v", after)
+		}
+	})
+
 	t.Run("EdgesFromTo", func(t *testing.T) {
 		is := is.New(t)
 		g := factory(t)

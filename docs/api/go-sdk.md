@@ -140,6 +140,8 @@ Ingests a single item. Runs through auto-embedding, the admission gate, and conf
 | `ValidFrom` | `time.Time` | No | When the fact became true (default: now) |
 | `MemType` | `core.MemoryType` | No | Memory type for decay |
 
+With opt-in content deduplication, a repeat from the original source touches the canonical node. A matching assertion from another source adds a versioned `corroborating_sources` property entry with source identity, valid time, observation time, confidence, and an occurrence ID when an idempotency key is supplied. This reuses the original embedding and keeps other sources' evidence when one source changes. `IncludeSourceIDs` and `ExcludeSourceIDs` evaluate the primary and corroborating sources together. Filtered results are query-only projections: `source_id`, `confidence`, and `corroborating_sources` reflect the surviving evidence, while `canonical_source_id` identifies a different primary source when applicable. Stored node history is unchanged.
+
 **WriteResult fields:**
 
 | Field | Type | Description |
@@ -177,7 +179,11 @@ Runs hybrid retrieval (vector + graph + session) with optional reranking and ret
 | `Labels` | `[]string` | No | Filter to nodes with all specified labels |
 | `ScoreParams` | `core.ScoreParams` | No | Override scoring weights |
 | `Strategy` | `retrieval.HybridStrategy` | No | Override retrieval strategy |
-| `AsOf` | `time.Time` | No | Point-in-time query (default: now) |
+| `AsOf` | `time.Time` | No | Legacy valid-time anchor (default: now) |
+| `ValidAt` | `time.Time` | No | Valid-time anchor; overrides `AsOf` |
+| `KnownAt` | `time.Time` | No | Transaction-time cutoff (default: now) |
+| `IncludeSourceIDs` | `[]string` | No | Keep claims supported by at least one listed source, including corroboration |
+| `ExcludeSourceIDs` | `[]string` | No | Exclude listed sources; a claim remains if another source supports it |
 
 **Result fields:**
 

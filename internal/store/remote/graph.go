@@ -68,7 +68,6 @@ func (g *GraphStore) TouchNode(ctx context.Context, ns string, id uuid.UUID, at 
 }
 
 func (g *GraphStore) AsOf(ctx context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error) {
-	// AsOf not exposed via gRPC yet — fetch history and filter client-side
 	nodes, err := g.History(ctx, ns, id)
 	if err != nil {
 		return nil, err
@@ -76,6 +75,23 @@ func (g *GraphStore) AsOf(ctx context.Context, ns string, id uuid.UUID, t time.T
 	for i := len(nodes) - 1; i >= 0; i-- {
 		if nodes[i].IsValidAt(t) {
 			return &nodes[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (g *GraphStore) At(ctx context.Context, ns string, id uuid.UUID, validAt, knownAt time.Time) (*core.Node, error) {
+	// AsOf not exposed via gRPC yet — fetch history and filter client-side
+	nodes, err := g.History(ctx, ns, id)
+	if err != nil {
+		return nil, err
+	}
+	for i := len(nodes) - 1; i >= 0; i-- {
+		if !nodes[i].TxTime.After(knownAt) {
+			if nodes[i].IsValidAt(validAt) {
+				return &nodes[i], nil
+			}
+			return nil, nil
 		}
 	}
 	return nil, nil
@@ -158,12 +174,14 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 		Nodes []core.Node `json:"nodes"`
 	}
 	err := invoke(ctx, g.conn, "WalkGraph", &struct {
-		Namespace string   `json:"namespace"`
-		SeedIDs   []string `json:"seed_ids"`
-		EdgeTypes []string `json:"edge_types"`
-		MaxDepth  int      `json:"max_depth"`
-		Strategy  string   `json:"strategy"`
-		MinWeight float64  `json:"min_weight"`
+		Namespace string    `json:"namespace"`
+		SeedIDs   []string  `json:"seed_ids"`
+		EdgeTypes []string  `json:"edge_types"`
+		MaxDepth  int       `json:"max_depth"`
+		Strategy  string    `json:"strategy"`
+		MinWeight float64   `json:"min_weight"`
+		AsOf      time.Time `json:"as_of"`
+		KnownAt   time.Time `json:"known_at"`
 	}{
 		Namespace: q.Namespace,
 		SeedIDs:   seedIDs,
@@ -171,6 +189,8 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 		MaxDepth:  q.MaxDepth,
 		Strategy:  string(q.Strategy),
 		MinWeight: q.MinWeight,
+		AsOf:      q.AsOf,
+		KnownAt:   q.KnownAt,
 	}, &resp)
 	if err != nil {
 		return nil, err

@@ -91,13 +91,21 @@ func (g *GraphStore) TouchNode(ctx context.Context, ns string, id uuid.UUID, at 
 func (g *GraphStore) AsOf(ctx context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error) {
 	return g.scanNode(ctx, `
 		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
-		FROM nodes
-		WHERE namespace = $1 AND id = $2
-		  AND valid_from <= $3
-		  AND (valid_until IS NULL OR valid_until > $3)
-		  AND tx_time <= $3
-		ORDER BY version DESC LIMIT 1
+		FROM nodes WHERE namespace = $1 AND id = $2
+		AND valid_from <= $3 AND (valid_until IS NULL OR valid_until > $3)
+		AND tx_time <= $3 ORDER BY version DESC LIMIT 1
 	`, ns, id, t)
+}
+
+func (g *GraphStore) At(ctx context.Context, ns string, id uuid.UUID, validAt, knownAt time.Time) (*core.Node, error) {
+	return g.scanNode(ctx, `
+		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
+		FROM (
+			SELECT * FROM nodes WHERE namespace = $1 AND id = $2 AND tx_time <= $4
+			ORDER BY version DESC LIMIT 1
+		) known
+		WHERE valid_from <= $3 AND (valid_until IS NULL OR valid_until > $3)
+	`, ns, id, validAt, knownAt)
 }
 
 func (g *GraphStore) History(ctx context.Context, ns string, id uuid.UUID) ([]core.Node, error) {
@@ -217,6 +225,10 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 	if asOf.IsZero() {
 		asOf = time.Now()
 	}
+	knownAt := q.KnownAt
+	if knownAt.IsZero() {
+		knownAt = time.Now()
+	}
 	maxDepth := q.MaxDepth
 	if maxDepth <= 0 {
 		maxDepth = 3
@@ -232,7 +244,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 			  AND n.id = ANY($2)
 			  AND n.valid_from <= $3
 			  AND (n.valid_until IS NULL OR n.valid_until > $3)
-			  AND n.version = (SELECT MAX(version) FROM nodes WHERE id = n.id AND namespace = n.namespace)
+			  AND n.version = (SELECT MAX(version) FROM nodes WHERE id = n.id AND namespace = n.namespace AND tx_time <= $7)
 
 			UNION
 
@@ -242,6 +254,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 			FROM walk w
 			JOIN edges e ON e.namespace = $1 AND e.src = w.id
 				AND e.invalidated_at IS NULL
+				AND e.tx_time <= $7
 				AND e.valid_from <= $3
 				AND (e.valid_until IS NULL OR e.valid_until > $3)
 				AND ($4::text[] IS NULL OR e.type = ANY($4))
@@ -249,7 +262,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 			JOIN nodes n2 ON n2.namespace = $1 AND n2.id = e.dst
 				AND n2.valid_from <= $3
 				AND (n2.valid_until IS NULL OR n2.valid_until > $3)
-				AND n2.version = (SELECT MAX(version) FROM nodes WHERE id = n2.id AND namespace = n2.namespace)
+				AND n2.version = (SELECT MAX(version) FROM nodes WHERE id = n2.id AND namespace = n2.namespace AND tx_time <= $7)
 			WHERE w.depth < $6
 		)
 		SELECT DISTINCT ON (id) id, namespace, labels, properties, model_id, fingerprint,
@@ -262,7 +275,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 		edgeTypes = q.EdgeTypes
 	}
 
-	rows, err := g.pool.Query(ctx, query, q.Namespace, q.SeedIDs, asOf, edgeTypes, q.MinWeight, maxDepth)
+	rows, err := g.pool.Query(ctx, query, q.Namespace, q.SeedIDs, asOf, edgeTypes, q.MinWeight, maxDepth, knownAt)
 	if err != nil {
 		return nil, err
 	}

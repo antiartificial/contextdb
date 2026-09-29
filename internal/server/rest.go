@@ -134,14 +134,18 @@ type writeResponse struct {
 }
 
 type retrieveRequest struct {
-	Vector      []float32    `json:"vector"`
-	Vectors     [][]float32  `json:"vectors"`
-	Text        string       `json:"text"`
-	SeedIDs     []string     `json:"seed_ids"`
-	TopK        int          `json:"top_k"`
-	Labels      []string     `json:"labels"`
-	ScoreParams *scoreParams `json:"score_params,omitempty"`
-	AsOf        *time.Time   `json:"as_of,omitempty"`
+	Vector           []float32    `json:"vector"`
+	Vectors          [][]float32  `json:"vectors"`
+	Text             string       `json:"text"`
+	SeedIDs          []string     `json:"seed_ids"`
+	TopK             int          `json:"top_k"`
+	Labels           []string     `json:"labels"`
+	ScoreParams      *scoreParams `json:"score_params,omitempty"`
+	AsOf             *time.Time   `json:"as_of,omitempty"`
+	ValidAt          *time.Time   `json:"valid_at,omitempty"`
+	KnownAt          *time.Time   `json:"known_at,omitempty"`
+	IncludeSourceIDs []string     `json:"include_source_ids,omitempty"`
+	ExcludeSourceIDs []string     `json:"exclude_source_ids,omitempty"`
 }
 
 type scoreParams struct {
@@ -504,16 +508,27 @@ func (s *RESTServer) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 	if req.AsOf != nil {
 		asOf = *req.AsOf
 	}
+	var validAt, knownAt time.Time
+	if req.ValidAt != nil {
+		validAt = *req.ValidAt
+	}
+	if req.KnownAt != nil {
+		knownAt = *req.KnownAt
+	}
 
 	results, err := h.Retrieve(r.Context(), client.RetrieveRequest{
-		Vector:      req.Vector,
-		Vectors:     req.Vectors,
-		Text:        req.Text,
-		SeedIDs:     seedIDs,
-		TopK:        req.TopK,
-		Labels:      req.Labels,
-		ScoreParams: sp,
-		AsOf:        asOf,
+		Vector:           req.Vector,
+		Vectors:          req.Vectors,
+		Text:             req.Text,
+		SeedIDs:          seedIDs,
+		TopK:             req.TopK,
+		Labels:           req.Labels,
+		ScoreParams:      sp,
+		AsOf:             asOf,
+		ValidAt:          validAt,
+		KnownAt:          knownAt,
+		IncludeSourceIDs: req.IncludeSourceIDs,
+		ExcludeSourceIDs: req.ExcludeSourceIDs,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

@@ -156,10 +156,10 @@ func (v *VectorIndex) Search(_ context.Context, q store.VectorQuery) ([]core.Sco
 			if !ok {
 				continue
 			}
-			if !n.IsValidAt(asOf) {
+			if q.KnownAt.IsZero() && !n.IsValidAt(asOf) {
 				continue
 			}
-			if len(labelSet) > 0 {
+			if q.KnownAt.IsZero() && len(labelSet) > 0 {
 				allMatch := true
 				for lbl := range labelSet {
 					if !n.HasLabel(lbl) {

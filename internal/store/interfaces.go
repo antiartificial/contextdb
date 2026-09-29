@@ -27,9 +27,12 @@ type GraphStore interface {
 	// transaction time without changing its semantic content.
 	TouchNode(ctx context.Context, ns string, id uuid.UUID, at time.Time) error
 
-	// AsOf returns the node as it existed at the given valid-time anchor.
-	// Returns nil, nil if no version was valid at that time.
+	// AsOf is the legacy single-anchor lookup. At is the explicit bitemporal
+	// lookup used by retrieval.
 	AsOf(ctx context.Context, ns string, id uuid.UUID, t time.Time) (*core.Node, error)
+
+	// At returns the node version known at knownAt if valid at validAt.
+	At(ctx context.Context, ns string, id uuid.UUID, validAt, knownAt time.Time) (*core.Node, error)
 
 	// History returns all versions of a node, oldest first.
 	History(ctx context.Context, ns string, id uuid.UUID) ([]core.Node, error)
@@ -110,6 +113,7 @@ type WalkQuery struct {
 	MaxDepth  int
 	Strategy  TraversalStrategy
 	AsOf      time.Time // zero = now
+	KnownAt   time.Time // transaction-time cutoff; zero = now
 	MinWeight float64   // prune edges below this weight; 0 = no pruning
 }
 
@@ -142,6 +146,7 @@ type VectorQuery struct {
 	TopK      int
 	Labels    []string  // if non-empty, only return nodes carrying all labels
 	AsOf      time.Time // temporal anchor; zero = now
+	KnownAt   time.Time // transaction-time cutoff; zero = now
 }
 
 // KVStore is the hot cache for active namespace context.

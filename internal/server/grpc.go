@@ -127,14 +127,18 @@ type GRPCWriteResponse struct {
 
 // GRPCRetrieveRequest is the gRPC retrieve request.
 type GRPCRetrieveRequest struct {
-	Namespace   string       `json:"namespace"`
-	Vector      []float32    `json:"vector"`
-	Text        string       `json:"text"`
-	SeedIDs     []string     `json:"seed_ids"`
-	TopK        int          `json:"top_k"`
-	Labels      []string     `json:"labels"`
-	ScoreParams *scoreParams `json:"score_params,omitempty"`
-	AsOf        *time.Time   `json:"as_of,omitempty"`
+	Namespace        string       `json:"namespace"`
+	Vector           []float32    `json:"vector"`
+	Text             string       `json:"text"`
+	SeedIDs          []string     `json:"seed_ids"`
+	TopK             int          `json:"top_k"`
+	Labels           []string     `json:"labels"`
+	ScoreParams      *scoreParams `json:"score_params,omitempty"`
+	AsOf             *time.Time   `json:"as_of,omitempty"`
+	ValidAt          *time.Time   `json:"valid_at,omitempty"`
+	KnownAt          *time.Time   `json:"known_at,omitempty"`
+	IncludeSourceIDs []string     `json:"include_source_ids,omitempty"`
+	ExcludeSourceIDs []string     `json:"exclude_source_ids,omitempty"`
 }
 
 // GRPCRetrieveResponse is the gRPC retrieve response.
@@ -277,15 +281,26 @@ func (s *GRPCService) handleRetrieve(srv interface{}, ctx context.Context, dec f
 	if req.AsOf != nil {
 		asOf = *req.AsOf
 	}
+	var validAt, knownAt time.Time
+	if req.ValidAt != nil {
+		validAt = *req.ValidAt
+	}
+	if req.KnownAt != nil {
+		knownAt = *req.KnownAt
+	}
 
 	results, err := h.Retrieve(ctx, client.RetrieveRequest{
-		Vector:      req.Vector,
-		Text:        req.Text,
-		SeedIDs:     seedIDs,
-		TopK:        req.TopK,
-		Labels:      req.Labels,
-		ScoreParams: sp,
-		AsOf:        asOf,
+		Vector:           req.Vector,
+		Text:             req.Text,
+		SeedIDs:          seedIDs,
+		TopK:             req.TopK,
+		Labels:           req.Labels,
+		ScoreParams:      sp,
+		AsOf:             asOf,
+		ValidAt:          validAt,
+		KnownAt:          knownAt,
+		IncludeSourceIDs: req.IncludeSourceIDs,
+		ExcludeSourceIDs: req.ExcludeSourceIDs,
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
@@ -464,15 +479,26 @@ func (s *GRPCService) handleStreamRetrieve(srv interface{}, stream grpc.ServerSt
 	if req.AsOf != nil {
 		asOf = *req.AsOf
 	}
+	var validAt, knownAt time.Time
+	if req.ValidAt != nil {
+		validAt = *req.ValidAt
+	}
+	if req.KnownAt != nil {
+		knownAt = *req.KnownAt
+	}
 
 	results, err := h.Retrieve(ctx, client.RetrieveRequest{
-		Vector:      req.Vector,
-		Text:        req.Text,
-		SeedIDs:     seedIDs,
-		TopK:        req.TopK,
-		Labels:      req.Labels,
-		ScoreParams: sp,
-		AsOf:        asOf,
+		Vector:           req.Vector,
+		Text:             req.Text,
+		SeedIDs:          seedIDs,
+		TopK:             req.TopK,
+		Labels:           req.Labels,
+		ScoreParams:      sp,
+		AsOf:             asOf,
+		ValidAt:          validAt,
+		KnownAt:          knownAt,
+		IncludeSourceIDs: req.IncludeSourceIDs,
+		ExcludeSourceIDs: req.ExcludeSourceIDs,
 	})
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -546,12 +572,14 @@ type grpcEdgesResp struct {
 }
 
 type grpcWalkReq struct {
-	Namespace string   `json:"namespace"`
-	SeedIDs   []string `json:"seed_ids"`
-	EdgeTypes []string `json:"edge_types"`
-	MaxDepth  int      `json:"max_depth"`
-	Strategy  string   `json:"strategy"`
-	MinWeight float64  `json:"min_weight"`
+	Namespace string    `json:"namespace"`
+	SeedIDs   []string  `json:"seed_ids"`
+	EdgeTypes []string  `json:"edge_types"`
+	MaxDepth  int       `json:"max_depth"`
+	Strategy  string    `json:"strategy"`
+	MinWeight float64   `json:"min_weight"`
+	AsOf      time.Time `json:"as_of"`
+	KnownAt   time.Time `json:"known_at"`
 }
 
 type grpcWalkResp struct {
@@ -754,6 +782,8 @@ func (s *GRPCService) handleWalkGraph(srv interface{}, ctx context.Context, dec 
 		MaxDepth:  req.MaxDepth,
 		Strategy:  store.TraversalStrategy(req.Strategy),
 		MinWeight: req.MinWeight,
+		AsOf:      req.AsOf,
+		KnownAt:   req.KnownAt,
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())

@@ -117,6 +117,11 @@ class AsyncNamespace:
         top_k: int = 10,
         labels: list[str] | None = None,
         score_params: ScoreParams | None = None,
+        as_of: str | None = None,
+        valid_at: str | None = None,
+        known_at: str | None = None,
+        include_source_ids: list[str] | None = None,
+        exclude_source_ids: list[str] | None = None,
     ) -> list[Result]:
         body: dict[str, Any] = {"top_k": top_k}
         if vector is not None:
@@ -129,6 +134,16 @@ class AsyncNamespace:
             body["seed_ids"] = seed_ids
         if labels:
             body["labels"] = labels
+        if as_of:
+            body["as_of"] = as_of
+        if valid_at:
+            body["valid_at"] = valid_at
+        if known_at:
+            body["known_at"] = known_at
+        if include_source_ids:
+            body["include_source_ids"] = include_source_ids
+        if exclude_source_ids:
+            body["exclude_source_ids"] = exclude_source_ids
         if score_params:
             body["score_params"] = {
                 "similarity_weight": score_params.similarity_weight,

@@ -124,7 +124,16 @@ func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteRes
 				return WriteResult{}, fmt.Errorf("write: fingerprint lookup: %w", err)
 			}
 			if existing != nil {
-				if err := h.db.graph.TouchNode(ctx, h.cfg.ID, existing.ID, time.Now()); err != nil {
+				if req.SourceID != "" && req.SourceID != existing.Properties["source_id"] {
+					admitted, err := h.recordCorroboration(ctx, existing, req)
+					if err != nil {
+						return WriteResult{}, fmt.Errorf("write: record corroboration: %w", err)
+					}
+					if !admitted {
+						h.db.metrics.IngestRejected.Inc()
+						return WriteResult{Admitted: false, Reason: "source credibility below floor (< 0.05)"}, nil
+					}
+				} else if err := h.db.graph.TouchNode(ctx, h.cfg.ID, existing.ID, time.Now()); err != nil {
 					return WriteResult{}, fmt.Errorf("write: touch deduplicated node: %w", err)
 				}
 				h.db.metrics.AdmissionDuplicateSkipped.Inc()
@@ -324,6 +333,61 @@ func (h *NamespaceHandle) Write(ctx context.Context, req WriteRequest) (WriteRes
 		Admitted:    true,
 		ConflictIDs: conflictIDs,
 	}, nil
+}
+
+// recordCorroboration keeps independent assertions inspectable without storing
+// another copy of the text or paying for a second embedding. The graph store
+// versions this node, so earlier transaction-time views retain the old evidence.
+func (h *NamespaceHandle) recordCorroboration(ctx context.Context, existing *core.Node, req WriteRequest) (bool, error) {
+	src, err := h.resolveSource(ctx, req.SourceID)
+	if err != nil {
+		return false, err
+	}
+	if src.EffectiveCredibility() <= 0.05 {
+		return false, nil
+	}
+	props := make(map[string]any, len(existing.Properties)+1)
+	for key, value := range existing.Properties {
+		props[key] = value
+	}
+	var evidence []any
+	occurrenceID := ""
+	if req.IdempotencyKey != "" {
+		occurrenceID = uuid.NewSHA1(uuid.NameSpaceURL, []byte("contextdb/corroboration/"+h.cfg.ID+"/"+req.SourceID+"/"+req.IdempotencyKey)).String()
+	}
+	switch stored := props["corroborating_sources"].(type) {
+	case []any:
+		evidence = append(evidence, stored...)
+	case []map[string]any:
+		for _, item := range stored {
+			evidence = append(evidence, item)
+		}
+	}
+	for _, item := range evidence {
+		if record, ok := item.(map[string]any); ok && occurrenceID != "" && record["occurrence_id"] == occurrenceID {
+			return true, nil
+		}
+	}
+	validFrom := req.ValidFrom
+	if validFrom.IsZero() {
+		validFrom = time.Now()
+	}
+	confidence := req.Confidence
+	if confidence == 0 {
+		confidence = src.EffectiveCredibility()
+	}
+	evidence = append(evidence, map[string]any{
+		"source_id":     req.SourceID,
+		"valid_from":    validFrom.UTC().Format(time.RFC3339Nano),
+		"observed_at":   time.Now().UTC().Format(time.RFC3339Nano),
+		"confidence":    confidence,
+		"occurrence_id": occurrenceID,
+	})
+	props["corroborating_sources"] = evidence
+	updated := *existing
+	updated.Properties = props
+	updated.TxTime = time.Now()
+	return true, h.db.graph.UpsertNode(ctx, updated)
 }
 
 // IngestText runs raw text through the extraction pipeline, producing nodes
