@@ -94,3 +94,45 @@
 .vp-code-group .tabs label {
   gap: 0.4rem;
 }
+/* Docs-only interfig bridge: keep its inline-rendered colors aligned with VitePress. */
+.contextdb-walkthrough .VPDoc:not(.has-sidebar) .container,
+.contextdb-walkthrough .VPDoc:not(.has-sidebar) .content {
+  max-width: 1200px;
+}
+
+.contextdb-walkthrough .VPDoc .content-container {
+  max-width: none;
+}
+
+.contextdb-flow {
+  --fig-accent: #2563eb;
+  --fig-fg: #172033;
+  --fig-muted: #4b5563;
+  --fig-bg: #ffffff;
+  --fig-surface: #f1f5f9;
+  --fig-border: #94a3b8;
+  margin-block: 1.5rem;
+}
+
+.dark .contextdb-flow {
+  --fig-accent: #60a5fa;
+  --fig-fg: #f3f4f6;
+  --fig-muted: #cbd5e1;
+  --fig-bg: #111827;
+  --fig-surface: #1f2937;
+  --fig-border: #64748b;
+}
+
+.contextdb-flow :focus-visible {
+  outline: 3px solid var(--fig-accent);
+  outline-offset: 3px;
+}
+
+figure:has(.contextdb-flow) {
+  margin-inline: 0;
+}
+
+figure:has(.contextdb-flow) figcaption {
+  color: var(--vp-c-text-2);
+  font-size: 0.9rem;
+}

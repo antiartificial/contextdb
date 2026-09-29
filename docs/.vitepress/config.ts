@@ -16,6 +16,7 @@ export default withMermaid(
 
       nav: [
         { text: 'Quick Start', link: '/quick-start' },
+        { text: 'How it works', link: '/how-it-works' },
         { text: 'Examples', link: '/examples' },
         { text: 'API', link: '/api/' },
         { text: 'Releases', link: '/releases/' },
@@ -28,6 +29,7 @@ export default withMermaid(
             text: 'Getting Started',
             items: [
               { text: 'Quick Start', link: '/quick-start' },
+              { text: 'How it works', link: '/how-it-works' },
               { text: 'Playground', link: '/playground' },
               { text: 'Examples', link: '/examples' },
               { text: 'Releases', link: '/releases/' },
