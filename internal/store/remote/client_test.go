@@ -97,6 +97,16 @@ func TestRemoteGraphStore(t *testing.T) {
 	history, err := graph.History(ctx, "remote-test", nodeID)
 	is.NoErr(err)
 	is.True(len(history) >= 1)
+	current := history[len(history)-1]
+	updated := current
+	updated.Properties = map[string]any{"text": "corrected over remote"}
+	updated.TxTime = time.Now()
+	ok, err := graph.UpsertNodeIfVersion(ctx, updated, current.Version)
+	is.NoErr(err)
+	is.True(ok)
+	ok, err = graph.UpsertNodeIfVersion(ctx, updated, current.Version)
+	is.NoErr(err)
+	is.True(!ok)
 
 	// UpsertEdge
 	node2ID := uuid.New()
@@ -292,4 +302,43 @@ func TestModeRemoteRoundTrip(t *testing.T) {
 	is.NoErr(err)
 	is.True(node != nil)
 	is.Equal(node.Labels, []string{"Claim"})
+}
+
+func TestRemoteWalkReconstructsEdgeEdits(t *testing.T) {
+	ctx := context.Background()
+	addr := startTestServer(t)
+	rc, err := remote.NewClient(ctx, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rc.Close()
+	g := rc.Graph()
+	ns := "remote-edge-history"
+	base := time.Now().Add(-8 * time.Hour).Truncate(time.Second)
+	a, b, id := uuid.New(), uuid.New(), uuid.New()
+	for _, nodeID := range []uuid.UUID{a, b} {
+		if err := g.UpsertNode(ctx, core.Node{ID: nodeID, Namespace: ns, Labels: []string{"Claim"}, Properties: map[string]any{"text": nodeID.String()}, ValidFrom: base, TxTime: base}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := core.Edge{ID: id, Namespace: ns, Src: a, Dst: b, Type: "supports", Weight: 1, ValidFrom: base, TxTime: base}
+	if err := g.UpsertEdge(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	e.Weight, e.TxTime = .2, base.Add(2*time.Hour)
+	if err := g.UpsertEdge(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		known int
+		want  int
+	}{{1, 2}, {3, 1}} {
+		got, err := g.Walk(ctx, store.WalkQuery{Namespace: ns, SeedIDs: []uuid.UUID{a}, MaxDepth: 3, AsOf: base.Add(4 * time.Hour), KnownAt: base.Add(time.Duration(tc.known) * time.Hour), MinWeight: .5})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != tc.want {
+			t.Fatalf("known +%dh: got %d nodes, want %d", tc.known, len(got), tc.want)
+		}
+	}
 }

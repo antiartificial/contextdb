@@ -17,6 +17,38 @@ import (
 
 // RunGraphStoreTests runs the full GraphStore conformance suite.
 func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStore) {
+	t.Run("ConditionalNodeVersionRejectsStaleWrites", func(t *testing.T) {
+		g := factory(t)
+		conditional, ok := g.(store.ConditionalNodeStore)
+		if !ok {
+			t.Fatal("graph store lacks conditional node updates")
+		}
+		ctx := context.Background()
+		id := uuid.New()
+		base := time.Now().Add(-time.Hour)
+		if err := g.UpsertNode(ctx, core.Node{ID: id, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": "original"}, ValidFrom: base, TxTime: base}); err != nil {
+			t.Fatal(err)
+		}
+		first, err := g.GetNode(ctx, "test", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		updated := *first
+		updated.Properties = map[string]any{"text": "corrected"}
+		updated.TxTime = base.Add(time.Minute)
+		written, err := conditional.UpsertNodeIfVersion(ctx, updated, first.Version)
+		if err != nil || !written {
+			t.Fatalf("first conditional write: %v, written=%v", err, written)
+		}
+		written, err = conditional.UpsertNodeIfVersion(ctx, updated, first.Version)
+		if err != nil || written {
+			t.Fatalf("stale conditional write: %v, written=%v", err, written)
+		}
+		latest, err := g.GetNode(ctx, "test", id)
+		if err != nil || latest.Version != first.Version+1 || latest.Properties["text"] != "corrected" {
+			t.Fatalf("latest node: %v, %+v", err, latest)
+		}
+	})
 	t.Run("UpsertAndGetNode", func(t *testing.T) {
 		is := is.New(t)
 		g := factory(t)
@@ -259,6 +291,118 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 		}
 		if len(historical) != 2 {
 			t.Fatalf("historical valid time: %+v", historical)
+		}
+	})
+
+	t.Run("WalkReconstructsRepeatedEdgeEdits", func(t *testing.T) {
+		g := factory(t)
+		ctx := context.Background()
+		base := time.Now().Add(-10 * time.Hour).Truncate(time.Second)
+		src, dst, edgeID := uuid.New(), uuid.New(), uuid.New()
+		for _, id := range []uuid.UUID{src, dst} {
+			if err := g.UpsertNode(ctx, core.Node{ID: id, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": id.String()}, ValidFrom: base, TxTime: base}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e := core.Edge{ID: edgeID, Namespace: "test", Src: src, Dst: dst, Type: "supports", Weight: 1, ValidFrom: base, TxTime: base}
+		if err := g.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		e.Weight, e.TxTime = .2, base.Add(2*time.Hour)
+		if err := g.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		e.Weight, e.TxTime = .8, base.Add(4*time.Hour)
+		if err := g.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		if err := g.InvalidateEdge(ctx, "test", edgeID, base.Add(6*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			hours     int
+			minWeight float64
+			want      int
+		}{
+			{1, .5, 2}, {3, .5, 1}, {5, .5, 2}, {7, .5, 1},
+		} {
+			q := store.WalkQuery{Namespace: "test", SeedIDs: []uuid.UUID{src}, MaxDepth: 3, AsOf: base.Add(7 * time.Hour), KnownAt: base.Add(time.Duration(tc.hours) * time.Hour), MinWeight: tc.minWeight}
+			got, err := g.Walk(ctx, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != tc.want {
+				t.Fatalf("known at +%dh: got %d nodes, want %d", tc.hours, len(got), tc.want)
+			}
+		}
+	})
+
+	t.Run("WalkUsesHistoricalEdgeEndpoints", func(t *testing.T) {
+		g := factory(t)
+		ctx := context.Background()
+		base := time.Now().Add(-8 * time.Hour).Truncate(time.Second)
+		oldSrc, newSrc, dst, edgeID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+		for _, id := range []uuid.UUID{oldSrc, newSrc, dst} {
+			if err := g.UpsertNode(ctx, core.Node{ID: id, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": id.String()}, ValidFrom: base, TxTime: base}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e := core.Edge{ID: edgeID, Namespace: "test", Src: oldSrc, Dst: dst, Type: "supports", Weight: 1, ValidFrom: base, TxTime: base}
+		if err := g.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		e.Src, e.TxTime = newSrc, base.Add(2*time.Hour)
+		if err := g.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			seed  uuid.UUID
+			known int
+			want  int
+		}{
+			{oldSrc, 1, 2}, {newSrc, 1, 1}, {oldSrc, 3, 1}, {newSrc, 3, 2},
+		} {
+			got, err := g.Walk(ctx, store.WalkQuery{Namespace: "test", SeedIDs: []uuid.UUID{tc.seed}, MaxDepth: 3, AsOf: base.Add(4 * time.Hour), KnownAt: base.Add(time.Duration(tc.known) * time.Hour)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != tc.want {
+				t.Fatalf("seed %s known +%dh: got %d nodes, want %d", tc.seed, tc.known, len(got), tc.want)
+			}
+		}
+	})
+
+	t.Run("EdgeEditTransactionTimeAdvances", func(t *testing.T) {
+		g := factory(t)
+		ctx := context.Background()
+		base := time.Now().Add(-8 * time.Hour).Truncate(time.Second)
+		a, b, id := uuid.New(), uuid.New(), uuid.New()
+		for _, nodeID := range []uuid.UUID{a, b} {
+			if err := g.UpsertNode(ctx, core.Node{ID: nodeID, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": nodeID.String()}, ValidFrom: base, TxTime: base}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e := core.Edge{ID: id, Namespace: "test", Src: a, Dst: b, Type: "supports", Weight: 1, ValidFrom: base, TxTime: base.Add(2 * time.Hour)}
+		if err := g.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		e.Weight, e.TxTime = .2, base.Add(time.Hour)
+		if err := g.UpsertEdge(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			known time.Time
+			want  int
+		}{
+			{base.Add(2 * time.Hour), 2}, {base.Add(2*time.Hour + time.Microsecond), 1},
+		} {
+			got, err := g.Walk(ctx, store.WalkQuery{Namespace: "test", SeedIDs: []uuid.UUID{a}, MaxDepth: 3, AsOf: base.Add(3 * time.Hour), KnownAt: tc.known, MinWeight: .5})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != tc.want {
+				t.Fatalf("known at %s: got %d nodes, want %d", tc.known, len(got), tc.want)
+			}
 		}
 	})
 

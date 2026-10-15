@@ -22,6 +22,17 @@ func (g *GraphStore) UpsertNode(ctx context.Context, n core.Node) error {
 	return invoke(ctx, g.conn, "UpsertNode", &struct{ Node core.Node }{Node: n}, &resp)
 }
 
+func (g *GraphStore) UpsertNodeIfVersion(ctx context.Context, n core.Node, expectedVersion uint64) (bool, error) {
+	var resp struct {
+		Updated bool `json:"updated"`
+	}
+	err := invoke(ctx, g.conn, "UpsertNodeIfVersion", &struct {
+		Node            core.Node `json:"node"`
+		ExpectedVersion uint64    `json:"expected_version"`
+	}{Node: n, ExpectedVersion: expectedVersion}, &resp)
+	return resp.Updated, err
+}
+
 func (g *GraphStore) GetNode(ctx context.Context, ns string, id uuid.UUID) (*core.Node, error) {
 	var resp struct {
 		Node  *core.Node `json:"node"`

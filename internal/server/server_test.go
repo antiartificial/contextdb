@@ -217,11 +217,11 @@ func TestRESTServer_Introspection(t *testing.T) {
 	var versionResp map[string]any
 	is.NoErr(json.Unmarshal(w.Body.Bytes(), &versionResp))
 	is.Equal(versionResp["api_version"], "v1")
-	is.Equal(versionResp["latest_migration"], float64(2))
+	is.Equal(versionResp["latest_migration"], float64(3))
 	features := versionResp["features"].([]any)
 	is.True(len(features) > 0)
 	migrations := versionResp["migrations"].([]any)
-	is.Equal(len(migrations), 2)
+	is.Equal(len(migrations), 3)
 }
 
 func TestRESTServer_WriteAndRetrieve(t *testing.T) {
@@ -1551,11 +1551,11 @@ func TestGraphQLServer_Introspection(t *testing.T) {
 	version := data["version"].(map[string]any)
 	is.Equal(version["version"], buildinfo.Version)
 	is.Equal(version["apiVersion"], "v1")
-	is.Equal(version["latestMigration"], float64(2))
+	is.Equal(version["latestMigration"], float64(3))
 	is.True(len(version["features"].([]any)) > 0)
-	is.Equal(len(version["migrations"].([]any)), 2)
+	is.Equal(len(version["migrations"].([]any)), 3)
 	is.True(len(data["features"].([]any)) > 0)
-	is.Equal(len(data["migrations"].([]any)), 2)
+	is.Equal(len(data["migrations"].([]any)), 3)
 }
 
 func TestRESTServer_Stats(t *testing.T) {
