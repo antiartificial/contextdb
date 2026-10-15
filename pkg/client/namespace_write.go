@@ -390,6 +390,65 @@ func (h *NamespaceHandle) recordCorroboration(ctx context.Context, existing *cor
 	return true, h.db.graph.UpsertNode(ctx, updated)
 }
 
+// RetractSourceAssertion removes one source's support for a canonical claim.
+// The graph records a new node version, preserving earlier KnownAt views.
+// Independent corroboration keeps the claim active; the last assertion
+// retracts the node at effectiveAt.
+func (h *NamespaceHandle) RetractSourceAssertion(ctx context.Context, nodeID uuid.UUID, sourceID, reason string, effectiveAt time.Time) error {
+	if sourceID == "" {
+		return fmt.Errorf("retract source assertion: source ID required")
+	}
+	if effectiveAt.IsZero() {
+		effectiveAt = time.Now()
+	}
+	node, err := h.db.graph.GetNode(ctx, h.cfg.ID, nodeID)
+	if err != nil {
+		return err
+	}
+	if node == nil {
+		return fmt.Errorf("retract source assertion: node %s not found", nodeID)
+	}
+	props := make(map[string]any, len(node.Properties))
+	for key, value := range node.Properties {
+		props[key] = value
+	}
+	primary, _ := props["source_id"].(string)
+	removed := primary == sourceID
+	var remaining []any
+	if records, ok := props["corroborating_sources"].([]any); ok {
+		for _, item := range records {
+			record, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if record["source_id"] == sourceID {
+				removed = true
+				continue
+			}
+			remaining = append(remaining, item)
+		}
+	}
+	if !removed {
+		return fmt.Errorf("retract source assertion: source %q does not support node %s", sourceID, nodeID)
+	}
+	if primary == sourceID {
+		if len(remaining) == 0 {
+			return h.db.graph.RetractNode(ctx, h.cfg.ID, nodeID, reason, effectiveAt)
+		}
+		first := remaining[0].(map[string]any)
+		props["source_id"] = first["source_id"]
+		if confidence, ok := first["confidence"].(float64); ok {
+			node.Confidence = confidence
+		}
+		remaining = remaining[1:]
+	}
+	props["corroborating_sources"] = remaining
+	props["last_source_retraction"] = map[string]any{"source_id": sourceID, "reason": reason, "at": effectiveAt.UTC().Format(time.RFC3339Nano)}
+	node.Properties = props
+	node.TxTime = effectiveAt
+	return h.db.graph.UpsertNode(ctx, *node)
+}
+
 // IngestText runs raw text through the extraction pipeline, producing nodes
 // and edges automatically. Requires Options.Extractor to be set.
 func (h *NamespaceHandle) IngestText(ctx context.Context, text, sourceID string) (*ingest.IngestResult, error) {

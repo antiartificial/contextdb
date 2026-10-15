@@ -22,6 +22,21 @@ function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
+test('retrieve sends independent candidate and rerank budgets', async () => {
+  mockFetch(() => json({ results: [] }))
+  await new ContextDB('https://api.example').namespace('ns').retrieve({ text: 'INV-8Q7A', topK: 3, candidateK: 40, rerankK: 12 })
+  assert.equal(requests[0].body.top_k, 3)
+  assert.equal(requests[0].body.candidate_k, 40)
+  assert.equal(requests[0].body.rerank_k, 12)
+})
+
+test('source retraction sends a scoped correction', async () => {
+  mockFetch(() => new Response(null, { status: 204 }))
+  await new ContextDB('https://api.example').namespace('team/a').retractSourceAssertion('node-1', 'ledger/a', 'corrected')
+  assert.match(requests[0].url, /namespaces\/team%2Fa\/nodes\/node-1\/retract-source$/)
+  assert.deepEqual(requests[0].body, { source_id: 'ledger/a', reason: 'corrected' })
+})
+
 test('acquisition execution sends review-before-admission and escapes its namespace', async () => {
   mockFetch(() => json({ namespace: 'team/a b', dry_run: false, executed: true, runs: [], connectors: [], plan: {}, summary: {} }))
   await new ContextDB('https://api.example/').namespace('team/a b', 'belief system').acquisitionExecution({

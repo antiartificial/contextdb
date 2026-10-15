@@ -376,6 +376,45 @@ func TestNamespace_WriteDedupPreservesIndependentSourceEvidence(t *testing.T) {
 	is.Equal(len(withoutBoth), 0)
 }
 
+func TestNamespace_RetractOneCorroboratingSource(t *testing.T) {
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+	ns := db.Namespace("test:source-retract", namespace.ModeGeneral)
+	first, err := ns.Write(ctx, client.WriteRequest{Content: "The launch is Tuesday", SourceID: "calendar", Vector: vec8(0), Dedup: true, Confidence: .9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ns.Write(ctx, client.WriteRequest{Content: "The launch is Tuesday", SourceID: "release-notes", Dedup: true, Confidence: .6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now()
+	effectiveAt := before.Add(time.Second)
+	if err := ns.RetractSourceAssertion(ctx, first.NodeID, "calendar", "corrected", effectiveAt); err != nil {
+		t.Fatal(err)
+	}
+	old, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "launch Tuesday", ValidAt: effectiveAt.Add(time.Second), KnownAt: before, IncludeSourceIDs: []string{"calendar"}})
+	if err != nil || len(old) != 1 {
+		t.Fatalf("historical calendar support: %v %+v", err, old)
+	}
+	current, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "launch Tuesday", ValidAt: effectiveAt.Add(time.Second), KnownAt: effectiveAt.Add(time.Second), IncludeSourceIDs: []string{"release-notes"}})
+	if err != nil || len(current) != 1 {
+		t.Fatalf("independent support: %v %+v", err, current)
+	}
+	removed, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "launch Tuesday", ValidAt: effectiveAt.Add(time.Second), KnownAt: effectiveAt.Add(time.Second), IncludeSourceIDs: []string{"calendar"}})
+	if err != nil || len(removed) != 0 {
+		t.Fatalf("retracted source must not support claim: %v %+v", err, removed)
+	}
+	if err := ns.RetractSourceAssertion(ctx, first.NodeID, "release-notes", "corrected", effectiveAt.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	gone, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "launch Tuesday", ValidAt: effectiveAt.Add(3 * time.Second), KnownAt: effectiveAt.Add(3 * time.Second)})
+	if err != nil || len(gone) != 0 {
+		t.Fatalf("last assertion retraction: %v %+v", err, gone)
+	}
+}
+
 func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

@@ -219,6 +219,49 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 		}
 	})
 
+	t.Run("WalkReconstructsInvalidatedEdge", func(t *testing.T) {
+		g := factory(t)
+		ctx := context.Background()
+		base := time.Now().Add(-8 * time.Hour).Truncate(time.Second)
+		src, dst, edgeID := uuid.New(), uuid.New(), uuid.New()
+		for _, id := range []uuid.UUID{src, dst} {
+			if err := g.UpsertNode(ctx, core.Node{ID: id, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": id.String()}, ValidFrom: base, TxTime: base}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := g.UpsertEdge(ctx, core.Edge{ID: edgeID, Namespace: "test", Src: src, Dst: dst, Type: "supports", Weight: 1, ValidFrom: base, TxTime: base}); err != nil {
+			t.Fatal(err)
+		}
+		invalidated := base.Add(4 * time.Hour)
+		if err := g.InvalidateEdge(ctx, "test", edgeID, invalidated); err != nil {
+			t.Fatal(err)
+		}
+		q := store.WalkQuery{Namespace: "test", SeedIDs: []uuid.UUID{src}, MaxDepth: 3, AsOf: base.Add(5 * time.Hour), KnownAt: base.Add(3 * time.Hour)}
+		before, err := g.Walk(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(before) != 2 {
+			t.Fatalf("before invalidation was known: %+v", before)
+		}
+		q.KnownAt = base.Add(6 * time.Hour)
+		after, err := g.Walk(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(after) != 1 || after[0].ID != src {
+			t.Fatalf("after invalidation: %+v", after)
+		}
+		q.AsOf = base.Add(3 * time.Hour)
+		historical, err := g.Walk(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(historical) != 2 {
+			t.Fatalf("historical valid time: %+v", historical)
+		}
+	})
+
 	t.Run("EdgesFromTo", func(t *testing.T) {
 		is := is.New(t)
 		g := factory(t)

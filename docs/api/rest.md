@@ -139,7 +139,7 @@ curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
 
 ### Text-based query
 
-Send `text` instead of `vector` to have the server auto-embed the query:
+Send `text` for namespace-scoped lexical search. If an embedder is configured, the server also searches by vector:
 
 ```bash
 curl -X POST http://localhost:7701/v1/namespaces/my-app/retrieve \
@@ -201,6 +201,8 @@ Raw component fields (`similarity_score`, `confidence_score`, `recency_score`, `
 | `text` | string | For text search | Auto-embedded server-side |
 | `seed_ids` | string[] | For graph walk | Known relevant node IDs |
 | `top_k` | int | No | Max results (default: 10) |
+| `candidate_k` | int | No | Per-path candidate budget before fusion; default is at least 50 |
+| `rerank_k` | int | No | Number of fused candidates sent to an optional reranker; default is all |
 | `labels` | string[] | No | Filter to nodes with all specified labels |
 | `score_params` | object | No | Override scoring weights |
 | `as_of` | string | No | Legacy ISO 8601 valid-time anchor |
@@ -208,6 +210,18 @@ Raw component fields (`similarity_score`, `confidence_score`, `recency_score`, `
 | `known_at` | string | No | ISO 8601 transaction-time cutoff; defaults to now |
 | `include_source_ids` | string[] | No | Keep results supported by a listed source |
 | `exclude_source_ids` | string[] | No | Remove listed sources from the result evidence and ranking |
+
+Exact mixed letter-and-number identifiers and quoted phrases are matched literally. Lexical candidates use the same valid time, knowledge time, label, source, and retraction filters as other retrieval paths. The current lexical backends scan visible node versions, so large namespaces need an indexed candidate path before relying on text-only queries at scale.
+
+### Retract one source's assertion
+
+```bash
+curl -X POST http://localhost:7701/v1/namespaces/my-app/nodes/NODE_UUID/retract-source \
+  -H "Content-Type: application/json" \
+  -d '{"source_id":"ledger","reason":"corrected"}'
+```
+
+The endpoint returns `204` on success. It writes a new node version without removing another source's corroboration. If the removed source was the last supporter, the node is retracted. An optional ISO 8601 `effective_at` sets the retraction time; omitted means now.
 
 ## Introspection
 

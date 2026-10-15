@@ -132,6 +132,8 @@ type GRPCRetrieveRequest struct {
 	Text             string       `json:"text"`
 	SeedIDs          []string     `json:"seed_ids"`
 	TopK             int          `json:"top_k"`
+	CandidateK       int          `json:"candidate_k,omitempty"`
+	RerankK          int          `json:"rerank_k,omitempty"`
 	Labels           []string     `json:"labels"`
 	ScoreParams      *scoreParams `json:"score_params,omitempty"`
 	AsOf             *time.Time   `json:"as_of,omitempty"`
@@ -294,6 +296,8 @@ func (s *GRPCService) handleRetrieve(srv interface{}, ctx context.Context, dec f
 		Text:             req.Text,
 		SeedIDs:          seedIDs,
 		TopK:             req.TopK,
+		CandidateK:       req.CandidateK,
+		RerankK:          req.RerankK,
 		Labels:           req.Labels,
 		ScoreParams:      sp,
 		AsOf:             asOf,
@@ -492,6 +496,8 @@ func (s *GRPCService) handleStreamRetrieve(srv interface{}, stream grpc.ServerSt
 		Text:             req.Text,
 		SeedIDs:          seedIDs,
 		TopK:             req.TopK,
+		CandidateK:       req.CandidateK,
+		RerankK:          req.RerankK,
 		Labels:           req.Labels,
 		ScoreParams:      sp,
 		AsOf:             asOf,

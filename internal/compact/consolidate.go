@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -65,7 +67,6 @@ type Consolidator struct {
 	stop    chan struct{}
 	stopped chan struct{}
 	running bool
-	lastRun map[string]time.Time
 }
 
 // NewConsolidator creates a memory consolidation worker.
@@ -82,13 +83,12 @@ func NewConsolidator(
 		logger = slog.Default()
 	}
 	return &Consolidator{
-		graph:   graph,
-		vecs:    vecs,
-		log:     log,
-		llm:     llm,
-		config:  cfg,
-		logger:  logger,
-		lastRun: make(map[string]time.Time),
+		graph:  graph,
+		vecs:   vecs,
+		log:    log,
+		llm:    llm,
+		config: cfg,
+		logger: logger,
 	}
 }
 
@@ -154,24 +154,21 @@ func (c *Consolidator) runAll(ctx context.Context) {
 }
 
 func (c *Consolidator) processNamespace(ctx context.Context, ns string) error {
-	lastRun := c.lastRun[ns]
-	if lastRun.IsZero() {
-		lastRun = time.Now().Add(-7 * 24 * time.Hour) // look back a week on first run
-	}
-
-	// Fetch events since last run
-	events, err := c.log.Since(ctx, ns, lastRun)
+	// The event log's processed flag is the durable cursor. A timestamp cursor
+	// loses young episodes that mature after a later run or process restart.
+	events, err := c.log.Since(ctx, ns, time.Unix(0, 0))
 	if err != nil {
 		return fmt.Errorf("fetch events: %w", err)
 	}
 	if len(events) == 0 {
-		c.lastRun[ns] = time.Now()
 		return nil
 	}
 
 	// Collect episodic node IDs from events
 	cutoff := time.Now().Add(-c.config.AgeThreshold)
 	var candidates []core.Node
+	eligibleEvents := make(map[uuid.UUID]uuid.UUID)
+	seenCandidates := make(map[uuid.UUID]bool)
 
 	for _, e := range events {
 		if e.Type != store.EventNodeUpsert {
@@ -207,11 +204,14 @@ func (c *Consolidator) processNamespace(ctx context.Context, ns string) error {
 			continue
 		}
 
-		candidates = append(candidates, *node)
+		eligibleEvents[e.ID] = node.ID
+		if !seenCandidates[node.ID] {
+			candidates = append(candidates, *node)
+			seenCandidates[node.ID] = true
+		}
 	}
 
 	if len(candidates) < c.config.FrequencyThreshold {
-		c.lastRun[ns] = time.Now()
 		return nil
 	}
 
@@ -225,17 +225,43 @@ func (c *Consolidator) processNamespace(ctx context.Context, ns string) error {
 	if err != nil {
 		return fmt.Errorf("extract facts: %w", err)
 	}
+	if len(facts) == 0 {
+		return nil
+	}
+	supported := make(map[uuid.UUID]bool)
 
 	// Write semantic nodes
 	for _, fact := range facts {
+		if len(fact.SourceNodeIDs) < 2 {
+			continue
+		}
+		sort.Slice(fact.SourceNodeIDs, func(i, j int) bool { return fact.SourceNodeIDs[i].String() < fact.SourceNodeIDs[j].String() })
+		var supportKeys []string
+		for _, id := range fact.SourceNodeIDs {
+			supportKeys = append(supportKeys, id.String())
+		}
+		factID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("contextdb/consolidated/"+ns+"/"+fact.Text+"/"+strings.Join(supportKeys, ",")))
+		for _, id := range fact.SourceNodeIDs {
+			supported[id] = true
+		}
+		var supportVersions []map[string]any
+		for _, srcID := range fact.SourceNodeIDs {
+			for _, candidate := range candidates {
+				if candidate.ID == srcID {
+					supportVersions = append(supportVersions, map[string]any{"node_id": srcID.String(), "version": candidate.Version})
+					break
+				}
+			}
+		}
 		semanticNode := core.Node{
-			ID:        uuid.New(),
+			ID:        factID,
 			Namespace: ns,
 			Labels:    []string{"semantic", "Consolidated"},
 			Properties: map[string]any{
-				"text":           fact.Text,
-				"source_count":   fact.SourceCount,
-				"consolidated_at": time.Now().Format(time.RFC3339),
+				"text":             fact.Text,
+				"source_count":     fact.SourceCount,
+				"consolidated_at":  time.Now().Format(time.RFC3339),
+				"support_versions": supportVersions,
 			},
 			Confidence: fact.Confidence,
 			ValidFrom:  time.Now(),
@@ -256,22 +282,21 @@ func (c *Consolidator) processNamespace(ctx context.Context, ns string) error {
 		}
 
 		if err := c.graph.UpsertNode(ctx, semanticNode); err != nil {
-			c.logger.Error("upsert semantic node failed", "error", err)
-			continue
+			return fmt.Errorf("upsert semantic node: %w", err)
 		}
 
 		// Index vector if present
 		if len(semanticNode.Vector) > 0 {
 			nID := semanticNode.ID
 			if err := c.vecs.Index(ctx, core.VectorEntry{
-				ID:        uuid.New(),
+				ID:        uuid.NewSHA1(uuid.NameSpaceURL, []byte("contextdb/consolidated-vector/"+factID.String())),
 				Namespace: ns,
 				NodeID:    &nID,
 				Vector:    semanticNode.Vector,
 				Text:      fact.Text,
 				CreatedAt: time.Now(),
 			}); err != nil {
-				c.logger.Error("index semantic vector failed", "error", err)
+				return fmt.Errorf("index semantic vector: %w", err)
 			}
 			if reg, ok := c.vecs.(interface{ RegisterNode(core.Node) }); ok {
 				reg.RegisterNode(semanticNode)
@@ -281,7 +306,7 @@ func (c *Consolidator) processNamespace(ctx context.Context, ns string) error {
 		// Create derived_from edges
 		for _, srcID := range fact.SourceNodeIDs {
 			if err := c.graph.UpsertEdge(ctx, core.Edge{
-				ID:        uuid.New(),
+				ID:        uuid.NewSHA1(uuid.NameSpaceURL, []byte("contextdb/consolidated-edge/"+factID.String()+"/"+srcID.String())),
 				Namespace: ns,
 				Src:       semanticNode.ID,
 				Dst:       srcID,
@@ -290,29 +315,32 @@ func (c *Consolidator) processNamespace(ctx context.Context, ns string) error {
 				ValidFrom: time.Now(),
 				TxTime:    time.Now(),
 			}); err != nil {
-				c.logger.Error("upsert derived_from edge failed",
-					"src", semanticNode.ID, "dst", srcID, "error", err)
+				return fmt.Errorf("upsert derived_from edge: %w", err)
 			}
 		}
 	}
 
 	// Mark originals as consolidated
 	for _, candidate := range candidates {
+		if !supported[candidate.ID] {
+			continue
+		}
 		candidate.Properties["consolidated"] = true
 		if err := c.graph.UpsertNode(ctx, candidate); err != nil {
-			c.logger.Error("mark consolidated failed",
-				"node_id", candidate.ID, "error", err)
+			return fmt.Errorf("mark consolidated: %w", err)
 		}
 	}
 
 	// Mark events as processed
 	for _, e := range events {
+		if !supported[eligibleEvents[e.ID]] {
+			continue
+		}
 		if err := c.log.MarkProcessed(ctx, e.ID); err != nil {
-			c.logger.Error("mark processed failed", "event_id", e.ID, "error", err)
+			return fmt.Errorf("mark processed %s: %w", e.ID, err)
 		}
 	}
 
-	c.lastRun[ns] = time.Now()
 	return nil
 }
 
@@ -341,9 +369,9 @@ func (c *Consolidator) extractFacts(ctx context.Context, candidates []core.Node)
 		return nil, nil
 	}
 
-	prompt := "Given the following episodic memories, extract general semantic facts. " +
-		"Return each fact on a separate line, prefixed with 'FACT: '. " +
-		"Only include facts supported by multiple memories.\n\n"
+	prompt := "Given the following numbered episodic memories, extract general semantic facts. " +
+		"Return each fact as FACT: text | SOURCES: 1,2 using only numbered memories that directly support it. " +
+		"Only include facts supported by at least two memories.\n\n"
 	for i, t := range texts {
 		prompt += fmt.Sprintf("%d. %s\n", i+1, t)
 	}
@@ -351,7 +379,7 @@ func (c *Consolidator) extractFacts(ctx context.Context, candidates []core.Node)
 	resp, err := c.llm.Chat(ctx, extract.ChatRequest{
 		Model: "gpt-4o-mini",
 		Messages: []extract.ChatMessage{
-			{Role: "system", Content: "You extract general facts from episodic memories. Output only facts, each prefixed with 'FACT: '."},
+			{Role: "system", Content: "You extract facts with exact numbered support. Output only FACT: text | SOURCES: 1,2 lines."},
 			{Role: "user", Content: prompt},
 		},
 		Temperature: 0.3,
@@ -361,27 +389,42 @@ func (c *Consolidator) extractFacts(ctx context.Context, candidates []core.Node)
 		return nil, err
 	}
 
-	// Parse facts from response
-	allIDs := make([]uuid.UUID, len(candidates))
-	for i, c := range candidates {
-		allIDs[i] = c.ID
-	}
-
 	var facts []extractedFact
 	for _, line := range strings.Split(resp.Content, "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "FACT: ") {
+		if !strings.HasPrefix(line, "FACT: ") || !strings.Contains(line, " | SOURCES: ") {
 			continue
 		}
-		factText := strings.TrimPrefix(line, "FACT: ")
+		parts := strings.SplitN(strings.TrimPrefix(line, "FACT: "), " | SOURCES: ", 2)
+		factText := strings.TrimSpace(parts[0])
 		if factText == "" {
 			continue
 		}
+		var sources []core.Node
+		seen := make(map[uuid.UUID]bool)
+		for _, raw := range strings.Split(parts[1], ",") {
+			index, err := strconv.Atoi(strings.TrimSpace(raw))
+			if err != nil || index < 1 || index > len(candidates) {
+				continue
+			}
+			node := candidates[index-1]
+			if !seen[node.ID] {
+				sources = append(sources, node)
+				seen[node.ID] = true
+			}
+		}
+		if len(sources) < 2 {
+			continue
+		}
+		ids := make([]uuid.UUID, len(sources))
+		for i, source := range sources {
+			ids[i] = source.ID
+		}
 		facts = append(facts, extractedFact{
 			Text:          factText,
-			Confidence:    avgConfidence(candidates),
-			SourceNodeIDs: allIDs,
-			SourceCount:   len(candidates),
+			Confidence:    avgConfidence(sources),
+			SourceNodeIDs: ids,
+			SourceCount:   len(sources),
 		})
 	}
 
@@ -390,16 +433,20 @@ func (c *Consolidator) extractFacts(ctx context.Context, candidates []core.Node)
 
 func (c *Consolidator) fallbackExtractFacts(candidates []core.Node) []extractedFact {
 	var texts []string
-	allIDs := make([]uuid.UUID, len(candidates))
-	for i, n := range candidates {
-		allIDs[i] = n.ID
+	var supporting []core.Node
+	for _, n := range candidates {
 		if text, ok := n.Properties["text"].(string); ok && text != "" {
 			texts = append(texts, text)
+			supporting = append(supporting, n)
 		}
 	}
 
-	if len(texts) == 0 {
+	if len(texts) < 2 {
 		return nil
+	}
+	allIDs := make([]uuid.UUID, len(supporting))
+	for i, n := range supporting {
+		allIDs[i] = n.ID
 	}
 
 	// Simple fallback: combine all texts into one summary fact
@@ -410,9 +457,9 @@ func (c *Consolidator) fallbackExtractFacts(candidates []core.Node) []extractedF
 
 	return []extractedFact{{
 		Text:          "Consolidated: " + summary,
-		Confidence:    avgConfidence(candidates),
+		Confidence:    avgConfidence(supporting),
 		SourceNodeIDs: allIDs,
-		SourceCount:   len(candidates),
+		SourceCount:   len(supporting),
 	}}
 }
 

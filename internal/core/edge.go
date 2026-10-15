@@ -9,17 +9,17 @@ import (
 // Conventional edge type constants. Types are free-form strings;
 // these constants exist for consistency and discoverability.
 const (
-	EdgeRelatesTo    = "relates_to"    // general semantic relationship
-	EdgeContradicts  = "contradicts"   // source claim conflicts with destination
-	EdgeSupersedes   = "supersedes"    // source is a newer version of destination
-	EdgeEndorsedBy   = "endorsed_by"   // source claim is endorsed by destination source
-	EdgeDerivedFrom  = "derived_from"  // source was abstracted/summarised from destination
-	EdgeSupports     = "supports"      // source provides evidence for destination
-	EdgeCites        = "cites"         // source references destination
-	EdgeRefines      = "refines"       // source narrows or clarifies destination
-	EdgeGeneralizes  = "generalizes"   // source broadens destination
-	EdgeIsExampleOf  = "is_example_of" // source is a concrete instance of destination
-	EdgeRetracted    = "retracted"     // node was retracted (audit marker)
+	EdgeRelatesTo   = "relates_to"    // general semantic relationship
+	EdgeContradicts = "contradicts"   // source claim conflicts with destination
+	EdgeSupersedes  = "supersedes"    // source is a newer version of destination
+	EdgeEndorsedBy  = "endorsed_by"   // source claim is endorsed by destination source
+	EdgeDerivedFrom = "derived_from"  // source was abstracted/summarised from destination
+	EdgeSupports    = "supports"      // source provides evidence for destination
+	EdgeCites       = "cites"         // source references destination
+	EdgeRefines     = "refines"       // source narrows or clarifies destination
+	EdgeGeneralizes = "generalizes"   // source broadens destination
+	EdgeIsExampleOf = "is_example_of" // source is a concrete instance of destination
+	EdgeRetracted   = "retracted"     // node was retracted (audit marker)
 )
 
 // Edge is a directed, typed, weighted relationship between two nodes.
@@ -50,8 +50,20 @@ func (e Edge) IsActiveAt(t time.Time) bool {
 	if t.Before(e.ValidFrom) {
 		return false
 	}
-	if e.ValidUntil != nil && t.After(*e.ValidUntil) {
+	if e.ValidUntil != nil && !t.Before(*e.ValidUntil) {
 		return false
 	}
 	return true
+}
+
+// IsActiveAtKnown evaluates an edge using the knowledge available at knownAt.
+// Invalidation is a later transaction event; it must not erase prior reads.
+func (e Edge) IsActiveAtKnown(validAt, knownAt time.Time) bool {
+	if e.TxTime.After(knownAt) || validAt.Before(e.ValidFrom) {
+		return false
+	}
+	if e.ValidUntil != nil && !validAt.Before(*e.ValidUntil) {
+		return false
+	}
+	return e.InvalidatedAt == nil || validAt.Before(*e.InvalidatedAt) || knownAt.Before(*e.InvalidatedAt)
 }

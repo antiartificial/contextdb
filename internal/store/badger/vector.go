@@ -139,7 +139,13 @@ func (v *VectorIndex) Search(_ context.Context, q store.VectorQuery) ([]core.Sco
 	}
 
 	// HNSW search
-	candidates := g.search(q.Vector, topK*2, v.config.EfSearch)
+	candidates := g.search(q.Vector, topK*2, max(v.config.EfSearch, topK*2))
+	if len(candidates) < topK && len(g.nodes) > len(candidates) {
+		// Highly similar inserts can leave the approximate graph disconnected.
+		// An incomplete window is unsafe for historical filtering, so recover
+		// the requested candidates by scanning this namespace's vectors.
+		candidates = g.exactSearch(q.Vector, topK)
+	}
 
 	var out []core.ScoredNode
 	for _, c := range candidates {
@@ -395,6 +401,23 @@ func (g *hnswGraph) search(query []float32, topK, efSearch int) []searchCandidat
 	}
 
 	sort.Slice(results, func(i, j int) bool {
+		return results[i].similarity > results[j].similarity
+	})
+	if len(results) > topK {
+		results = results[:topK]
+	}
+	return results
+}
+
+func (g *hnswGraph) exactSearch(query []float32, topK int) []searchCandidate {
+	results := make([]searchCandidate, 0, len(g.nodes))
+	for _, node := range g.nodes {
+		results = append(results, searchCandidate{id: node.id, nodeID: node.nodeID, similarity: core.CosineSimilarity(query, node.vector)})
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].similarity == results[j].similarity {
+			return results[i].id.String() < results[j].id.String()
+		}
 		return results[i].similarity > results[j].similarity
 	})
 	if len(results) > topK {

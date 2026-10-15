@@ -74,8 +74,8 @@ print(result.reason)     # rejection reason if not admitted
 # Vector-based query
 results = ns.retrieve(vector=[0.1, 0.2, 0.3], top_k=5)
 
-# Text-based query (auto-embedded server-side)
-results = ns.retrieve(text="What changed in Go 1.22?", top_k=5)
+# Text-based query (lexical; also vector search if an embedder is configured)
+results = ns.retrieve(text="What changed in Go 1.22?", top_k=5, candidate_k=40, rerank_k=12)
 
 # With label filtering
 results = ns.retrieve(
@@ -98,6 +98,9 @@ results = ns.retrieve(
 
 for r in results:
     print(f"{r.score:.2f} {r.node.properties['text']}")
+
+# Retract one source's support without removing other corroboration.
+ns.retract_source_assertion("<node-uuid>", "ledger", reason="corrected")
 ```
 
 ### Result fields

@@ -135,7 +135,7 @@ jobs:
       - name: Docker-backed Postgres integration
         env:
           CONTEXTDB_TEST_POSTGRES_DSN: postgres://contextdb:contextdb@localhost:5432/contextdb?sslmode=disable
-        run: go test -tags integration -count=1 ./pkg/client -run TestPostgresStandardModeWriteRetrieveSmoke
+        run: go test -tags integration -count=1 ./pkg/client -run 'TestPostgres(StandardModeWriteRetrieveSmoke|HistoricalLexicalAndSourceLifecycle)'
 
   docker:
     name: docker

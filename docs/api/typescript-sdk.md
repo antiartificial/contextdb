@@ -72,8 +72,8 @@ console.log(result.conflictIds); // contradicting node IDs
 // Vector-based query
 const results = await ns.retrieve({ vector: [0.1, 0.2, 0.3], topK: 5 });
 
-// Text-based query (auto-embedded server-side)
-const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5 });
+// Text-based query (lexical; also vector search if an embedder is configured)
+const results = await ns.retrieve({ text: "What changed in Go 1.22?", topK: 5, candidateK: 40, rerankK: 12 });
 
 // With label filtering
 const results = await ns.retrieve({
@@ -97,6 +97,9 @@ const results = await ns.retrieve({
 for (const r of results) {
   console.log(`${r.score.toFixed(2)} ${r.node.properties.text}`);
 }
+
+// Retract one source's support without removing other corroboration.
+await ns.retractSourceAssertion("<node-uuid>", "ledger", "corrected");
 ```
 
 ### RetrieveRequest fields
@@ -104,9 +107,11 @@ for (const r of results) {
 | Field | Type | Required | Description |
 |:------|:-----|:---------|:------------|
 | `vector` | `number[]` | For vector search | Query embedding |
-| `text` | `string` | For text search | Auto-embedded server-side |
+| `text` | `string` | For text search | Lexical search; also auto-embedded when configured |
 | `seedIds` | `string[]` | For graph walk | Known relevant node IDs |
 | `topK` | `number` | No | Max results (default: 10) |
+| `candidateK` | `number` | No | Per-path candidate budget before fusion |
+| `rerankK` | `number` | No | Number of fused candidates sent to an optional reranker |
 | `labels` | `string[]` | No | Filter to nodes with all specified labels |
 | `scoreParams` | `ScoreParams` | No | Override scoring weights |
 

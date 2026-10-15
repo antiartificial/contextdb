@@ -98,6 +98,15 @@ export class Namespace {
     };
   }
 
+  /** Retract one source's assertion while preserving independent support. */
+  async retractSourceAssertion(nodeId: string, sourceId: string, reason = '', effectiveAt?: string): Promise<void> {
+    const response = await this.fetch(`${this.baseUrl}/v1/namespaces/${encodeURIComponent(this.name)}/nodes/${encodeURIComponent(nodeId)}/retract-source`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_id: sourceId, reason, ...(effectiveAt ? { effective_at: effectiveAt } : {}) }),
+    });
+    if (!response.ok) throw new Error(`retractSourceAssertion failed: ${response.status}`);
+  }
+
   /** Retrieve nodes from this namespace. */
   async retrieve(req: RetrieveRequest): Promise<Result[]> {
     const body: Record<string, unknown> = {
@@ -106,6 +115,8 @@ export class Namespace {
     if (req.vector) body.vector = req.vector;
     if (req.vectors) body.vectors = req.vectors;
     if (req.text) body.text = req.text;
+	if (req.candidateK) body.candidate_k = req.candidateK;
+	if (req.rerankK) body.rerank_k = req.rerankK;
     if (req.seedIds) body.seed_ids = req.seedIds;
     if (req.labels) body.labels = req.labels;
     if (req.asOf) body.as_of = req.asOf;

@@ -19,6 +19,35 @@ from contextdb.client import Namespace
 SERVER_URL = os.environ.get("CONTEXTDB_URL", "http://localhost:7701")
 
 
+def test_retrieve_sends_independent_candidate_and_rerank_budgets():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"results": []})
+
+    with httpx.Client(base_url="https://api.example", transport=httpx.MockTransport(handler)) as http_client:
+        namespace = Namespace(http_client, "ns", "general")
+        assert namespace.retrieve(text="INV-8Q7A", top_k=3, candidate_k=40, rerank_k=12) == []
+    body = json.loads(requests[0].content)
+    assert body["top_k"] == 3
+    assert body["candidate_k"] == 40
+    assert body["rerank_k"] == 12
+
+
+def test_source_retraction_sends_scoped_correction():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(204)
+
+    with httpx.Client(base_url="https://api.example", transport=httpx.MockTransport(handler)) as http_client:
+        Namespace(http_client, "team/a", "general").retract_source_assertion("node-1", "ledger/a", "corrected")
+    assert requests[0].url.path.endswith("/namespaces/team/a/nodes/node-1/retract-source")
+    assert json.loads(requests[0].content) == {"source_id": "ledger/a", "reason": "corrected"}
+
+
 @pytest.fixture
 def db():
     client = ContextDB(SERVER_URL)
