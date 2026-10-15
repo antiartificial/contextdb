@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,8 @@ type Query struct {
 	SeedIDs          []uuid.UUID
 	SessionNodeIDs   []uuid.UUID // IDs of recently-retrieved nodes from the current session
 	TopK             int
+	CandidateK       int // per-path candidate budget; zero defaults to max(4*TopK, 50)
+	RerankK          int // number of highest fused candidates passed to the optional reranker; zero = all
 	Labels           []string
 	IncludeSourceIDs []string // return nodes supported by at least one of these sources
 	ExcludeSourceIDs []string // source IDs to exclude from results (counterfactual queries)
@@ -32,7 +35,9 @@ type Query struct {
 
 // HybridStrategy controls the relative contribution of each retrieval path.
 type HybridStrategy struct {
+	FusionMode    string // "weighted" (default) or "rrf"
 	VectorWeight  float64
+	LexicalWeight float64
 	GraphWeight   float64
 	SessionWeight float64
 	Traversal     store.TraversalStrategy
@@ -57,15 +62,19 @@ func defaultStrategy() HybridStrategy {
 type Engine struct {
 	Graph    store.GraphStore
 	Vectors  store.VectorIndex
+	Lexical  store.LexicalIndex
 	KV       store.KVStore
 	Reranker Reranker // optional — if set, top results are reranked
 }
 
 type fanResult struct {
-	vectorResults []core.ScoredNode
-	graphResults  []core.Node
-	err           error
-	source        string
+	vectorResults  []core.ScoredNode
+	queryVector    []float32
+	candidateK     int
+	lexicalResults []core.ScoredNode
+	graphResults   []core.Node
+	err            error
+	source         string
 }
 
 // Retrieve fans out to all backends concurrently then fuses results.
@@ -75,6 +84,12 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 	}
 	if q.TopK <= 0 {
 		q.TopK = 20
+	}
+	if q.CandidateK <= 0 {
+		q.CandidateK = max(q.TopK*4, 50)
+	}
+	if q.CandidateK < q.TopK {
+		q.CandidateK = q.TopK
 	}
 	if q.ScoreParams.AsOf.IsZero() {
 		q.ScoreParams.AsOf = time.Now()
@@ -91,7 +106,7 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 	queryVectors = append(queryVectors, q.Vectors...)
 
 	// Fan out concurrently
-	fanCount := len(queryVectors) + 1 // +1 for graph walk
+	fanCount := len(queryVectors) + 2 // graph and lexical paths
 	var wg sync.WaitGroup
 	resultCh := make(chan fanResult, fanCount)
 
@@ -100,10 +115,7 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 			wg.Add(1)
 			go func(v []float32) {
 				defer wg.Done()
-				candidateK := q.TopK * 4
-				if candidateK < 50 {
-					candidateK = 50
-				}
+				candidateK := q.CandidateK
 				res, err := e.Vectors.Search(ctx, store.VectorQuery{
 					Namespace: q.Namespace,
 					Vector:    v,
@@ -112,9 +124,22 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 					AsOf:      q.ScoreParams.AsOf,
 					KnownAt:   q.KnownAt,
 				})
-				resultCh <- fanResult{vectorResults: res, err: err, source: "vector"}
+				resultCh <- fanResult{vectorResults: res, queryVector: v, candidateK: candidateK, err: err, source: "vector"}
 			}(vec)
 		}
+	}
+	lexical := e.Lexical
+	if lexical == nil {
+		lexical, _ = e.Graph.(store.LexicalIndex)
+	}
+	if lexical != nil && q.QueryText != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			candidateK := q.CandidateK
+			res, err := lexical.SearchText(ctx, store.TextQuery{Namespace: q.Namespace, Text: q.QueryText, TopK: candidateK, Labels: q.Labels, ValidAt: q.ScoreParams.AsOf, KnownAt: q.KnownAt})
+			resultCh <- fanResult{lexicalResults: res, err: err, source: "lexical"}
+		}()
 	}
 
 	if len(q.SeedIDs) > 0 && e.Graph != nil {
@@ -140,27 +165,50 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 	}()
 
 	var allVectorResults []core.ScoredNode
+	var lexicalResults []core.ScoredNode
 	var graphResults []core.Node
 	for r := range resultCh {
 		if r.err != nil {
 			return nil, r.err
 		}
 		switch r.source {
+		case "lexical":
+			lexicalResults = r.lexicalResults
 		case "vector":
 			hydrated, err := e.hydrateVectorResults(ctx, q, r.vectorResults)
 			if err != nil {
 				return nil, err
 			}
-			allVectorResults = append(allVectorResults, hydrated...)
+			// A bounded ANN window can contain only newer versions. Widen it
+			// until enough historical candidates survive or the index is exhausted.
+			for len(hydrated) < q.TopK && len(r.vectorResults) >= r.candidateK && r.candidateK < 5000 {
+				r.candidateK = min(r.candidateK*2, 5000)
+				more, err := e.Vectors.Search(ctx, store.VectorQuery{Namespace: q.Namespace, Vector: r.queryVector, TopK: r.candidateK, Labels: q.Labels, AsOf: q.ScoreParams.AsOf, KnownAt: q.KnownAt})
+				if err != nil {
+					return nil, err
+				}
+				hydrated, err = e.hydrateVectorResults(ctx, q, more)
+				if err != nil {
+					return nil, err
+				}
+				if len(more) < r.candidateK {
+					break
+				}
+			}
+			allVectorResults = append(allVectorResults, limitResults(hydrated, q.CandidateK)...)
 		case "graph":
-			graphResults = r.graphResults
+			if len(r.graphResults) > q.CandidateK {
+				graphResults = r.graphResults[:q.CandidateK]
+			} else {
+				graphResults = r.graphResults
+			}
 		}
 	}
 
 	// Look up session nodes for reweighting
 	var sessionNodes []core.Node
 	if len(q.SessionNodeIDs) > 0 && e.Graph != nil {
-		for _, sid := range q.SessionNodeIDs {
+		for _, sid := range q.SessionNodeIDs[:min(len(q.SessionNodeIDs), q.CandidateK)] {
 			n, err := e.Graph.At(ctx, q.Namespace, sid, q.ScoreParams.AsOf, q.KnownAt)
 			if err == nil && n != nil {
 				sessionNodes = append(sessionNodes, *n)
@@ -168,27 +216,57 @@ func (e *Engine) Retrieve(ctx context.Context, q Query) ([]core.ScoredNode, erro
 		}
 	}
 
-	results := e.fuse(allVectorResults, graphResults, sessionNodes, q)
+	results := e.fuse(allVectorResults, lexicalResults, graphResults, sessionNodes, q)
 
 	// Apply MMR diversity reranking if configured
 	if q.Strategy.DiversityLambda > 0 {
-		results = mmrRerank(results, q.Strategy.DiversityLambda, q.TopK)
+		results = mmrRerank(results, q.Strategy.DiversityLambda, len(results))
 	}
 
 	// Rerank if configured and we have a query text
 	if e.Reranker != nil && q.QueryText != "" && len(results) > 0 {
-		rerankInput := make([]core.Node, len(results))
-		for i, r := range results {
+		rerankK := q.RerankK
+		if rerankK <= 0 || rerankK > len(results) {
+			rerankK = len(results)
+		}
+		rerankInput := make([]core.Node, rerankK)
+		for i, r := range results[:rerankK] {
 			rerankInput[i] = r.Node
 		}
-		reranked, err := e.Reranker.Rerank(ctx, q.QueryText, rerankInput, q.TopK)
+		reranked, err := e.Reranker.Rerank(ctx, q.QueryText, rerankInput, rerankK)
 		if err == nil && len(reranked) > 0 {
-			return reranked, nil
+			original := make(map[uuid.UUID]core.ScoredNode, len(results))
+			for _, r := range results {
+				original[r.Node.ID] = r
+			}
+			var ordered []core.ScoredNode
+			used := make(map[uuid.UUID]bool)
+			for _, r := range reranked {
+				if prior, ok := original[r.Node.ID]; ok && !used[r.Node.ID] {
+					prior.RetrievalSource += "+reranked"
+					ordered = append(ordered, prior)
+					used[r.Node.ID] = true
+				}
+			}
+			for _, prior := range results[:rerankK] {
+				if !used[prior.Node.ID] {
+					ordered = append(ordered, prior)
+				}
+			}
+			ordered = append(ordered, results[rerankK:]...)
+			return limitResults(ordered, q.TopK), nil
 		}
 		// On rerank failure, fall through to original results
 	}
 
-	return results, nil
+	return limitResults(results, q.TopK), nil
+}
+
+func limitResults(results []core.ScoredNode, topK int) []core.ScoredNode {
+	if topK > 0 && len(results) > topK {
+		return results[:topK]
+	}
+	return results
 }
 
 // hydrateVectorResults replaces the vector index's cached node with the graph
@@ -234,6 +312,8 @@ func matchesLabels(node core.Node, labels []string) bool {
 // IsZero reports whether no retrieval strategy fields were configured.
 func (s HybridStrategy) IsZero() bool {
 	return s.VectorWeight == 0 &&
+		s.FusionMode == "" &&
+		s.LexicalWeight == 0 &&
 		s.GraphWeight == 0 &&
 		s.SessionWeight == 0 &&
 		s.Traversal == "" &&
@@ -244,6 +324,7 @@ func (s HybridStrategy) IsZero() bool {
 
 func (e *Engine) fuse(
 	vectorResults []core.ScoredNode,
+	lexicalResults []core.ScoredNode,
 	graphResults []core.Node,
 	sessionResults []core.Node,
 	q Query,
@@ -251,6 +332,8 @@ func (e *Engine) fuse(
 	type candidate struct {
 		node       core.Node
 		similarity float64
+		lexical    float64
+		rrf        float64
 		utility    float64
 		source     string
 	}
@@ -258,27 +341,88 @@ func (e *Engine) fuse(
 	seen := make(map[uuid.UUID]*candidate)
 
 	merge := func(n core.Node, sim float64, source string) {
-		if n.ID == uuid.Nil {
+		if n.ID == uuid.Nil || !matchesLabels(n, q.Labels) || !n.IsValidAt(q.ScoreParams.AsOf) {
 			return
 		}
 		if existing, ok := seen[n.ID]; ok {
+			if !strings.Contains(existing.source, source) {
+				existing.source += "+" + source
+			}
 			if sim > existing.similarity {
 				existing.similarity = sim
-				existing.source = source + "+" + existing.source
 			}
 			return
 		}
 		seen[n.ID] = &candidate{node: n, similarity: sim, utility: nodeUtility(n), source: source}
 	}
 
+	identifiers := store.QueryIdentifiers(q.QueryText)
 	for _, r := range vectorResults {
-		merge(r.Node, r.SimilarityScore*q.Strategy.VectorWeight, "vector")
+		sim := r.SimilarityScore * q.Strategy.VectorWeight
+		if !store.MatchesIdentifiers(core.NodeText(r.Node), identifiers) {
+			sim *= 0.5
+		}
+		merge(r.Node, sim, "vector")
+	}
+	lexicalWeight := q.Strategy.LexicalWeight
+	if lexicalWeight == 0 {
+		lexicalWeight = 1
+	}
+	for _, r := range lexicalResults {
+		merge(r.Node, r.SimilarityScore*lexicalWeight, "lexical")
+		if c := seen[r.Node.ID]; c != nil {
+			c.lexical = r.SimilarityScore
+		}
 	}
 	for _, n := range graphResults {
 		merge(n, q.Strategy.GraphWeight, "graph")
 	}
 	for _, n := range sessionResults {
 		merge(n, q.Strategy.SessionWeight, "session")
+	}
+	if q.Strategy.FusionMode == "rrf" {
+		addRanks := func(ids []uuid.UUID) {
+			observed := make(map[uuid.UUID]bool)
+			for i, id := range ids {
+				if observed[id] {
+					continue
+				}
+				observed[id] = true
+				if c := seen[id]; c != nil {
+					c.rrf += 1 / float64(61+i)
+				}
+			}
+		}
+		vectors := append([]core.ScoredNode(nil), vectorResults...)
+		sort.Slice(vectors, func(i, j int) bool {
+			if vectors[i].SimilarityScore == vectors[j].SimilarityScore {
+				return vectors[i].Node.ID.String() < vectors[j].Node.ID.String()
+			}
+			return vectors[i].SimilarityScore > vectors[j].SimilarityScore
+		})
+		ids := make([]uuid.UUID, 0, len(vectors))
+		for _, item := range vectors {
+			ids = append(ids, item.Node.ID)
+		}
+		addRanks(ids)
+		ids = ids[:0]
+		for _, item := range lexicalResults {
+			ids = append(ids, item.Node.ID)
+		}
+		addRanks(ids)
+		ids = ids[:0]
+		for _, item := range graphResults {
+			ids = append(ids, item.ID)
+		}
+		addRanks(ids)
+		ids = ids[:0]
+		for _, item := range sessionResults {
+			ids = append(ids, item.ID)
+		}
+		addRanks(ids)
+		for _, c := range seen {
+			c.similarity = c.rrf / (4.0 / 61.0)
+		}
 	}
 
 	// Downweight candidates that are too similar to session nodes
@@ -340,11 +484,15 @@ func (e *Engine) fuse(
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Score > result[j].Score
+		if result[i].Score != result[j].Score {
+			return result[i].Score > result[j].Score
+		}
+		li, lj := seen[result[i].Node.ID].lexical, seen[result[j].Node.ID].lexical
+		if li != lj {
+			return li > lj
+		}
+		return result[i].Node.ID.String() < result[j].Node.ID.String()
 	})
-	if len(result) > q.TopK {
-		result = result[:q.TopK]
-	}
 	return result
 }
 

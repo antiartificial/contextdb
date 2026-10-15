@@ -44,7 +44,7 @@ func (n Node) IsValidAt(t time.Time) bool {
 	if t.Before(n.ValidFrom) {
 		return false
 	}
-	if n.ValidUntil != nil && t.After(*n.ValidUntil) {
+	if n.ValidUntil != nil && !t.Before(*n.ValidUntil) {
 		return false
 	}
 	return true

@@ -142,6 +142,8 @@ Ingests a single item. Runs through auto-embedding, the admission gate, and conf
 
 With opt-in content deduplication, a repeat from the original source touches the canonical node. A matching assertion from another source adds a versioned `corroborating_sources` property entry with source identity, valid time, observation time, confidence, and an occurrence ID when an idempotency key is supplied. This reuses the original embedding and keeps other sources' evidence when one source changes. `IncludeSourceIDs` and `ExcludeSourceIDs` evaluate the primary and corroborating sources together. Filtered results are query-only projections: `source_id`, `confidence`, and `corroborating_sources` reflect the surviving evidence, while `canonical_source_id` identifies a different primary source when applicable. Stored node history is unchanged.
 
+Use `RetractSourceAssertion(ctx, nodeID, sourceID, reason, effectiveAt)` to remove one source's support while preserving independent corroboration. A zero `effectiveAt` uses now. Earlier `KnownAt` reads retain the previous assertion. Retrieval also accepts `CandidateK` and `RerankK` independently of final `TopK`; text queries use lexical candidates even without an embedder.
+
 **WriteResult fields:**
 
 | Field | Type | Description |

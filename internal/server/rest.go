@@ -75,6 +75,7 @@ func (s *RESTServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/refute", s.handleRefuteClaim)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/useful", s.handleMarkUseful)
 	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/stale", s.handleMarkStale)
+	mux.HandleFunc("POST /v1/namespaces/{ns}/nodes/{id}/retract-source", s.handleRetractSourceAssertion)
 	mux.HandleFunc("GET /v1/namespaces/{ns}/feedback/events", s.handleFeedbackEvents)
 
 	mux.HandleFunc("GET /v1/namespaces/{ns}/nodes/{id}/narrative", s.handleNarrative)
@@ -139,6 +140,8 @@ type retrieveRequest struct {
 	Text             string       `json:"text"`
 	SeedIDs          []string     `json:"seed_ids"`
 	TopK             int          `json:"top_k"`
+	CandidateK       int          `json:"candidate_k,omitempty"`
+	RerankK          int          `json:"rerank_k,omitempty"`
 	Labels           []string     `json:"labels"`
 	ScoreParams      *scoreParams `json:"score_params,omitempty"`
 	AsOf             *time.Time   `json:"as_of,omitempty"`
@@ -146,6 +149,12 @@ type retrieveRequest struct {
 	KnownAt          *time.Time   `json:"known_at,omitempty"`
 	IncludeSourceIDs []string     `json:"include_source_ids,omitempty"`
 	ExcludeSourceIDs []string     `json:"exclude_source_ids,omitempty"`
+}
+
+type retractSourceRequest struct {
+	SourceID    string     `json:"source_id"`
+	Reason      string     `json:"reason"`
+	EffectiveAt *time.Time `json:"effective_at,omitempty"`
 }
 
 type scoreParams struct {
@@ -522,6 +531,8 @@ func (s *RESTServer) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 		Text:             req.Text,
 		SeedIDs:          seedIDs,
 		TopK:             req.TopK,
+		CandidateK:       req.CandidateK,
+		RerankK:          req.RerankK,
 		Labels:           req.Labels,
 		ScoreParams:      sp,
 		AsOf:             asOf,
@@ -733,6 +744,36 @@ func (s *RESTServer) handleMarkUseful(w http.ResponseWriter, r *http.Request) {
 
 func (s *RESTServer) handleMarkStale(w http.ResponseWriter, r *http.Request) {
 	s.handleFeedback(w, r, "stale")
+}
+
+func (s *RESTServer) handleRetractSourceAssertion(w http.ResponseWriter, r *http.Request) {
+	ns := r.PathValue("ns")
+	if tenant := TenantFromContext(r.Context()); tenant != "" {
+		ns = tenant + "/" + ns
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid node id: %w", err))
+		return
+	}
+	var req retractSourceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(req.SourceID) == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("source_id is required"))
+		return
+	}
+	var effectiveAt time.Time
+	if req.EffectiveAt != nil {
+		effectiveAt = *req.EffectiveAt
+	}
+	if err := s.db.Namespace(ns, namespace.ModeGeneral).RetractSourceAssertion(r.Context(), id, req.SourceID, req.Reason, effectiveAt); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *RESTServer) handleFeedback(w http.ResponseWriter, r *http.Request, action string) {

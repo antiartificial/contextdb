@@ -156,6 +156,21 @@ func (g *GraphStore) History(_ context.Context, ns string, id uuid.UUID) ([]core
 	return out, nil
 }
 
+func (g *GraphStore) SearchText(_ context.Context, q store.TextQuery) ([]core.ScoredNode, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	var nodes []core.Node
+	for _, versions := range g.nodes {
+		for i := len(versions) - 1; i >= 0; i-- {
+			if !versions[i].TxTime.After(q.KnownAt) {
+				nodes = append(nodes, versions[i])
+				break
+			}
+		}
+	}
+	return store.RankTextCandidates(nodes, q), nil
+}
+
 func (g *GraphStore) UpsertEdge(_ context.Context, e core.Edge) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -291,7 +306,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 				if e.Namespace != q.Namespace || e.Src != id {
 					continue
 				}
-				if e.TxTime.After(knownAt) || !e.IsActiveAt(asOf) {
+				if !e.IsActiveAtKnown(asOf, knownAt) {
 					continue
 				}
 				if len(typeSet) > 0 && !typeSet[e.Type] {
@@ -320,10 +335,12 @@ func (g *GraphStore) RetractNode(_ context.Context, ns string, id uuid.UUID, rea
 		return fmt.Errorf("node %s not found in namespace %s", id, ns)
 	}
 
-	// Set ValidUntil on the latest version.
-	latest := &versions[len(versions)-1]
+	// A retraction is a new knowledge version, not a rewrite of history.
+	latest := versions[len(versions)-1]
 	latest.ValidUntil = &at
-	g.nodes[key] = versions
+	latest.TxTime = at
+	latest.Version = uint64(len(versions) + 1)
+	g.nodes[key] = append(versions, latest)
 
 	// Create a retraction edge.
 	edgeID := uuid.New()
@@ -422,25 +439,16 @@ func (g *GraphStore) ValidAt(_ context.Context, ns string, t time.Time, labels [
 	defer g.mu.RUnlock()
 
 	var result []core.Node
-	seen := make(map[string]bool)
 	for key, versions := range g.nodes {
 		if !strings.HasPrefix(key, ns+"/") {
 			continue
 		}
-		if seen[key] {
+		if len(versions) == 0 {
 			continue
 		}
-		// Find the latest version valid at time t.
-		for i := len(versions) - 1; i >= 0; i-- {
-			v := versions[i]
-			if v.IsValidAt(t) {
-				if len(labels) > 0 && !hasAllLabels(v, labels) {
-					break
-				}
-				result = append(result, v)
-				seen[key] = true
-				break
-			}
+		v := versions[len(versions)-1]
+		if v.IsValidAt(t) && (len(labels) == 0 || hasAllLabels(v, labels)) {
+			result = append(result, v)
 		}
 	}
 	return result, nil

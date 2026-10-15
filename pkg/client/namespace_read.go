@@ -32,11 +32,13 @@ type RetrieveRequest struct {
 	Vectors [][]float32
 
 	// SeedIDs are known relevant node IDs for graph traversal.
-	// Optional — if empty, only vector search is used.
+	// Optional — lexical and vector search remain available without seeds.
 	SeedIDs []uuid.UUID
 
 	// TopK is the maximum number of results to return. Default: 10.
-	TopK int
+	TopK       int
+	CandidateK int
+	RerankK    int
 
 	// Labels restricts results to nodes carrying all specified labels.
 	Labels []string
@@ -122,6 +124,8 @@ func (h *NamespaceHandle) Retrieve(ctx context.Context, req RetrieveRequest) ([]
 		QueryText:        req.Text,
 		SeedIDs:          req.SeedIDs,
 		TopK:             topK,
+		CandidateK:       req.CandidateK,
+		RerankK:          req.RerankK,
 		Labels:           req.Labels,
 		ExcludeSourceIDs: req.ExcludeSourceIDs,
 		IncludeSourceIDs: req.IncludeSourceIDs,

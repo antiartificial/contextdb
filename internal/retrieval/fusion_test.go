@@ -16,6 +16,65 @@ import (
 
 const testNS = "test:fusion"
 
+type reverseReranker struct{}
+
+func (reverseReranker) Rerank(_ context.Context, _ string, candidates []core.Node, topK int) ([]core.ScoredNode, error) {
+	var out []core.ScoredNode
+	for i := len(candidates) - 1; i >= 0 && len(out) < topK; i-- {
+		out = append(out, core.ScoredNode{Node: candidates[i], Score: 1})
+	}
+	return out, nil
+}
+
+func TestRerankKeepsOriginalEvidenceScoreAndAppliesFinalTopK(t *testing.T) {
+	graph, vectors := memstore.NewGraphStore(), memstore.NewVectorIndex()
+	seedFixtures(t, graph, vectors)
+	base := retrieval.Engine{Graph: graph, Vectors: vectors}
+	q := retrieval.Query{Namespace: testNS, QueryText: "Go runtime", Vector: makeVec(0, 8), TopK: 1, CandidateK: 10, ScoreParams: core.GeneralParams()}
+	q.ScoreParams.AsOf = time.Now()
+	allQ := q
+	allQ.TopK = 10
+	all, err := base.Retrieve(context.Background(), allQ)
+	if err != nil || len(all) < 2 {
+		t.Fatalf("baseline: %v %+v", err, all)
+	}
+	base.Reranker = reverseReranker{}
+	result, err := base.Retrieve(context.Background(), q)
+	if err != nil || len(result) != 1 {
+		t.Fatalf("reranked: %v %+v", err, result)
+	}
+	want := all[len(all)-1]
+	if result[0].Node.ID != want.Node.ID || result[0].Score != want.Score || result[0].Breakdown != want.Breakdown {
+		t.Fatalf("reranker lost original score: got %+v want %+v", result[0], want)
+	}
+}
+
+func TestGraphCandidatesRespectLabelsBeforeFusion(t *testing.T) {
+	ctx := context.Background()
+	graph := memstore.NewGraphStore()
+	now := time.Now()
+	src, dst := uuid.New(), uuid.New()
+	for _, n := range []core.Node{
+		{ID: src, Namespace: testNS, Labels: []string{"Allowed"}, Properties: map[string]any{"text": "root"}, ValidFrom: now.Add(-time.Hour), TxTime: now.Add(-time.Hour)},
+		{ID: dst, Namespace: testNS, Labels: []string{"Other"}, Properties: map[string]any{"text": "neighbor"}, ValidFrom: now.Add(-time.Hour), TxTime: now.Add(-time.Hour)},
+	} {
+		if err := graph.UpsertNode(ctx, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := graph.UpsertEdge(ctx, core.Edge{ID: uuid.New(), Namespace: testNS, Src: src, Dst: dst, Type: "relates_to", Weight: 1, ValidFrom: now.Add(-time.Hour), TxTime: now.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	engine := retrieval.Engine{Graph: graph}
+	results, err := engine.Retrieve(ctx, retrieval.Query{Namespace: testNS, SeedIDs: []uuid.UUID{src}, Labels: []string{"Allowed"}, TopK: 5, ScoreParams: core.ScoreParams{AsOf: now}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Node.ID != src {
+		t.Fatalf("graph label filter: %+v", results)
+	}
+}
+
 func makeVec(seed, dim int) []float32 {
 	v := make([]float32, dim)
 	for i := range v {

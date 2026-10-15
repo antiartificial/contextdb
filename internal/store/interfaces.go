@@ -139,6 +139,22 @@ type VectorIndex interface {
 	Search(ctx context.Context, q VectorQuery) ([]core.ScoredNode, error)
 }
 
+// LexicalIndex finds text candidates before retrieval applies its common
+// temporal, source, label, and score contract. Implementations must return
+// versions visible at both query times and stay within the namespace.
+type LexicalIndex interface {
+	SearchText(ctx context.Context, q TextQuery) ([]core.ScoredNode, error)
+}
+
+type TextQuery struct {
+	Namespace string
+	Text      string
+	TopK      int
+	Labels    []string
+	ValidAt   time.Time
+	KnownAt   time.Time
+}
+
 // VectorQuery parameterises an ANN search.
 type VectorQuery struct {
 	Namespace string

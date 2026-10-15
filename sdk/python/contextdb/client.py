@@ -71,6 +71,14 @@ class Namespace:
         self._name = name
         self._mode = mode
 
+    def retract_source_assertion(self, node_id: str, source_id: str, reason: str = "", effective_at: str | None = None) -> None:
+        """Retract one source's support while preserving independent assertions."""
+        body: dict[str, Any] = {"source_id": source_id, "reason": reason}
+        if effective_at is not None:
+            body["effective_at"] = effective_at
+        resp = self._client.post(f"/v1/namespaces/{quote(self._name, safe='')}/nodes/{quote(node_id, safe='')}/retract-source", json=body)
+        resp.raise_for_status()
+
     def write(
         self,
         content: str = "",
@@ -117,6 +125,8 @@ class Namespace:
         text: str = "",
         seed_ids: list[str] | None = None,
         top_k: int = 10,
+        candidate_k: int | None = None,
+        rerank_k: int | None = None,
         labels: list[str] | None = None,
         score_params: ScoreParams | None = None,
         as_of: str | None = None,
@@ -127,6 +137,10 @@ class Namespace:
     ) -> list[Result]:
         """Retrieve nodes from this namespace."""
         body: dict[str, Any] = {"top_k": top_k}
+        if candidate_k is not None:
+            body["candidate_k"] = candidate_k
+        if rerank_k is not None:
+            body["rerank_k"] = rerank_k
         if vector is not None:
             body["vector"] = vector
         if vectors is not None:

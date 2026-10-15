@@ -24,6 +24,8 @@ export interface RetrieveRequest {
   text?: string;
   seedIds?: string[];
   topK?: number;
+  candidateK?: number;
+  rerankK?: number;
   labels?: string[];
   scoreParams?: ScoreParams;
   /** Legacy valid-time anchor. */

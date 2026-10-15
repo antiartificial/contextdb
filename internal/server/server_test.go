@@ -18,10 +18,41 @@ import (
 
 	"github.com/antiartificial/contextdb/internal/buildinfo"
 	"github.com/antiartificial/contextdb/internal/core"
+	"github.com/antiartificial/contextdb/internal/namespace"
 	"github.com/antiartificial/contextdb/internal/server"
 	"github.com/antiartificial/contextdb/pkg/client"
 	"github.com/antiartificial/contextdb/testdata"
 )
+
+func TestRESTServerRetractSourceAssertion(t *testing.T) {
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{})
+	defer db.Close()
+	ns := db.Namespace("test:rest-retract", namespace.ModeGeneral)
+	first, err := ns.Write(ctx, client.WriteRequest{Content: "Ledger invoice INV-8Q7A", SourceID: "ledger", Dedup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ns.Write(ctx, client.WriteRequest{Content: "Ledger invoice INV-8Q7A", SourceID: "audit", Dedup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"source_id": "ledger", "reason": "corrected"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/namespaces/test:rest-retract/nodes/"+first.NodeID.String()+"/retract-source", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	server.NewRESTServer(db).Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("retract route: %d %s", w.Code, w.Body.String())
+	}
+	removed, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "INV-8Q7A", IncludeSourceIDs: []string{"ledger"}})
+	if err != nil || len(removed) != 0 {
+		t.Fatalf("retracted source: %v %+v", err, removed)
+	}
+	surviving, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "INV-8Q7A", IncludeSourceIDs: []string{"audit"}})
+	if err != nil || len(surviving) != 1 {
+		t.Fatalf("independent support: %v %+v", err, surviving)
+	}
+}
 
 func startGRPCTestServer(t *testing.T, db *client.DB) string {
 	t.Helper()

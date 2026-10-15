@@ -300,6 +300,40 @@ func (g *GraphStore) History(_ context.Context, ns string, id uuid.UUID) ([]core
 	return nodes, err
 }
 
+func (g *GraphStore) SearchText(ctx context.Context, q store.TextQuery) ([]core.ScoredNode, error) {
+	var ids []uuid.UUID
+	err := g.db.View(func(txn *badgerdb.Txn) error {
+		prefix := nodeLatestPrefix(q.Namespace)
+		opts := badgerdb.DefaultIteratorOptions
+		opts.Prefix = prefix
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := string(it.Item().Key())
+			id, err := uuid.Parse(key[len(key)-36:])
+			if err == nil {
+				ids = append(ids, id)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	var nodes []core.Node
+	for _, id := range ids {
+		n, err := g.At(ctx, q.Namespace, id, q.ValidAt, q.KnownAt)
+		if err != nil {
+			return nil, err
+		}
+		if n != nil {
+			nodes = append(nodes, *n)
+		}
+	}
+	return store.RankTextCandidates(nodes, q), nil
+}
+
 func (g *GraphStore) UpsertEdge(_ context.Context, e core.Edge) error {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
@@ -370,8 +404,11 @@ func (g *GraphStore) EdgesTo(_ context.Context, ns string, nodeID uuid.UUID, edg
 }
 
 func (g *GraphStore) edgesByIndex(prefix []byte, ns string, edgeTypes []string) ([]core.Edge, error) {
+	return g.edgesByIndexAt(prefix, ns, edgeTypes, time.Now(), time.Now())
+}
+
+func (g *GraphStore) edgesByIndexAt(prefix []byte, ns string, edgeTypes []string, validAt, knownAt time.Time) ([]core.Edge, error) {
 	typeSet := sliceToSet(edgeTypes)
-	now := time.Now()
 	var edges []core.Edge
 
 	err := g.db.View(func(txn *badgerdb.Txn) error {
@@ -406,7 +443,7 @@ func (g *GraphStore) edgesByIndex(prefix []byte, ns string, edgeTypes []string) 
 				continue
 			}
 
-			if !e.IsActiveAt(now) {
+			if !e.IsActiveAtKnown(validAt, knownAt) {
 				continue
 			}
 			if len(typeSet) > 0 && !typeSet[e.Type] {
@@ -456,14 +493,11 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 			}
 
 			// expand edges
-			edges, err := g.EdgesFrom(ctx, q.Namespace, id, q.EdgeTypes)
+			edges, err := g.edgesByIndexAt(edgeSrcPrefix(q.Namespace, id), q.Namespace, q.EdgeTypes, asOf, knownAt)
 			if err != nil {
 				return nil, err
 			}
 			for _, e := range edges {
-				if e.TxTime.After(knownAt) || !e.IsActiveAt(asOf) {
-					continue
-				}
 				if q.MinWeight > 0 && e.Weight < q.MinWeight {
 					continue
 				}
@@ -487,18 +521,8 @@ func (g *GraphStore) RetractNode(ctx context.Context, ns string, id uuid.UUID, r
 	}
 
 	n.ValidUntil = &at
-
-	// Write back the updated node (latest key + versioned key).
-	data, err := json.Marshal(n)
-	if err != nil {
-		return fmt.Errorf("marshal node: %w", err)
-	}
-	if err := g.db.Update(func(txn *badgerdb.Txn) error {
-		if err := txn.Set(nodeKey(ns, id, n.Version), data); err != nil {
-			return err
-		}
-		return txn.Set(nodeLatestKey(ns, id), data)
-	}); err != nil {
+	n.TxTime = at
+	if err := g.UpsertNode(ctx, *n); err != nil {
 		return err
 	}
 

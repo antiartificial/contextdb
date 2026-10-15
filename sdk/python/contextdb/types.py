@@ -40,6 +40,8 @@ class RetrieveRequest:
     text: str = ""
     seed_ids: list[str] = field(default_factory=list)
     top_k: int = 10
+    candidate_k: int | None = None
+    rerank_k: int | None = None
     labels: list[str] = field(default_factory=list)
     score_params: ScoreParams | None = None
     as_of: str | None = None

@@ -65,12 +65,37 @@ func (g *GraphStore) GetNodeByFingerprint(ctx context.Context, ns, fingerprint s
 	}
 	return g.scanNode(ctx, `
 		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
-		FROM nodes
-		WHERE namespace = $1 AND fingerprint = $2
-		  AND valid_from <= now()
-		  AND (valid_until IS NULL OR valid_until > now())
+		FROM (SELECT DISTINCT ON (id) * FROM nodes WHERE namespace = $1 AND fingerprint = $2
+		      ORDER BY id, version DESC) latest
+		WHERE valid_from <= now() AND (valid_until IS NULL OR valid_until > now())
 		ORDER BY version DESC LIMIT 1
 	`, ns, fingerprint)
+}
+
+func (g *GraphStore) SearchText(ctx context.Context, q store.TextQuery) ([]core.ScoredNode, error) {
+	rows, err := g.pool.Query(ctx, `
+		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
+		FROM (SELECT DISTINCT ON (id) * FROM nodes
+			WHERE namespace = $1 AND tx_time <= $2
+			ORDER BY id, version DESC) latest
+		WHERE valid_from <= $3 AND (valid_until IS NULL OR valid_until > $3)
+	`, q.Namespace, q.KnownAt, q.ValidAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var nodes []core.Node
+	for rows.Next() {
+		n, err := scanNodeRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, n)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return store.RankTextCandidates(nodes, q), nil
 }
 
 func (g *GraphStore) TouchNode(ctx context.Context, ns string, id uuid.UUID, at time.Time) error {
@@ -191,7 +216,7 @@ func (g *GraphStore) queryEdges(ctx context.Context, ns string, nodeID uuid.UUID
 		SELECT id, namespace, src, dst, type, weight, properties, valid_from, valid_until, tx_time, invalidated_at
 		FROM edges
 		WHERE namespace = $1 AND %s = $2
-		  AND invalidated_at IS NULL
+		  AND (invalidated_at IS NULL OR invalidated_at > now())
 		  AND valid_from <= now()
 		  AND (valid_until IS NULL OR valid_until > now())
 	`, direction)
@@ -253,7 +278,7 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 				   w.depth + 1
 			FROM walk w
 			JOIN edges e ON e.namespace = $1 AND e.src = w.id
-				AND e.invalidated_at IS NULL
+				AND (e.invalidated_at IS NULL OR e.invalidated_at > $3 OR e.invalidated_at > $7)
 				AND e.tx_time <= $7
 				AND e.valid_from <= $3
 				AND (e.valid_until IS NULL OR e.valid_until > $3)
@@ -300,7 +325,12 @@ func (g *GraphStore) RetractNode(ctx context.Context, ns string, id uuid.UUID, r
 	defer tx.Rollback(ctx)
 
 	tag, err := tx.Exec(ctx, `
-		UPDATE nodes SET valid_until = $1 WHERE namespace = $2 AND id = $3 AND valid_until IS NULL
+		INSERT INTO nodes (id, namespace, labels, properties, model_id, fingerprint,
+			valid_from, valid_until, tx_time, confidence, version)
+		SELECT id, namespace, labels, properties, model_id, fingerprint,
+			valid_from, $1, $1, confidence, version + 1
+		FROM nodes WHERE namespace = $2 AND id = $3
+		ORDER BY version DESC LIMIT 1
 	`, at, ns, id)
 	if err != nil {
 		return err
@@ -441,13 +471,11 @@ func (g *GraphStore) Diff(ctx context.Context, ns string, t1, t2 time.Time) ([]s
 
 func (g *GraphStore) ValidAt(ctx context.Context, ns string, t time.Time, labels []string) ([]core.Node, error) {
 	rows, err := g.pool.Query(ctx, `
-		SELECT DISTINCT ON (id) id, namespace, labels, properties, model_id, fingerprint,
+		SELECT id, namespace, labels, properties, model_id, fingerprint,
 		       valid_from, valid_until, tx_time, confidence, version
-		FROM nodes
-		WHERE namespace = $1
-		  AND valid_from <= $2
-		  AND (valid_until IS NULL OR valid_until > $2)
-		ORDER BY id, version DESC
+		FROM (SELECT DISTINCT ON (id) * FROM nodes WHERE namespace = $1
+		      ORDER BY id, version DESC) latest
+		WHERE valid_from <= $2 AND (valid_until IS NULL OR valid_until > $2)
 	`, ns, t)
 	if err != nil {
 		return nil, err

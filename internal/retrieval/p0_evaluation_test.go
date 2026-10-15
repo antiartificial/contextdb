@@ -36,7 +36,7 @@ func p0ID(s string) uuid.UUID { return uuid.NewSHA1(uuid.NameSpaceURL, []byte("c
 
 func p0Cases() []p0Case {
 	return []p0Case{
-		{id: "exact_identifier", category: "exact_term", text: "Find invoice INV-8Q7A", vector: []float32{1, 0}, want: p0ID("invoice")},
+		{id: "exact_identifier", category: "exact_term", text: "Find invoice INV-8Q7A", vector: []float32{1, 0}, want: p0ID("invoice"), maxRank: 1},
 		{id: "valid_time_before_change", category: "temporal", text: "What was the deployment target before the migration?", vector: []float32{0, 1}, asOf: p0Anchor.Add(-24 * time.Hour), want: p0ID("target_old"), maxRank: 5, forbidden: []uuid.UUID{p0ID("target_new")}},
 		{id: "valid_time_after_change", category: "temporal", text: "What is the deployment target after the migration?", vector: []float32{0, 1}, asOf: p0Anchor.Add(24 * time.Hour), want: p0ID("target_new"), maxRank: 1, forbidden: []uuid.UUID{p0ID("target_old")}},
 		{id: "late_arrival_known_at", category: "temporal", text: "What did we know about the rollout before the correction arrived?", vector: []float32{.7, .7}, asOf: p0Anchor.Add(24 * time.Hour), knownAt: p0Anchor.Add(-12 * time.Hour), want: p0ID("late_old"), maxRank: 1, forbidden: []uuid.UUID{p0ID("late_correction")}},
@@ -184,6 +184,84 @@ func TestP0RetrievalEvaluation(t *testing.T) {
 	}
 	if len(parity) != len(cases) {
 		t.Fatal(fmt.Errorf("expected %d cases, got %d", len(cases), len(parity)))
+	}
+}
+
+func TestHistoricalVectorCandidateWidening(t *testing.T) {
+	ctx := context.Background()
+	for _, b := range p0Backends(t) {
+		if b.close != nil {
+			defer b.close()
+		}
+		ns := "eval:historical-overfetch"
+		oldID := p0ID("historical-old")
+		knownAt := p0Anchor
+		for i := 0; i < 65; i++ {
+			id := p0ID(fmt.Sprintf("new-decoy-%d", i))
+			vector, tx := []float32{1, 0}, knownAt.Add(time.Hour)
+			if i == 64 {
+				id, vector, tx = oldID, []float32{.9, .1}, knownAt.Add(-time.Hour)
+			}
+			node := core.Node{ID: id, Namespace: ns, Labels: []string{"Claim"}, Properties: map[string]any{"text": "candidate"}, Vector: vector, Confidence: .9, ValidFrom: knownAt.Add(-2 * time.Hour), TxTime: tx}
+			if err := b.graph.UpsertNode(ctx, node); err != nil {
+				t.Fatal(err)
+			}
+			b.register(node)
+			if err := b.vecs.Index(ctx, core.VectorEntry{ID: p0ID("vec-" + id.String()), Namespace: ns, NodeID: &id, Vector: vector, Text: "candidate", CreatedAt: tx}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		engine := retrieval.Engine{Graph: b.graph, Vectors: b.vecs}
+		for _, k := range []int{50, 100} {
+			v, err := b.vecs.Search(ctx, store.VectorQuery{Namespace: ns, Vector: []float32{1, 0}, TopK: k, AsOf: knownAt.Add(time.Hour), KnownAt: knownAt})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("backend=%s vector_candidates=%d returned=%d old_rank=%d", b.name, k, len(v), p0Rank(v, oldID))
+		}
+		results, err := engine.Retrieve(ctx, retrieval.Query{Namespace: ns, Vector: []float32{1, 0}, TopK: 1, CandidateK: 50, KnownAt: knownAt, ScoreParams: core.ScoreParams{AsOf: knownAt.Add(time.Hour)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) != 1 || results[0].Node.ID != oldID {
+			t.Fatalf("%s historical underfill: %+v", b.name, results)
+		}
+	}
+}
+
+func TestP0FusionComparison(t *testing.T) {
+	ctx := context.Background()
+	for _, b := range p0Backends(t) {
+		if b.close != nil {
+			defer b.close()
+		}
+		if err := p0Populate(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+		engine := retrieval.Engine{Graph: b.graph, Vectors: b.vecs}
+		for _, mode := range []string{"weighted", "rrf"} {
+			var reciprocal float64
+			var samples []time.Duration
+			for _, c := range p0Cases() {
+				q := p0Query(c)
+				q.Strategy.FusionMode = mode
+				start := time.Now()
+				results, err := engine.Retrieve(ctx, q)
+				samples = append(samples, time.Since(start))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, forbidden := range c.forbidden {
+					if p0Rank(results, forbidden) != 0 {
+						t.Errorf("%s/%s/%s returned forbidden %s", b.name, mode, c.id, forbidden)
+					}
+				}
+				if rank := p0Rank(results, c.want); rank > 0 {
+					reciprocal += 1 / float64(rank)
+				}
+			}
+			t.Logf("backend=%s fusion=%s mrr_at_5=%.3f local_p95=%s", b.name, mode, reciprocal/float64(len(p0Cases())), p0Percentile(samples, .95))
+		}
 	}
 }
 
