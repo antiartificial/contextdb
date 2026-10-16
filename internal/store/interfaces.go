@@ -83,6 +83,12 @@ type GraphStore interface {
 	ValidAt(ctx context.Context, ns string, t time.Time, labels []string) ([]core.Node, error)
 }
 
+// ConditionalNodeStore supports optimistic, version-checked node edits.
+// A false result means the caller must reload the node and retry its edit.
+type ConditionalNodeStore interface {
+	UpsertNodeIfVersion(ctx context.Context, n core.Node, expectedVersion uint64) (bool, error)
+}
+
 // ReviewLeaseStore is optionally implemented by graph backends that can
 // serialize review-worker cycles across processes. A busy lease returns
 // ErrReviewLeaseBusy. The caller must invoke the returned release function.

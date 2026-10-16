@@ -19,16 +19,16 @@ import (
 // GraphStore is a thread-safe in-memory implementation of store.GraphStore.
 type GraphStore struct {
 	mu      sync.RWMutex
-	nodes   map[string][]core.Node  // key: ns+id, value: versions oldest→newest
-	edges   map[uuid.UUID]core.Edge // key: edge ID
-	sources map[string]core.Source  // key: ns+externalID
+	nodes   map[string][]core.Node // key: ns+id, value: versions oldest→newest
+	edges   map[string][]core.Edge // key: namespace/edge ID, oldest to newest
+	sources map[string]core.Source // key: ns+externalID
 }
 
 // NewGraphStore returns an empty in-memory GraphStore.
 func NewGraphStore() *GraphStore {
 	return &GraphStore{
 		nodes:   make(map[string][]core.Node),
-		edges:   make(map[uuid.UUID]core.Edge),
+		edges:   make(map[string][]core.Edge),
 		sources: make(map[string]core.Source),
 	}
 }
@@ -40,6 +40,8 @@ func nodeKey(ns string, id uuid.UUID) string {
 func sourceKey(ns, externalID string) string {
 	return ns + "/" + externalID
 }
+
+func edgeKey(ns string, id uuid.UUID) string { return ns + "/" + id.String() }
 
 func (g *GraphStore) UpsertNode(_ context.Context, n core.Node) error {
 	g.mu.Lock()
@@ -60,6 +62,27 @@ func (g *GraphStore) UpsertNode(_ context.Context, n core.Node) error {
 	n.Version = uint64(len(versions) + 1)
 	g.nodes[key] = append(versions, n)
 	return nil
+}
+
+func (g *GraphStore) UpsertNodeIfVersion(_ context.Context, n core.Node, expectedVersion uint64) (bool, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	versions := g.nodes[nodeKey(n.Namespace, n.ID)]
+	if len(versions) == 0 || versions[len(versions)-1].Version != expectedVersion {
+		return false, nil
+	}
+	if !n.TxTime.After(versions[len(versions)-1].TxTime) {
+		n.TxTime = versions[len(versions)-1].TxTime.Add(time.Microsecond)
+	}
+	if n.TxTime.IsZero() {
+		n.TxTime = time.Now()
+	}
+	if n.ValidFrom.IsZero() {
+		n.ValidFrom = n.TxTime
+	}
+	n.Version = expectedVersion + 1
+	g.nodes[nodeKey(n.Namespace, n.ID)] = append(versions, n)
+	return true, nil
 }
 
 func (g *GraphStore) GetNode(_ context.Context, ns string, id uuid.UUID) (*core.Node, error) {
@@ -184,20 +207,33 @@ func (g *GraphStore) UpsertEdge(_ context.Context, e core.Edge) error {
 	if e.ValidFrom.IsZero() {
 		e.ValidFrom = e.TxTime
 	}
-	g.edges[e.ID] = e
+	key := edgeKey(e.Namespace, e.ID)
+	if versions := g.edges[key]; len(versions) > 0 && !e.TxTime.After(versions[len(versions)-1].TxTime) {
+		e.TxTime = versions[len(versions)-1].TxTime.Add(time.Microsecond)
+	}
+	g.edges[key] = append(g.edges[key], e)
 	return nil
 }
 
 func (g *GraphStore) InvalidateEdge(_ context.Context, ns string, id uuid.UUID, at time.Time) error {
+	if at.IsZero() {
+		at = time.Now()
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	e, ok := g.edges[id]
-	if !ok {
+	key := edgeKey(ns, id)
+	versions := g.edges[key]
+	if len(versions) == 0 || versions[len(versions)-1].Namespace != ns {
 		return fmt.Errorf("edge %s not found in namespace %s", id, ns)
 	}
+	e := versions[len(versions)-1]
 	e.InvalidatedAt = &at
-	g.edges[id] = e
+	e.TxTime = at
+	if !e.TxTime.After(versions[len(versions)-1].TxTime) {
+		e.TxTime = versions[len(versions)-1].TxTime.Add(time.Microsecond)
+	}
+	g.edges[key] = append(versions, e)
 	return nil
 }
 
@@ -216,7 +252,8 @@ func (g *GraphStore) EdgesFrom(_ context.Context, ns string, nodeID uuid.UUID, e
 	now := time.Now()
 	typeSet := sliceToSet(edgeTypes)
 	var out []core.Edge
-	for _, e := range g.edges {
+	for _, versions := range g.edges {
+		e := versions[len(versions)-1]
 		if e.Namespace != ns || e.Src != nodeID {
 			continue
 		}
@@ -238,7 +275,8 @@ func (g *GraphStore) EdgesTo(_ context.Context, ns string, nodeID uuid.UUID, edg
 	now := time.Now()
 	typeSet := sliceToSet(edgeTypes)
 	var out []core.Edge
-	for _, e := range g.edges {
+	for _, versions := range g.edges {
+		e := versions[len(versions)-1]
 		if e.Namespace != ns || e.Dst != nodeID {
 			continue
 		}
@@ -302,7 +340,18 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 			}
 
 			// expand edges
-			for _, e := range g.edges {
+			for _, versions := range g.edges {
+				var e core.Edge
+				found := false
+				for i := len(versions) - 1; i >= 0; i-- {
+					if !versions[i].TxTime.After(knownAt) {
+						e, found = versions[i], true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
 				if e.Namespace != q.Namespace || e.Src != id {
 					continue
 				}
@@ -344,7 +393,7 @@ func (g *GraphStore) RetractNode(_ context.Context, ns string, id uuid.UUID, rea
 
 	// Create a retraction edge.
 	edgeID := uuid.New()
-	g.edges[edgeID] = core.Edge{
+	g.edges[edgeKey(ns, edgeID)] = []core.Edge{{
 		ID:         edgeID,
 		Namespace:  ns,
 		Src:        id,
@@ -354,7 +403,7 @@ func (g *GraphStore) RetractNode(_ context.Context, ns string, id uuid.UUID, rea
 		Properties: map[string]any{"reason": reason},
 		ValidFrom:  at,
 		TxTime:     at,
-	}
+	}}
 	return nil
 }
 

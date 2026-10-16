@@ -1,7 +1,9 @@
 package badger
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -18,6 +20,8 @@ const (
 	prefixNode        = "n/"
 	prefixNodeLatest  = "n-latest/"
 	prefixEdge        = "e/"
+	prefixEdgeHistory = "e-history/"
+	prefixEdgeCount   = "e-count/"
 	prefixEdgeSrc     = "ei-src/"
 	prefixEdgeDst     = "ei-dst/"
 	prefixSource      = "s/"
@@ -48,6 +52,67 @@ func nodePrefix(ns string, id uuid.UUID) []byte {
 
 func edgeKey(ns string, id uuid.UUID) []byte {
 	return []byte(fmt.Sprintf("%s%s/%s", prefixEdge, ns, id))
+}
+
+func edgeHistoryPrefix(ns string, id uuid.UUID) []byte {
+	return []byte(fmt.Sprintf("%s%s/%s/", prefixEdgeHistory, ns, id))
+}
+
+func edgeHistoryKey(ns string, id uuid.UUID, version uint64) []byte {
+	return []byte(fmt.Sprintf("%s%020d", edgeHistoryPrefix(ns, id), version))
+}
+
+func edgeCountKey(ns string, id uuid.UUID) []byte {
+	return []byte(fmt.Sprintf("%s%s/%s", prefixEdgeCount, ns, id))
+}
+
+func appendEdgeVersion(txn *badgerdb.Txn, e core.Edge) error {
+	var count uint64
+	item, err := txn.Get(edgeCountKey(e.Namespace, e.ID))
+	if err == nil {
+		if err := item.Value(func(value []byte) error {
+			if len(value) != 8 {
+				return fmt.Errorf("invalid edge version counter")
+			}
+			count = binary.BigEndian.Uint64(value)
+			return nil
+		}); err != nil {
+			return err
+		}
+	} else if err != badgerdb.ErrKeyNotFound {
+		return err
+	}
+	// Older databases have a latest edge but no history. Preserve that snapshot
+	// before the first edit so earlier knowledge remains reconstructible.
+	if count == 0 {
+		if old, err := txn.Get(edgeKey(e.Namespace, e.ID)); err == nil {
+			var previous core.Edge
+			if err := old.Value(func(value []byte) error { return json.Unmarshal(value, &previous) }); err != nil {
+				return err
+			}
+			data, err := json.Marshal(previous)
+			if err != nil {
+				return err
+			}
+			count++
+			if err := txn.Set(edgeHistoryKey(e.Namespace, e.ID, count), data); err != nil {
+				return err
+			}
+		} else if err != badgerdb.ErrKeyNotFound {
+			return err
+		}
+	}
+	data, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	count++
+	if err := txn.Set(edgeHistoryKey(e.Namespace, e.ID, count), data); err != nil {
+		return err
+	}
+	var encoded [8]byte
+	binary.BigEndian.PutUint64(encoded[:], count)
+	return txn.Set(edgeCountKey(e.Namespace, e.ID), encoded[:])
 }
 
 func edgeSrcKey(ns string, srcID, edgeID uuid.UUID) []byte {
@@ -122,6 +187,63 @@ func (g *GraphStore) UpsertNode(_ context.Context, n core.Node) error {
 		}
 		return nil
 	})
+}
+
+func (g *GraphStore) UpsertNodeIfVersion(_ context.Context, n core.Node, expectedVersion uint64) (bool, error) {
+	if n.ID == uuid.Nil {
+		return false, fmt.Errorf("conditional node update requires an ID")
+	}
+	if n.TxTime.IsZero() {
+		n.TxTime = time.Now()
+	}
+	if n.ValidFrom.IsZero() {
+		n.ValidFrom = n.TxTime
+	}
+	updated := false
+	err := g.db.Update(func(txn *badgerdb.Txn) error {
+		item, err := txn.Get(nodeLatestKey(n.Namespace, n.ID))
+		if err == badgerdb.ErrKeyNotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var latest core.Node
+		if err := item.Value(func(value []byte) error { return json.Unmarshal(value, &latest) }); err != nil {
+			return err
+		}
+		if latest.Version != expectedVersion {
+			return nil
+		}
+		if !n.TxTime.After(latest.TxTime) {
+			n.TxTime = latest.TxTime.Add(time.Microsecond)
+		}
+		n.Version = expectedVersion + 1
+		data, err := json.Marshal(n)
+		if err != nil {
+			return err
+		}
+		if err := txn.Set(nodeKey(n.Namespace, n.ID, n.Version), data); err != nil {
+			return err
+		}
+		if err := txn.Set(nodeLatestKey(n.Namespace, n.ID), data); err != nil {
+			return err
+		}
+		if n.Fingerprint != "" {
+			if err := txn.Set(fingerprintKey(n.Namespace, n.Fingerprint), []byte(n.ID.String())); err != nil {
+				return err
+			}
+		}
+		updated = true
+		return nil
+	})
+	if err == badgerdb.ErrConflict {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return updated, nil
 }
 
 func (g *GraphStore) GetNode(_ context.Context, ns string, id uuid.UUID) (*core.Node, error) {
@@ -345,12 +467,26 @@ func (g *GraphStore) UpsertEdge(_ context.Context, e core.Edge) error {
 		e.ValidFrom = e.TxTime
 	}
 
-	data, err := json.Marshal(e)
-	if err != nil {
-		return fmt.Errorf("marshal edge: %w", err)
-	}
-
-	return g.db.Update(func(txn *badgerdb.Txn) error {
+	return g.updateEdgeWithRetry(func(txn *badgerdb.Txn) error {
+		current := e
+		if item, err := txn.Get(edgeKey(e.Namespace, e.ID)); err == nil {
+			var previous core.Edge
+			if err := item.Value(func(value []byte) error { return json.Unmarshal(value, &previous) }); err != nil {
+				return err
+			}
+			if !current.TxTime.After(previous.TxTime) {
+				current.TxTime = previous.TxTime.Add(time.Microsecond)
+			}
+		} else if err != badgerdb.ErrKeyNotFound {
+			return err
+		}
+		data, err := json.Marshal(current)
+		if err != nil {
+			return fmt.Errorf("marshal edge: %w", err)
+		}
+		if err := appendEdgeVersion(txn, current); err != nil {
+			return err
+		}
 		if err := txn.Set(edgeKey(e.Namespace, e.ID), data); err != nil {
 			return err
 		}
@@ -362,7 +498,10 @@ func (g *GraphStore) UpsertEdge(_ context.Context, e core.Edge) error {
 }
 
 func (g *GraphStore) InvalidateEdge(_ context.Context, ns string, id uuid.UUID, at time.Time) error {
-	return g.db.Update(func(txn *badgerdb.Txn) error {
+	if at.IsZero() {
+		at = time.Now()
+	}
+	return g.updateEdgeWithRetry(func(txn *badgerdb.Txn) error {
 		item, err := txn.Get(edgeKey(ns, id))
 		if err == badgerdb.ErrKeyNotFound {
 			return fmt.Errorf("edge %s not found in namespace %s", id, ns)
@@ -378,13 +517,31 @@ func (g *GraphStore) InvalidateEdge(_ context.Context, ns string, id uuid.UUID, 
 			return err
 		}
 
+		previousTx := e.TxTime
 		e.InvalidatedAt = &at
+		e.TxTime = at
+		if !e.TxTime.After(previousTx) {
+			e.TxTime = previousTx.Add(time.Microsecond)
+		}
+		if err := appendEdgeVersion(txn, e); err != nil {
+			return err
+		}
 		data, err := json.Marshal(e)
 		if err != nil {
 			return err
 		}
 		return txn.Set(edgeKey(ns, id), data)
 	})
+}
+
+func (g *GraphStore) updateEdgeWithRetry(fn func(*badgerdb.Txn) error) error {
+	for attempt := 0; attempt < 16; attempt++ {
+		err := g.db.Update(fn)
+		if err != badgerdb.ErrConflict {
+			return err
+		}
+	}
+	return fmt.Errorf("edge changed repeatedly; retry operation")
 }
 
 func (g *GraphStore) GetEdges(_ context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
@@ -442,8 +599,26 @@ func (g *GraphStore) edgesByIndexAt(prefix []byte, ns string, edgeTypes []string
 			}); err != nil {
 				continue
 			}
+			if !knownAt.IsZero() {
+				previous, err := edgeAt(txn, ns, edgeID, knownAt)
+				if err != nil {
+					return err
+				}
+				if previous == nil {
+					continue
+				}
+				e = *previous
+			}
 
 			if !e.IsActiveAtKnown(validAt, knownAt) {
+				continue
+			}
+			// Old index entries are retained for historical walks after an edge
+			// changes endpoints. Check the selected version's endpoint before use.
+			if bytes.HasPrefix(prefix, []byte(prefixEdgeSrc)) && !bytes.HasPrefix(edgeSrcKey(ns, e.Src, e.ID), prefix) {
+				continue
+			}
+			if bytes.HasPrefix(prefix, []byte(prefixEdgeDst)) && !bytes.HasPrefix(edgeDstKey(ns, e.Dst, e.ID), prefix) {
 				continue
 			}
 			if len(typeSet) > 0 && !typeSet[e.Type] {
@@ -454,6 +629,40 @@ func (g *GraphStore) edgesByIndexAt(prefix []byte, ns string, edgeTypes []string
 		return nil
 	})
 	return edges, err
+}
+
+func edgeAt(txn *badgerdb.Txn, ns string, id uuid.UUID, knownAt time.Time) (*core.Edge, error) {
+	prefix := edgeHistoryPrefix(ns, id)
+	opts := badgerdb.DefaultIteratorOptions
+	opts.Prefix = prefix
+	opts.Reverse = true
+	it := txn.NewIterator(opts)
+	defer it.Close()
+	for it.Seek(append(append([]byte(nil), prefix...), 0xff)); it.ValidForPrefix(prefix); it.Next() {
+		var e core.Edge
+		if err := it.Item().Value(func(value []byte) error { return json.Unmarshal(value, &e) }); err != nil {
+			return nil, err
+		}
+		if !e.TxTime.After(knownAt) {
+			return &e, nil
+		}
+	}
+	// Compatibility with snapshots written before edge history was introduced.
+	item, err := txn.Get(edgeKey(ns, id))
+	if err == badgerdb.ErrKeyNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var e core.Edge
+	if err := item.Value(func(value []byte) error { return json.Unmarshal(value, &e) }); err != nil {
+		return nil, err
+	}
+	if e.TxTime.After(knownAt) {
+		return nil, nil
+	}
+	return &e, nil
 }
 
 func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, error) {

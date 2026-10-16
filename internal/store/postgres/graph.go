@@ -43,13 +43,75 @@ func (g *GraphStore) UpsertNode(ctx context.Context, n core.Node) error {
 		return fmt.Errorf("marshal properties: %w", err)
 	}
 
-	_, err = g.pool.Exec(ctx, `
+	tx, err := g.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "node/"+n.Namespace+"/"+n.ID.String()); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
 		INSERT INTO nodes (id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 			COALESCE((SELECT MAX(version) FROM nodes WHERE id = $1 AND namespace = $2), 0) + 1
 		)
 	`, n.ID, n.Namespace, n.Labels, props, n.ModelID, n.Fingerprint, n.ValidFrom, n.ValidUntil, n.TxTime, n.Confidence)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (g *GraphStore) UpsertNodeIfVersion(ctx context.Context, n core.Node, expectedVersion uint64) (bool, error) {
+	if n.ID == uuid.Nil {
+		return false, fmt.Errorf("conditional node update requires an ID")
+	}
+	if n.Labels == nil {
+		n.Labels = []string{}
+	}
+	if n.TxTime.IsZero() {
+		n.TxTime = time.Now()
+	}
+	if n.ValidFrom.IsZero() {
+		n.ValidFrom = n.TxTime
+	}
+	props, err := json.Marshal(n.Properties)
+	if err != nil {
+		return false, err
+	}
+	tx, err := g.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "node/"+n.Namespace+"/"+n.ID.String()); err != nil {
+		return false, err
+	}
+	var version uint64
+	var latestTxTime time.Time
+	if err := tx.QueryRow(ctx, `SELECT version, tx_time FROM nodes WHERE namespace = $1 AND id = $2 ORDER BY version DESC LIMIT 1`, n.Namespace, n.ID).Scan(&version, &latestTxTime); err == pgx.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	if version != expectedVersion {
+		return false, nil
+	}
+	if !n.TxTime.After(latestTxTime) {
+		n.TxTime = latestTxTime.Add(time.Microsecond)
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO nodes (id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	`, n.ID, n.Namespace, n.Labels, props, n.ModelID, n.Fingerprint, n.ValidFrom, n.ValidUntil, n.TxTime, n.Confidence, expectedVersion+1)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (g *GraphStore) GetNode(ctx context.Context, ns string, id uuid.UUID) (*core.Node, error) {
@@ -170,29 +232,98 @@ func (g *GraphStore) UpsertEdge(ctx context.Context, e core.Edge) error {
 		return fmt.Errorf("marshal edge properties: %w", err)
 	}
 
-	_, err = g.pool.Exec(ctx, `
+	tx, err := g.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, e.Namespace+"/"+e.ID.String()); err != nil {
+		return err
+	}
+	var previousTx time.Time
+	if err := tx.QueryRow(ctx, `SELECT tx_time FROM edges WHERE namespace = $1 AND id = $2`, e.Namespace, e.ID).Scan(&previousTx); err == nil {
+		if !e.TxTime.After(previousTx) {
+			e.TxTime = previousTx.Add(time.Microsecond)
+		}
+	} else if err != pgx.ErrNoRows {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO edges (id, namespace, src, dst, type, weight, properties, valid_from, valid_until, tx_time, invalidated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (id) DO UPDATE SET
+			src = EXCLUDED.src,
+			dst = EXCLUDED.dst,
+			type = EXCLUDED.type,
 			weight = EXCLUDED.weight,
 			properties = EXCLUDED.properties,
-			invalidated_at = EXCLUDED.invalidated_at
+			valid_from = EXCLUDED.valid_from,
+			valid_until = EXCLUDED.valid_until,
+			invalidated_at = EXCLUDED.invalidated_at,
+			tx_time = EXCLUDED.tx_time
+		WHERE edges.namespace = EXCLUDED.namespace
 	`, e.ID, e.Namespace, e.Src, e.Dst, e.Type, e.Weight, props,
 		e.ValidFrom, e.ValidUntil, e.TxTime, e.InvalidatedAt)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("edge %s belongs to another namespace", e.ID)
+	}
+	if err := insertEdgeVersion(ctx, tx, e.Namespace, e.ID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (g *GraphStore) InvalidateEdge(ctx context.Context, ns string, id uuid.UUID, at time.Time) error {
-	tag, err := g.pool.Exec(ctx, `
-		UPDATE edges SET invalidated_at = $1 WHERE id = $2 AND namespace = $3
-	`, at, id, ns)
+	if at.IsZero() {
+		at = time.Now()
+	}
+	tx, err := g.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, ns+"/"+id.String()); err != nil {
+		return err
+	}
+	var previousTx time.Time
+	if err := tx.QueryRow(ctx, `SELECT tx_time FROM edges WHERE namespace = $1 AND id = $2`, ns, id).Scan(&previousTx); err == pgx.ErrNoRows {
+		return fmt.Errorf("edge %s not found in namespace %s", id, ns)
+	} else if err != nil {
+		return err
+	}
+	transactionAt := at
+	if !transactionAt.After(previousTx) {
+		transactionAt = previousTx.Add(time.Microsecond)
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE edges SET invalidated_at = $1, tx_time = $4 WHERE id = $2 AND namespace = $3
+	`, at, id, ns, transactionAt)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("edge %s not found in namespace %s", id, ns)
 	}
-	return nil
+	if err := insertEdgeVersion(ctx, tx, ns, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func insertEdgeVersion(ctx context.Context, tx pgx.Tx, ns string, id uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		INSERT INTO edge_versions (id, namespace, version, src, dst, type, weight, properties,
+		                           valid_from, valid_until, tx_time, invalidated_at)
+		SELECT e.id, e.namespace,
+		       COALESCE((SELECT MAX(version) FROM edge_versions WHERE namespace = $1 AND id = $2), 0) + 1,
+		       e.src, e.dst, e.type, e.weight, e.properties,
+		       e.valid_from, e.valid_until, e.tx_time, e.invalidated_at
+		FROM edges e WHERE e.namespace = $1 AND e.id = $2
+	`, ns, id)
+	return err
 }
 
 func (g *GraphStore) GetEdges(ctx context.Context, ns string, nodeID uuid.UUID) ([]core.Edge, error) {
@@ -277,7 +408,9 @@ func (g *GraphStore) Walk(ctx context.Context, q store.WalkQuery) ([]core.Node, 
 				   n2.valid_from, n2.valid_until, n2.tx_time, n2.confidence, n2.version,
 				   w.depth + 1
 			FROM walk w
-			JOIN edges e ON e.namespace = $1 AND e.src = w.id
+			JOIN edge_versions e ON e.namespace = $1 AND e.src = w.id
+				AND e.version = (SELECT MAX(version) FROM edge_versions
+				                 WHERE namespace = e.namespace AND id = e.id AND tx_time <= $7)
 				AND (e.invalidated_at IS NULL OR e.invalidated_at > $3 OR e.invalidated_at > $7)
 				AND e.tx_time <= $7
 				AND e.valid_from <= $3

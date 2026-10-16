@@ -104,6 +104,8 @@ results, _ := ns.Retrieve(ctx, client.RetrieveRequest{
 
 `ValidAt` asks when a claim was true; `KnownAt` asks what had been recorded by then. A fact backfilled today with `ValidFrom` in January appears in a January `ValidAt` query with the default current `KnownAt`, but is excluded when `KnownAt` is also in January. `AsOf` remains a compatibility shorthand for `ValidAt`; an explicit `ValidAt` takes precedence. An omitted axis defaults to now. A correction or retraction recorded by `KnownAt` supersedes the earlier version even if its earlier version was valid at `ValidAt`.
 
+Edge edits now retain versions as well. A historical graph walk selects the latest edge version known at `KnownAt`, including its endpoints, weight, and invalidation state. Postgres migration 003 seeds one version for each edge already present; it cannot reconstruct edge edits that happened before the migration. New edits and invalidations are retained from that point forward.
+
 ## Node validity
 
 Nodes expose `IsValidAt(t)` for temporal filtering:

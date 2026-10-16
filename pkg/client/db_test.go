@@ -415,6 +415,43 @@ func TestNamespace_RetractOneCorroboratingSource(t *testing.T) {
 	}
 }
 
+func TestNamespace_ConcurrentSourceRetractionsKeepIndependentSupport(t *testing.T) {
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{Mode: client.ModeEmbedded})
+	defer db.Close()
+	ns := db.Namespace("test:concurrent-source-retract", namespace.ModeGeneral)
+	var nodeID uuid.UUID
+	for _, source := range []string{"primary", "source-b", "source-c"} {
+		written, err := ns.Write(ctx, client.WriteRequest{Content: "Review key REV-91", SourceID: source, Dedup: true, Confidence: .8})
+		if err != nil {
+			t.Fatal(err)
+		}
+		nodeID = written.NodeID
+	}
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	at := time.Now().Add(time.Second)
+	for _, source := range []string{"source-b", "source-c"} {
+		go func(source string) { <-start; errs <- ns.RetractSourceAssertion(ctx, nodeID, source, "corrected", at) }(source)
+	}
+	close(start)
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, source := range []string{"source-b", "source-c"} {
+		got, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "REV-91", ValidAt: at.Add(time.Second), KnownAt: at.Add(time.Second), IncludeSourceIDs: []string{source}})
+		if err != nil || len(got) != 0 {
+			t.Fatalf("%s still supports claim: %v %+v", source, err, got)
+		}
+	}
+	got, err := ns.Retrieve(ctx, client.RetrieveRequest{Text: "REV-91", ValidAt: at.Add(time.Second), KnownAt: at.Add(time.Second), IncludeSourceIDs: []string{"primary"}})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("primary support lost: %v %+v", err, got)
+	}
+}
+
 func TestNamespace_FeedbackUpdatesNodeAndSource(t *testing.T) {
 	is := is.New(t)
 	ctx := context.Background()

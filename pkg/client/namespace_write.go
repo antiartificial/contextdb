@@ -346,27 +346,13 @@ func (h *NamespaceHandle) recordCorroboration(ctx context.Context, existing *cor
 	if src.EffectiveCredibility() <= 0.05 {
 		return false, nil
 	}
-	props := make(map[string]any, len(existing.Properties)+1)
-	for key, value := range existing.Properties {
-		props[key] = value
+	conditional, ok := h.db.graph.(store.ConditionalNodeStore)
+	if !ok {
+		return false, fmt.Errorf("backend does not support conditional node updates")
 	}
-	var evidence []any
 	occurrenceID := ""
 	if req.IdempotencyKey != "" {
 		occurrenceID = uuid.NewSHA1(uuid.NameSpaceURL, []byte("contextdb/corroboration/"+h.cfg.ID+"/"+req.SourceID+"/"+req.IdempotencyKey)).String()
-	}
-	switch stored := props["corroborating_sources"].(type) {
-	case []any:
-		evidence = append(evidence, stored...)
-	case []map[string]any:
-		for _, item := range stored {
-			evidence = append(evidence, item)
-		}
-	}
-	for _, item := range evidence {
-		if record, ok := item.(map[string]any); ok && occurrenceID != "" && record["occurrence_id"] == occurrenceID {
-			return true, nil
-		}
 	}
 	validFrom := req.ValidFrom
 	if validFrom.IsZero() {
@@ -376,18 +362,55 @@ func (h *NamespaceHandle) recordCorroboration(ctx context.Context, existing *cor
 	if confidence == 0 {
 		confidence = src.EffectiveCredibility()
 	}
-	evidence = append(evidence, map[string]any{
-		"source_id":     req.SourceID,
-		"valid_from":    validFrom.UTC().Format(time.RFC3339Nano),
-		"observed_at":   time.Now().UTC().Format(time.RFC3339Nano),
-		"confidence":    confidence,
-		"occurrence_id": occurrenceID,
-	})
-	props["corroborating_sources"] = evidence
-	updated := *existing
-	updated.Properties = props
-	updated.TxTime = time.Now()
-	return true, h.db.graph.UpsertNode(ctx, updated)
+	for attempt := 0; attempt < 16; attempt++ {
+		if existing.ValidUntil != nil && !time.Now().Before(*existing.ValidUntil) {
+			return false, fmt.Errorf("canonical node %s was retracted; retry write", existing.ID)
+		}
+		props := make(map[string]any, len(existing.Properties)+1)
+		for key, value := range existing.Properties {
+			props[key] = value
+		}
+		var evidence []any
+		switch stored := props["corroborating_sources"].(type) {
+		case []any:
+			evidence = append(evidence, stored...)
+		case []map[string]any:
+			for _, item := range stored {
+				evidence = append(evidence, item)
+			}
+		}
+		for _, item := range evidence {
+			if record, ok := item.(map[string]any); ok && occurrenceID != "" && record["occurrence_id"] == occurrenceID {
+				return true, nil
+			}
+		}
+		evidence = append(evidence, map[string]any{
+			"source_id":     req.SourceID,
+			"valid_from":    validFrom.UTC().Format(time.RFC3339Nano),
+			"observed_at":   time.Now().UTC().Format(time.RFC3339Nano),
+			"confidence":    confidence,
+			"occurrence_id": occurrenceID,
+		})
+		props["corroborating_sources"] = evidence
+		updated := *existing
+		updated.Properties = props
+		updated.TxTime = time.Now()
+		written, err := conditional.UpsertNodeIfVersion(ctx, updated, existing.Version)
+		if err != nil {
+			return false, err
+		}
+		if written {
+			return true, nil
+		}
+		existing, err = h.db.graph.GetNode(ctx, h.cfg.ID, existing.ID)
+		if err != nil {
+			return false, err
+		}
+		if existing == nil {
+			return false, fmt.Errorf("canonical node disappeared during corroboration")
+		}
+	}
+	return false, fmt.Errorf("canonical node %s changed repeatedly; retry write", existing.ID)
 }
 
 // RetractSourceAssertion removes one source's support for a canonical claim.
@@ -401,52 +424,73 @@ func (h *NamespaceHandle) RetractSourceAssertion(ctx context.Context, nodeID uui
 	if effectiveAt.IsZero() {
 		effectiveAt = time.Now()
 	}
-	node, err := h.db.graph.GetNode(ctx, h.cfg.ID, nodeID)
-	if err != nil {
-		return err
+	conditional, ok := h.db.graph.(store.ConditionalNodeStore)
+	if !ok {
+		return fmt.Errorf("retract source assertion: backend does not support conditional node updates")
 	}
-	if node == nil {
-		return fmt.Errorf("retract source assertion: node %s not found", nodeID)
-	}
-	props := make(map[string]any, len(node.Properties))
-	for key, value := range node.Properties {
-		props[key] = value
-	}
-	primary, _ := props["source_id"].(string)
-	removed := primary == sourceID
-	var remaining []any
-	if records, ok := props["corroborating_sources"].([]any); ok {
-		for _, item := range records {
-			record, ok := item.(map[string]any)
-			if !ok {
-				continue
+	for attempt := 0; attempt < 16; attempt++ {
+		node, err := h.db.graph.GetNode(ctx, h.cfg.ID, nodeID)
+		if err != nil {
+			return err
+		}
+		if node == nil {
+			return fmt.Errorf("retract source assertion: node %s not found", nodeID)
+		}
+		if node.ValidUntil != nil && !effectiveAt.Before(*node.ValidUntil) {
+			return fmt.Errorf("retract source assertion: node %s is already retracted", nodeID)
+		}
+		props := make(map[string]any, len(node.Properties))
+		for key, value := range node.Properties {
+			props[key] = value
+		}
+		primary, _ := props["source_id"].(string)
+		removed := primary == sourceID
+		var remaining []any
+		if records, ok := props["corroborating_sources"].([]any); ok {
+			for _, item := range records {
+				record, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				if record["source_id"] == sourceID {
+					removed = true
+					continue
+				}
+				remaining = append(remaining, item)
 			}
-			if record["source_id"] == sourceID {
-				removed = true
-				continue
+		}
+		if !removed {
+			return fmt.Errorf("retract source assertion: source %q does not support node %s", sourceID, nodeID)
+		}
+		lastAssertion := primary == sourceID && len(remaining) == 0
+		if primary == sourceID && !lastAssertion {
+			first := remaining[0].(map[string]any)
+			props["source_id"] = first["source_id"]
+			if confidence, ok := first["confidence"].(float64); ok {
+				node.Confidence = confidence
 			}
-			remaining = append(remaining, item)
+			remaining = remaining[1:]
 		}
-	}
-	if !removed {
-		return fmt.Errorf("retract source assertion: source %q does not support node %s", sourceID, nodeID)
-	}
-	if primary == sourceID {
-		if len(remaining) == 0 {
-			return h.db.graph.RetractNode(ctx, h.cfg.ID, nodeID, reason, effectiveAt)
+		props["corroborating_sources"] = remaining
+		props["last_source_retraction"] = map[string]any{"source_id": sourceID, "reason": reason, "at": effectiveAt.UTC().Format(time.RFC3339Nano)}
+		node.Properties = props
+		node.TxTime = effectiveAt
+		if lastAssertion {
+			node.ValidUntil = &effectiveAt
 		}
-		first := remaining[0].(map[string]any)
-		props["source_id"] = first["source_id"]
-		if confidence, ok := first["confidence"].(float64); ok {
-			node.Confidence = confidence
+		updated, err := conditional.UpsertNodeIfVersion(ctx, *node, node.Version)
+		if err != nil {
+			return err
 		}
-		remaining = remaining[1:]
+		if !updated {
+			continue
+		}
+		if lastAssertion {
+			return h.db.graph.UpsertEdge(ctx, core.Edge{ID: uuid.New(), Namespace: h.cfg.ID, Src: nodeID, Dst: nodeID, Type: core.EdgeRetracted, Weight: 1, Properties: map[string]any{"reason": reason}, ValidFrom: effectiveAt, TxTime: effectiveAt})
+		}
+		return nil
 	}
-	props["corroborating_sources"] = remaining
-	props["last_source_retraction"] = map[string]any{"source_id": sourceID, "reason": reason, "at": effectiveAt.UTC().Format(time.RFC3339Nano)}
-	node.Properties = props
-	node.TxTime = effectiveAt
-	return h.db.graph.UpsertNode(ctx, *node)
+	return fmt.Errorf("retract source assertion: node %s changed repeatedly; retry", nodeID)
 }
 
 // IngestText runs raw text through the extraction pipeline, producing nodes
