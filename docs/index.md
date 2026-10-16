@@ -47,8 +47,8 @@ contextdb is currently `v0.123.0`: usable for serious demos and early integratio
     <span class="stat-label">namespace modes</span>
   </div>
   <div class="stat-box">
-    <span class="stat-value">4</span>
-    <span class="stat-label">deployment modes</span>
+    <span class="stat-value">3</span>
+    <span class="stat-label">supported runtime modes</span>
   </div>
 </div>
 

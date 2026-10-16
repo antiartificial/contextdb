@@ -122,5 +122,5 @@ Postgres continues to serve as the graph store in scaled mode, providing:
 | Development and testing | Embedded (in-memory) |
 | Single-node production | Standard (Postgres only) |
 | Multi-service architecture | Remote (gRPC client) |
-| High vector throughput, large datasets | **Scaled** |
-| Independent scaling of vector/graph/cache | **Scaled** |
+| High vector throughput, large datasets | Measure Standard mode capacity; Scaled remains unavailable |
+| Independent scaling of vector/graph/cache | No supported mode yet; Scaled remains a design target |

@@ -60,6 +60,7 @@ func (s *GRPCService) Register(srv *grpc.Server) {
 			{MethodName: "TouchNode", Handler: s.handleTouchNode},
 			{MethodName: "UpsertNode", Handler: s.handleUpsertNode},
 			{MethodName: "UpsertNodeIfVersion", Handler: s.handleUpsertNodeIfVersion},
+			{MethodName: "UpsertNodeAndEdgeIfVersion", Handler: s.handleUpsertNodeAndEdgeIfVersion},
 			{MethodName: "NodeHistory", Handler: s.handleNodeHistory},
 			{MethodName: "UpsertEdge", Handler: s.handleUpsertEdge},
 			{MethodName: "InvalidateEdge", Handler: s.handleInvalidateEdge},
@@ -553,6 +554,12 @@ type grpcUpsertNodeIfVersionReq struct {
 	ExpectedVersion uint64    `json:"expected_version"`
 }
 
+type grpcUpsertNodeAndEdgeIfVersionReq struct {
+	Node            core.Node `json:"node"`
+	ExpectedVersion uint64    `json:"expected_version"`
+	Edge            core.Edge `json:"edge"`
+}
+
 type grpcHistoryReq struct {
 	Namespace string `json:"namespace"`
 	ID        string `json:"id"`
@@ -720,6 +727,24 @@ func (s *GRPCService) handleUpsertNodeIfVersion(srv interface{}, ctx context.Con
 		return nil, status.Error(codes.Unimplemented, "conditional node updates unavailable")
 	}
 	updated, err := conditional.UpsertNodeIfVersion(ctx, req.Node, req.ExpectedVersion)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &struct {
+		Updated bool `json:"updated"`
+	}{Updated: updated}, nil
+}
+
+func (s *GRPCService) handleUpsertNodeAndEdgeIfVersion(srv interface{}, ctx context.Context, dec func(interface{}) error, _ grpc.UnaryServerInterceptor) (interface{}, error) {
+	var req grpcUpsertNodeAndEdgeIfVersionReq
+	if err := dec(&req); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	atomic, ok := s.graph.(store.AtomicNodeEdgeStore)
+	if !ok {
+		return nil, status.Error(codes.Unimplemented, "atomic node and edge updates unavailable")
+	}
+	updated, err := atomic.UpsertNodeAndEdgeIfVersion(ctx, req.Node, req.ExpectedVersion, req.Edge)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

@@ -477,6 +477,22 @@ func (h *NamespaceHandle) RetractSourceAssertion(ctx context.Context, nodeID uui
 		node.TxTime = effectiveAt
 		if lastAssertion {
 			node.ValidUntil = &effectiveAt
+			atomic, ok := h.db.graph.(store.AtomicNodeEdgeStore)
+			if !ok {
+				return fmt.Errorf("retract source assertion: backend does not support atomic audit updates")
+			}
+			updated, err := atomic.UpsertNodeAndEdgeIfVersion(ctx, *node, node.Version, core.Edge{
+				ID: uuid.New(), Namespace: h.cfg.ID, Src: nodeID, Dst: nodeID,
+				Type: core.EdgeRetracted, Weight: 1,
+				Properties: map[string]any{"reason": reason}, ValidFrom: effectiveAt, TxTime: effectiveAt,
+			})
+			if err != nil {
+				return err
+			}
+			if !updated {
+				continue
+			}
+			return nil
 		}
 		updated, err := conditional.UpsertNodeIfVersion(ctx, *node, node.Version)
 		if err != nil {
@@ -484,9 +500,6 @@ func (h *NamespaceHandle) RetractSourceAssertion(ctx context.Context, nodeID uui
 		}
 		if !updated {
 			continue
-		}
-		if lastAssertion {
-			return h.db.graph.UpsertEdge(ctx, core.Edge{ID: uuid.New(), Namespace: h.cfg.ID, Src: nodeID, Dst: nodeID, Type: core.EdgeRetracted, Weight: 1, Properties: map[string]any{"reason": reason}, ValidFrom: effectiveAt, TxTime: effectiveAt})
 		}
 		return nil
 	}

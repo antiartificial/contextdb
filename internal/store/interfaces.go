@@ -89,6 +89,12 @@ type ConditionalNodeStore interface {
 	UpsertNodeIfVersion(ctx context.Context, n core.Node, expectedVersion uint64) (bool, error)
 }
 
+// AtomicNodeEdgeStore commits a version-checked node update and its audit edge
+// together. A false result means the node version changed before the commit.
+type AtomicNodeEdgeStore interface {
+	UpsertNodeAndEdgeIfVersion(ctx context.Context, n core.Node, expectedVersion uint64, edge core.Edge) (bool, error)
+}
+
 // ReviewLeaseStore is optionally implemented by graph backends that can
 // serialize review-worker cycles across processes. A busy lease returns
 // ErrReviewLeaseBusy. The caller must invoke the returned release function.

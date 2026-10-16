@@ -82,6 +82,52 @@ func TestPostgresHistoricalLexicalAndSourceLifecycle(t *testing.T) {
 	}
 }
 
+func TestPostgresLexicalCandidatesKeepHistoricalAndLiteralMatches(t *testing.T) {
+	dsn := os.Getenv("CONTEXTDB_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("CONTEXTDB_TEST_POSTGRES_DSN is required")
+	}
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{Mode: client.ModeStandard, DSN: dsn})
+	defer db.Close()
+	g, _, _, _ := db.Stores()
+	ns := "test:lexical-index:" + uuid.NewString()
+	lexical := g.(store.LexicalIndex)
+	base := time.Now().Add(-time.Hour).Truncate(time.Second)
+	id := uuid.New()
+	n := core.Node{ID: id, Namespace: ns, Properties: map[string]any{"text": "Invoice INV-8Q7A is 50% complete"}, ValidFrom: base, TxTime: base}
+	if err := g.UpsertNode(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+	n.Properties = map[string]any{"text": "Replaced invoice"}
+	n.TxTime = base.Add(time.Minute)
+	if err := g.UpsertNode(ctx, n); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		query string
+		known time.Time
+		want  int
+	}{
+		{"INV-8Q7A", base.Add(time.Second), 1},
+		{"50%", base.Add(time.Second), 1},
+		{"INV-8Q7A", base.Add(2 * time.Minute), 0},
+	} {
+		got, err := lexical.SearchText(ctx, store.TextQuery{Namespace: ns, Text: tc.query, ValidAt: base.Add(2 * time.Minute), KnownAt: tc.known})
+		if err != nil || len(got) != tc.want {
+			t.Fatalf("query %q known %s: got %d, want %d: %v", tc.query, tc.known, len(got), tc.want, err)
+		}
+	}
+	content := core.Node{ID: uuid.New(), Namespace: ns, Properties: map[string]any{"text": 42, "content": "Fallback%_literal"}, ValidFrom: base, TxTime: base}
+	if err := g.UpsertNode(ctx, content); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lexical.SearchText(ctx, store.TextQuery{Namespace: ns, Text: "Fallback%_literal", ValidAt: base.Add(time.Minute), KnownAt: base.Add(time.Minute)})
+	if err != nil || len(got) != 1 || got[0].Node.ID != content.ID {
+		t.Fatalf("content fallback: %+v, %v", got, err)
+	}
+}
+
 func TestPostgresRepeatedEdgeEditsPreserveHistoricalWalks(t *testing.T) {
 	dsn := os.Getenv("CONTEXTDB_TEST_POSTGRES_DSN")
 	if dsn == "" {
@@ -228,6 +274,50 @@ func TestPostgresConcurrentCorroborationPreservesBothSources(t *testing.T) {
 		if err != nil || len(got) != 1 {
 			t.Fatalf("%s support missing: %v %+v", source, err, got)
 		}
+	}
+}
+
+func TestPostgresAtomicRetractionAuditRollsBackOnEdgeConflict(t *testing.T) {
+	dsn := os.Getenv("CONTEXTDB_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("CONTEXTDB_TEST_POSTGRES_DSN is required")
+	}
+	ctx := context.Background()
+	db := client.MustOpen(client.Options{Mode: client.ModeStandard, DSN: dsn})
+	defer db.Close()
+	g, _, _, _ := db.Stores()
+	atomic, ok := g.(store.AtomicNodeEdgeStore)
+	if !ok {
+		t.Fatal("Postgres graph lacks atomic node and edge updates")
+	}
+	ns := "test:atomic-audit:" + uuid.NewString()
+	nodeID, edgeID := uuid.New(), uuid.New()
+	base := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := g.UpsertNode(ctx, core.Node{ID: nodeID, Namespace: ns, Labels: []string{"Claim"}, Properties: map[string]any{"text": "original"}, ValidFrom: base, TxTime: base}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.UpsertEdge(ctx, core.Edge{ID: edgeID, Namespace: "other:" + ns, Src: uuid.New(), Dst: uuid.New(), Type: "supports", Weight: 1, ValidFrom: base, TxTime: base}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := g.GetNode(ctx, ns, nodeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := *current
+	updated.Properties = map[string]any{"text": "corrected"}
+	updated.TxTime = time.Now()
+	conflicting := core.Edge{ID: edgeID, Namespace: ns, Src: nodeID, Dst: nodeID, Type: core.EdgeRetracted, Weight: 1, ValidFrom: base, TxTime: time.Now()}
+	if written, err := atomic.UpsertNodeAndEdgeIfVersion(ctx, updated, current.Version, conflicting); err == nil || written {
+		t.Fatalf("expected edge conflict rollback, got written=%v err=%v", written, err)
+	}
+	after, err := g.GetNode(ctx, ns, nodeID)
+	if err != nil || after.Version != current.Version || after.Properties["text"] != "original" {
+		t.Fatalf("node changed despite edge failure: %v %+v", err, after)
+	}
+	conflicting.ID = uuid.New()
+	written, err := atomic.UpsertNodeAndEdgeIfVersion(ctx, updated, current.Version, conflicting)
+	if err != nil || !written {
+		t.Fatalf("valid atomic update: %v, written=%v", err, written)
 	}
 }
 
