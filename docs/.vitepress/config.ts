@@ -218,7 +218,7 @@ export default withMermaid(
               { text: 'Retry Fatigue Cookbook', link: '/deployment/retry-fatigue-cookbook' },
               { text: 'Mini/Norn', link: '/deployment/norn' },
               { text: 'Kubernetes', link: '/deployment/kubernetes' },
-              { text: 'Scaled Deployment', link: '/deployment/scaled' },
+              { text: 'Scaled Design (Unavailable)', link: '/deployment/scaled' },
             ]
           },
           {
@@ -228,6 +228,10 @@ export default withMermaid(
           {
             text: 'Release Health',
             link: '/release-health',
+          },
+          {
+            text: 'v1 Readiness Gates',
+            link: '/plans/v1-readiness',
           },
           {
             text: 'Feature Matrix',

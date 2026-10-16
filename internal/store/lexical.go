@@ -94,6 +94,11 @@ func lexicalTerms(s string) []string {
 	})
 }
 
+// LexicalTerms exposes the ranker's tokenization to storage candidate indexes.
+// Candidate indexes must return a superset; RankTextCandidates remains the
+// authority for matching and ordering.
+func LexicalTerms(s string) []string { return lexicalTerms(s) }
+
 // QueryIdentifiers returns mixed letter/digit tokens that callers generally
 // expect to match literally (invoice numbers, VIN fragments, ticket IDs).
 func QueryIdentifiers(s string) []string {

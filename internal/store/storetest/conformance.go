@@ -49,6 +49,50 @@ func RunGraphStoreTests(t *testing.T, factory func(t *testing.T) store.GraphStor
 			t.Fatalf("latest node: %v, %+v", err, latest)
 		}
 	})
+	t.Run("AtomicNodeAndAuditEdge", func(t *testing.T) {
+		g := factory(t)
+		atomic, ok := g.(store.AtomicNodeEdgeStore)
+		if !ok {
+			t.Fatal("graph store lacks atomic node and edge updates")
+		}
+		ctx := context.Background()
+		id, edgeID := uuid.New(), uuid.New()
+		base := time.Now().Add(-time.Hour)
+		if err := g.UpsertNode(ctx, core.Node{ID: id, Namespace: "test", Labels: []string{"Claim"}, Properties: map[string]any{"text": "original"}, ValidFrom: base, TxTime: base}); err != nil {
+			t.Fatal(err)
+		}
+		current, err := g.GetNode(ctx, "test", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		updated := *current
+		updated.Properties = map[string]any{"text": "corrected"}
+		updated.TxTime = base
+		e := core.Edge{ID: edgeID, Namespace: "test", Src: id, Dst: id, Type: core.EdgeRetracted, Weight: 1, ValidFrom: base, TxTime: base}
+		written, err := atomic.UpsertNodeAndEdgeIfVersion(ctx, updated, current.Version, e)
+		if err != nil || !written {
+			t.Fatalf("atomic update: %v, written=%v", err, written)
+		}
+		latest, err := g.GetNode(ctx, "test", id)
+		if err != nil || latest.Version != current.Version+1 {
+			t.Fatalf("node version: %v, %+v", err, latest)
+		}
+		edges, err := g.GetEdges(ctx, "test", id)
+		if err != nil || len(edges) != 1 || edges[0].ID != edgeID {
+			t.Fatalf("audit edge: %v, %+v", err, edges)
+		}
+		if !edges[0].TxTime.Equal(latest.TxTime) {
+			t.Fatalf("node and audit transaction times diverged: node=%s edge=%s", latest.TxTime, edges[0].TxTime)
+		}
+		written, err = atomic.UpsertNodeAndEdgeIfVersion(ctx, updated, current.Version, core.Edge{ID: uuid.New(), Namespace: "test", Src: id, Dst: id, Type: core.EdgeRetracted, ValidFrom: base, TxTime: base})
+		if err != nil || written {
+			t.Fatalf("stale atomic update: %v, written=%v", err, written)
+		}
+		edges, err = g.GetEdges(ctx, "test", id)
+		if err != nil || len(edges) != 1 {
+			t.Fatalf("stale update wrote edge: %v, %+v", err, edges)
+		}
+	})
 	t.Run("UpsertAndGetNode", func(t *testing.T) {
 		is := is.New(t)
 		g := factory(t)

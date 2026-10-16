@@ -274,7 +274,7 @@ All weights normalised at query time. Different namespace modes ship tuned defau
 | **Embedded** | In-memory or BadgerDB | Dev, testing, sidecars, CLIs |
 | **Standard** | Postgres + pgvector | Production single-node |
 | **Remote** | gRPC to contextdb server | Microservices, multi-language clients |
-| **Scaled** | Qdrant + Redis + Postgres | High-throughput production |
+| **Scaled** | Reserved; unavailable | Future high-throughput profile |
 
 ## Live deployment
 
@@ -315,9 +315,6 @@ make run
 
 # With Postgres
 docker compose up --build
-
-# Scaled mode (Qdrant + Redis + Postgres)
-docker compose --profile scaled up --build
 
 # Run all tests
 make test

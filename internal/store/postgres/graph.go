@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -135,13 +136,27 @@ func (g *GraphStore) GetNodeByFingerprint(ctx context.Context, ns, fingerprint s
 }
 
 func (g *GraphStore) SearchText(ctx context.Context, q store.TextQuery) ([]core.ScoredNode, error) {
+	terms := store.LexicalTerms(q.Text)
+	if len(terms) == 0 {
+		return nil, nil
+	}
+	patterns := make([]string, 0, len(terms))
+	for _, term := range terms {
+		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(term)
+		patterns = append(patterns, "%"+escaped+"%")
+	}
 	rows, err := g.pool.Query(ctx, `
 		SELECT id, namespace, labels, properties, model_id, fingerprint, valid_from, valid_until, tx_time, confidence, version
 		FROM (SELECT DISTINCT ON (id) * FROM nodes
 			WHERE namespace = $1 AND tx_time <= $2
+			AND id IN (SELECT id FROM nodes WHERE namespace = $1
+				AND lower(CASE
+					WHEN jsonb_typeof(properties->'text') = 'string' THEN properties->>'text'
+					WHEN jsonb_typeof(properties->'content') = 'string' THEN properties->>'content'
+					ELSE '' END) LIKE ANY($4))
 			ORDER BY id, version DESC) latest
 		WHERE valid_from <= $3 AND (valid_until IS NULL OR valid_until > $3)
-	`, q.Namespace, q.KnownAt, q.ValidAt)
+	`, q.Namespace, q.KnownAt, q.ValidAt, patterns)
 	if err != nil {
 		return nil, err
 	}

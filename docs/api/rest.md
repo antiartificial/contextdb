@@ -237,7 +237,7 @@ curl http://localhost:7701/v1/version
   "api_version": "v1",
   "docs_version": "0.123.0",
   "compatibility": "non-breaking pre-1.0 minor release",
-  "latest_migration": 3,
+  "latest_migration": 4,
   "features": [
     {
       "name": "feature-introspection",

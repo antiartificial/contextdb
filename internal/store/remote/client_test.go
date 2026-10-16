@@ -107,6 +107,15 @@ func TestRemoteGraphStore(t *testing.T) {
 	ok, err = graph.UpsertNodeIfVersion(ctx, updated, current.Version)
 	is.NoErr(err)
 	is.True(!ok)
+	latest, err := graph.GetNode(ctx, "remote-test", nodeID)
+	is.NoErr(err)
+	audit := core.Edge{ID: uuid.New(), Namespace: "remote-test", Src: nodeID, Dst: nodeID, Type: "retracted", ValidFrom: time.Now(), TxTime: time.Now()}
+	ok, err = graph.UpsertNodeAndEdgeIfVersion(ctx, *latest, latest.Version, audit)
+	is.NoErr(err)
+	is.True(ok)
+	ok, err = graph.UpsertNodeAndEdgeIfVersion(ctx, *latest, latest.Version, audit)
+	is.NoErr(err)
+	is.True(!ok)
 
 	// UpsertEdge
 	node2ID := uuid.New()
